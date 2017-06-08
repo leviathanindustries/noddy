@@ -1,0 +1,78 @@
+{
+    "properties": {
+        "location": {
+            "properties": {
+                "geo": {
+                    "type": "geo_point",
+                    "lat_lon": true
+                }
+            }
+        },
+        "created_date": {
+            "type": "date",
+            "format" : "yyyy-MM-dd mmss||date_optional_time"
+        },
+        "updated_date": {
+            "type": "date",
+            "format" : "yyyy-MM-dd mmss||date_optional_time"
+        },
+        "createdAt": {
+            "type": "date",
+            "format" : "yyyy-MM-dd mmss||date_optional_time"
+        },
+        "updatedAt": {
+            "type": "date",
+            "format" : "yyyy-MM-dd mmss||date_optional_time"
+        },
+        "attachments":{
+            "properties": {
+                "attachment": {
+                    "type": "attachment"
+                }
+            }
+        }
+    },
+    "date_detection": false,
+    "dynamic_templates" : [
+        {
+            "followingdates": {
+                "mapping": {
+                    "fields": {
+                        "{name}": {
+                            "type": "date"
+                        },
+                        "format": "yyyy-MM-dd mmss||date_optional_time"
+                    },
+                    "type": "multi_field"
+                },
+                "path_match": "date.*"
+            }
+        },
+        {
+            "leadingdates": {
+                "mapping": {
+                    "fields": {
+                        "{name}": {
+                            "type": "date"
+                        },
+                        "format": "yyyy-MM-dd mmss||date_optional_time"
+                    },
+                    "type": "multi_field"
+                },
+                "path_match": ".*date"
+            }
+        },
+        {
+            "default" : {
+                "match" : "*",
+                "match_mapping_type": "string",
+                "mapping" : {
+                    "type" : "string",
+                    "fields" : {
+                        "exact" : {"type" : "{dynamic_type}", "index" : "not_analyzed", "store" : "no"}
+                    }
+                }
+            }
+        }
+    ]
+}
