@@ -68,34 +68,6 @@ server {
     }
 }
 
-
-# LIVE METEOR SITE VIA LOCAL (SHOULD GO VIA CLUSTER ONCE TESTED - LOOK FOR HOW TO SERVE STATIC FILES PARTICULARLY)
-server {
-    listen      80;
-    server_name accounts.cottagelabs.com;
-    return 301 https://$host$request_uri;
-}
-server {
-    listen          443 ssl spdy;
-    server_name     accounts.cottagelabs.com;
-
-    ssl on;
-    ssl_certificate /etc/letsencrypt/live/accounts.cottagelabs.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/accounts.cottagelabs.com/privkey.pem;
-
-    location / {
-        proxy_pass http://clapilocal;
-        proxy_redirect off;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        #proxy_set_header Authorization "";
-        # proxy_buffering off;
-    }
-}
-
-
-
 # LIVE API CONNECTED DIRECTLY RATHER THAN THROUGH CLUSTER
 server {
     listen      80;
@@ -199,64 +171,7 @@ server {
     }
 }
 
-server {
-    listen      80;
-    server_name test.cottagelabs.com;
-    return 301 https://$host$request_uri;
-}
-server {
-    listen          443 ssl spdy;
-    server_name     test.cottagelabs.com;
 
-    ssl on;
-    ssl_certificate /etc/letsencrypt/live/test.cottagelabs.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/test.cottagelabs.com/privkey.pem;
-
-    location / {
-        proxy_pass http://clapidev;
-        proxy_redirect off;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        #proxy_set_header Authorization "";
-        # proxy_buffering off;
-    }
-}
-
-
-
-# STATIC LIVE CL SITE AND STATIC CONTENT SERVICE
-server {
-    listen      443 ssl;
-    server_name www.cottagelabs.com;
-    return 301 https://cottagelabs.com;
-}
-server {
-    listen      80;
-    server_name www.cottagelabs.com;
-    return 301 https://cottagelabs.com;
-}
-server {
-    listen      80;
-    server_name cottagelabs.com;
-    return 301 https://$host$request_uri;
-}
-server {
-        listen 443 ssl spdy;
-        server_name cottagelabs.com;
-        root /home/cloo/live/cl;
-        include includes/cl-multi-ssl.conf;
-
-        location /content {
-            try_files $uri $uri.html $uri/index $uri/index.html 404 /404 =404;
-            add_header Access-Control-Allow-Origin *;
-        }
-
-        location / {
-            try_files $uri $uri.html /index.html;
-            add_header Access-Control-Allow-Origin *;
-        }
-}
 server {
         listen 443 ssl;
         server_name static.cottagelabs.com;
@@ -285,88 +200,4 @@ server {
 
 
 
-# ADDITIONAL STATIC SITE ROUTES SERVED FROM OR RELATED TO CL OR ALSO USING THE LIVE API
-server {
-        listen 80;
-        server_name cx.ctg.li dx.ctg.li;
-        root /home/cloo/live/cl;
-
-        location /content {
-            try_files /sub/cxctgli$uri /sub/cxctgli$uri.html /sub/cxctgli$uri/index /sub/cxctgli/$uri/index.html 404 /404 =404;
-            add_header Access-Control-Allow-Origin *;
-        }
-        location /static {
-            try_files $uri $uri.html $uri/index $uri/index.html 404 /404 =404;
-            add_header Access-Control-Allow-Origin *;
-        }
-
-        location = / {
-            try_files $uri $uri.html /index.html;
-            add_header Access-Control-Allow-Origin *;
-        }
-        location = /index.html {
-            try_files $uri $uri.html /index.html;
-            add_header Access-Control-Allow-Origin *;
-        }
-
-        location / {
-            proxy_pass http://clapi/api/academic/redirect/;
-            proxy_redirect off;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        }
-}
-
-server {
-        listen 80;
-        server_name ctg.li;
-        root /home/cloo/live/cl;
-
-        location /content {
-            try_files /sub/ctgli$uri /sub/ctgli$uri.html /sub/ctgli$uri/index /sub/ctgli/$uri/index.html 404 /404 =404;
-            add_header Access-Control-Allow-Origin *;
-        }
-        location /static {
-            try_files $uri $uri.html $uri/index $uri/index.html 404 /404 =404;
-            add_header Access-Control-Allow-Origin *;
-        }
-
-        location = / {
-            try_files $uri $uri.html /index.html;
-            add_header Access-Control-Allow-Origin *;
-        }
-        location = /index.html {
-            try_files $uri $uri.html /index.html;
-            add_header Access-Control-Allow-Origin *;
-        }
-
-        location / {
-            proxy_pass http://clapi/api/shortlink/;
-            proxy_redirect off;
-            proxy_set_header Host $host;
-            proxy_set_header X-Real-IP $remote_addr;
-            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        }
-}
-
-server {
-        listen 80;
-        server_name harvest.cottagelabs.com;
-        root /home/cloo/live/cl;
-
-        location /content {
-            try_files /sub/harvest$uri /sub/harvest$uri.html /sub/harvest$uri/index /sub/harvest/$uri/index.html 404 /404 =404;
-            add_header Access-Control-Allow-Origin *;
-        }
-        location /static {
-            try_files $uri $uri.html $uri/index $uri/index.html 404 /404 =404;
-            add_header Access-Control-Allow-Origin *;
-        }
-
-        location / {
-            try_files $uri $uri.html /index.html;
-            add_header Access-Control-Allow-Origin *;
-        }
-}
 
