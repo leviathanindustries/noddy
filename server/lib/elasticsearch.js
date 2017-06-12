@@ -4,13 +4,13 @@
 // handle authn and authz for es indexes and types (and possibly backup triggers)
 // NOTE: if an index/type can be public, just make it public and have nginx route to it directly, saving app load.
 
-if (!Meteor.settings || !Meteor.settings.es || !Meteor.settings.es.url) {
+if (!Meteor.settings || !Meteor.settings.es) {
   API.log('WARNING - ELASTICSEARCH SEEMS TO BE REQUIRED BUT SETTINGS HAVE NOT BEEN PROVIDED.');  
 } else {
   try {
     var s = Meteor.http.call('GET',Meteor.settings.es.url);
   } catch(err) {
-    API.log({msg:'ELASTICSEARCH INSTANCE APPEARS TO BE UNREACHABLE. SHUTTING DOWN.', error:err});
+    API.log({msg:'ELASTICSEARCH INSTANCE AT ' + Meteor.settings.es.url + 'APPEARS TO BE UNREACHABLE. SHUTTING DOWN.', error:err});
     process.exit(-1);
   }
 }
