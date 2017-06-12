@@ -99,7 +99,7 @@ API.es.action = function(uid,action,urlp,params,data) {
   }
 }
 
-APi.es.exists = function(route,url) {
+API.es.exists = function(route,url) {
   if ( route.indexOf('/') !== 0 ) route = '/' + route;
   var routeparts = route.substring(1,route.length).split('/');
   var esurl = url ? url : API.settings.es.url;
