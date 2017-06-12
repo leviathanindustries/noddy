@@ -105,12 +105,12 @@ API.log = function(opts) {
       if (loglevels.indexOf(loglevel) <= loglevels.indexOf('debug')) {
         console.log(opts.created_date);
         console.log(opts.msg);
-        console.log(opts.error);
+        if (opts.error) console.log(opts.error);
       }
       // try to set some opts vars for which server the error is running on...
       try { opts.errorString = JSON.stringify(opts.error); } catch(err) {}
       try {
-        API.es.insert('/api/log_'+today,opts);
+        API.es.insert('/' + (API.settings.name ? API.settings.name : 'noddy') + '/log_'+today,opts);
       } catch(err) {
         var safer = {
           msg: opts.msg,
@@ -120,7 +120,7 @@ API.log = function(opts) {
           created_date: opts.created_date
         }
         try { safer.safeError = JSON.stringify(opts); } catch(err) { safer.safeIssue = 'Could not stringify all opts passed to the logger'; }
-        API.es.insert('/api/log_'+today,safer);
+        API.es.insert('/' + (API.settings.name ? API.settings.name : 'noddy') + '/log_'+today,safer);
       }
       if (opts.notify && API.settings.log.notify) {
         try {
