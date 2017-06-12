@@ -4,7 +4,10 @@
   "version": "3.0.0",
   "author": "Mark MacGillivray",
   "dependencies": {
+    "babel-runtime": "^6.23.0",
     "busboy": "0.2.14",
+    "fibers": "^2.0.0",
+    "marked": "^0.3.6",
     "moment": "^2.17.1"
   },
   "devDependencies": {}
