@@ -129,7 +129,6 @@ API.es.exists = function(route,url) {
 // how about _alias? And check for others too, and add here
 
 API.es.map = function(route,map,url) {
-  API.log('creating es mapping for ' + route);
   if ( map === undefined ) map = Meteor.http.call('GET','http://static.cottagelabs.com/mapping.json').data;
   if ( route.indexOf('/') !== 0 ) route = '/' + route;
   var routeparts = route.substring(1,route.length).split('/');
@@ -137,10 +136,15 @@ API.es.map = function(route,map,url) {
   var db = esurl + '/';
   if (API.settings.es.prefix) db += API.settings.es.prefix;
   db += routeparts[0];
+  API.log('creating es mapping for ' + db + '/' + routeparts[1]);
   try {
     var dbexists = Meteor.http.call('HEAD',db);
   } catch(err) {
-    Meteor.http.call('POST',db);
+    if (Meteor.settings.es.version && Meteor.settings.es.version > 5) {
+      Meteor.http.call('PUT',db);
+    } else {
+      Meteor.http.call('POST',db);
+    }
   }
   var maproute = db + '/_mapping/' + routeparts[1];
   if ( API.settings.es.version < 1 ) maproute = db + '/' + routeparts[1] + '/_mapping';
@@ -170,7 +174,7 @@ API.es.query = function(action,route,data,url) {
   if (url) API.log('To url ' + url);
   var esurl = url ? url : API.settings.es.url;
   if (route.indexOf('/') !== 0) route = '/' + route;
-  if (API.settings.es.prefix && route !== '/_status' && route !== '/_cluster/health') route = '/' + API.settings.es.prefix + route.substring(1,route.length);
+  if (API.settings.es.prefix && route !== '/_status' && route !== '/_stats' && route !== '/_cluster/health') route = '/' + API.settings.es.prefix + route.substring(1,route.length);
   //API.log('Performing elasticsearch ' + action + ' on ' + route);
   var routeparts = route.substring(1,route.length).split('/');
   if (route.indexOf('/_') === -1 && routeparts.length >= 1 && action !== 'DELETE' && action !== 'GET') {

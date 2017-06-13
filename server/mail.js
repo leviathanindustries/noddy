@@ -76,8 +76,9 @@ API.addRoute('mail/test', {
 
 
 
-// deprecating this to mail.send below, but keep for now until check for usage
-API.sendmail = function(opts,mail_url) {
+API.mail = {}
+
+API.mail.send = function(opts,mail_url) {
   console.log('Sending an email');
   // should change this to use mailgun API instead of smtp
   // https://documentation.mailgun.com/quickstart-sending.html?utm_source=mailgun&utm_medium=email&utm_campaign=transactional-dns-propagation#send-via-smtp
@@ -132,9 +133,6 @@ API.sendmail = function(opts,mail_url) {
   }
 }
 
-
-API.mail = {}
-API.mail.send = API.sendmail;
 
 API.mail.validate = function(email,apikey) {
   if (apikey === undefined) apikey = Meteor.settings.MAIL_PUBLIC_APIKEY; // NOTE should use public key, not private key
