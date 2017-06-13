@@ -52,7 +52,7 @@ API.es = {};
 
 API.es._call = function(action,url,pl) {
   var it = url.replace('http://','').replace('https://','').split('/')[1];
-  if (API.settings.es.prefix && it.indexOf('_') !== 0) {
+  if (API.settings.es.prefix && it && it.indexOf('_') !== 0) {
     url = url.replace(it,API.settings.es.prefix + it);
     API.log('Changing ES URL to ' + url + ' for dev.');
   }
