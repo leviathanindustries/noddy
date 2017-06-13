@@ -95,21 +95,22 @@ API.es.action = function(uid,action,urlp,params,data) {
 // how about _alias? And check for others too, and add here
 
 API.es.map = function(index,type,mapping,url) {
+  if (url === undefined) url = Meteor.settings.es.url;
   try {
-    API.es.call('HEAD','/' + index,undefined,url);
+    Meteor.http.call('HEAD',url + '/' + index,undefined,url);
   } catch(err) {
     var pt = Meteor.settings.es.version && Meteor.settings.es.version > 5 ? Meteor.http.call('PUT',url + '/' + index) : Meteor.http.call('POST',url + '/' + index);
   }
   var maproute = API.settings.es.version > 1 ? index + '/_mapping/' + type : maproute = index + '/' + type + '/_mapping';
   if ( mapping === undefined ) {
     try {
-      API.es.call('HEAD',maproute,undefined,url);      
+      Meteor.http.call('HEAD',url + '/' + maproute);      
     } catch(err) {
       mapping = Meteor.http.call('GET','http://static.cottagelabs.com/mapping.json').data;
     }
   }
   if (mapping) {
-    return API.es.call('PUT',maproute,{data:mapping},url).data;
+    return Meteor.http.call('PUT',url + '/' + maproute,{data:mapping}).data;
   }
 }
 
