@@ -40,7 +40,7 @@ API.addRoute('es/:ra/:rb/:rc/:rd', es);
 API.es = {};
 
 if (!Meteor.settings || !Meteor.settings.es) {
-  API.log('WARNING - ELASTICSEARCH SEEMS TO BE REQUIRED BUT SETTINGS HAVE NOT BEEN PROVIDED.');  
+  console.log('WARNING - ELASTICSEARCH SEEMS TO BE REQUIRED BUT SETTINGS HAVE NOT BEEN PROVIDED.');  
 } else {
   try {
     var s = Meteor.http.call('GET',Meteor.settings.es.url);
@@ -108,9 +108,7 @@ API.es.map = function(index,type,mapping,url) {
   try {
     API.es.call('HEAD','/' + index,undefined,url);
   } catch(err) {
-    API.log('Index ' + index + ' does not exist, creating it.');
     var pt = Meteor.settings.es.version && Meteor.settings.es.version > 5 ? Meteor.http.call('PUT',url + '/' + index) : Meteor.http.call('POST',url + '/' + index);
-    API.log('Index ' + url + '/' + index + ' creation returned ' + pt.statusCode);
   }
   var maproute = API.settings.es.version > 1 ? index + '/_mapping/' + type : maproute = index + '/' + type + '/_mapping';
   if ( mapping === undefined ) {
@@ -121,17 +119,11 @@ API.es.map = function(index,type,mapping,url) {
     }
   }
   if (mapping) {
-    try {
-      var mp = API.es.call('PUT',maproute,{data:mapping},url);
-      API.log('Mapping created for ' + maproute + ', ' + mp.statusCode);
-    } catch(err) {
-      API.log({msg:'PUT mapping to ' + maproute + ' failed.',error:err});
-    }
+    return API.es.call('PUT',maproute,{data:mapping},url).data;
   }
 }
 
 API.es.call = function(action,route,data,url) {
-  if (url) API.log('To url ' + url);
   if (url === undefined) url = API.settings.es.url;
   if (route.indexOf('/') !== 0) route = '/' + route;
   var routeparts = route.substring(1,route.length).split('/');
@@ -173,7 +165,7 @@ API.es.call = function(action,route,data,url) {
     ret = Meteor.http.call(action,url+route,opts).data;
   } catch(err) {
     // TODO check for various types of ES error - for some we may want retries, others may want to trigger specific log alerts
-    API.log(err);
+    console.log(err);
     ret = {info: 'the call to es returned an error, but that may not necessarily be bad', err:err}
   }
   return ret;
