@@ -135,7 +135,7 @@ API.es.map = function(route,map,url) {
   var routeparts = route.substring(1,route.length).split('/');
   var esurl = url ? url : API.settings.es.url;
   var db = esurl + '/';
-  if (API.settings.es.prefix) db += API.settings.es.prefix;
+  if (API.settings.es.prefix && routeparts[0].indexOf(API.settings.es.prefix) !== 0 ) db += API.settings.es.prefix;
   db += routeparts[0];
   API.log('creating es mapping for ' + db + '/' + routeparts[1]);
   if (!API.es.exists(route)) {
@@ -176,15 +176,7 @@ API.es.query = function(action,route,data,url) {
   if (API.settings.es.prefix && route !== '/_status' && route !== '/_stats' && route !== '/_cluster/health') route = '/' + API.settings.es.prefix + route.substring(1,route.length);
   //API.log('Performing elasticsearch ' + action + ' on ' + route);
   var routeparts = route.substring(1,route.length).split('/');
-  if (route.indexOf('/_') === -1 && routeparts.length >= 1 && action !== 'DELETE' && action !== 'GET') {
-    try {
-      var turl = esurl + '/' + routeparts[0];
-      if (routeparts.length > 1) turl += '/' + routeparts[1];
-      var exists = Meteor.http.call('HEAD',turl);
-    } catch(err) {
-      API.es.map(route);
-    }
-  }
+  if (route.indexOf('/_') === -1 && routeparts.length >= 1 && action !== 'DELETE' && action !== 'GET') API.es.map(route);
   var opts = {};
   if (data) opts.data = data;
   if (route.indexOf('source') !== -1 && route.indexOf('random=true') !== -1) {

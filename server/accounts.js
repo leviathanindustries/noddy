@@ -1,5 +1,5 @@
 
-//Users = new API.collection({type:"users",history:true});
+Users = new API.collection({type:"users",history:true});
 loginCodes = new API.collection("logincodes");
 
 API.addRoute('accounts', {
