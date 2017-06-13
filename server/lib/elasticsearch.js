@@ -4,18 +4,6 @@
 // handle authn and authz for es indexes and types (and possibly backup triggers)
 // NOTE: if an index/type can be public, just make it public and have nginx route to it directly, saving app load.
 
-if (!Meteor.settings || !Meteor.settings.es) {
-  API.log('WARNING - ELASTICSEARCH SEEMS TO BE REQUIRED BUT SETTINGS HAVE NOT BEEN PROVIDED.');  
-} else {
-  try {
-    var s = API.es._call('GET',Meteor.settings.es.url);
-  } catch(err) {
-    console.log('ELASTICSEARCH INSTANCE AT ' + Meteor.settings.es.url + ' APPEARS TO BE UNREACHABLE. SHUTTING DOWN.');
-    console.log(err);
-    process.exit(-1);
-  }
-}
-
 API.addRoute('es/import', {
   post: {
     roleRequired: 'root', // decide which roles should get access - probably within the function, depending on membership of corresponding groups
@@ -69,6 +57,18 @@ API.es._call = function(action,url,pl) {
     API.log('Changing ES URL to ' + url + ' for dev.');
   }
   return Meteor.http.call(action,url,pl);
+}
+
+if (!Meteor.settings || !Meteor.settings.es) {
+  API.log('WARNING - ELASTICSEARCH SEEMS TO BE REQUIRED BUT SETTINGS HAVE NOT BEEN PROVIDED.');  
+} else {
+  try {
+    var s = API.es._call('GET',Meteor.settings.es.url);
+  } catch(err) {
+    console.log('ELASTICSEARCH INSTANCE AT ' + Meteor.settings.es.url + ' APPEARS TO BE UNREACHABLE. SHUTTING DOWN.');
+    console.log(err);
+    process.exit(-1);
+  }
 }
 
 API.es.exists = function(route,url) {
