@@ -115,7 +115,7 @@ API.es.exists = function(route,url) {
   var routeparts = route.substring(1,route.length).split('/');
   var esurl = url ? url : API.settings.es.url;
   var db = esurl + '/';
-  if (API.settings.es.prefix) db += API.settings.es.prefix;
+  if (API.settings.es.prefix && routeparts[0].indexOf(API.settings.es.prefix) !== 0 ) db += API.settings.es.prefix;
   db += routeparts[0];
   try {
     var dbexists = Meteor.http.call('HEAD',db);
@@ -137,9 +137,7 @@ API.es.map = function(route,map,url) {
   if (API.settings.es.prefix) db += API.settings.es.prefix;
   db += routeparts[0];
   API.log('creating es mapping for ' + db + '/' + routeparts[1]);
-  try {
-    var dbexists = Meteor.http.call('HEAD',db);
-  } catch(err) {
+  if (!API.es.exists(route)) {
     if (Meteor.settings.es.version && Meteor.settings.es.version > 5) {
       Meteor.http.call('PUT',db);
     } else {
