@@ -93,6 +93,8 @@ API.settings = Meteor.settings;
 
 API.log = function(opts) {
   try {
+    var today = moment(opts.createdAt,"x").format("YYYYMMDD");
+    var log = new API.collection("log_"+today);
     // opts must contain msg and should contain level and error, and anything else should be stored as delivered
     if (typeof opts === 'string') opts = {msg: opts};
     if (!opts.level) opts.level = 'debug';
@@ -101,26 +103,17 @@ API.log = function(opts) {
     if (loglevels.indexOf(loglevel) <= loglevels.indexOf(opts.level)) {
       opts.createdAt = Date.now();
       opts.created_date = moment(opts.createdAt,"x").format("YYYY-MM-DD HHmm");
-      var today = moment(opts.createdAt,"x").format("YYYYMMDD");
       if (loglevels.indexOf(loglevel) <= loglevels.indexOf('debug')) {
         console.log(opts.created_date);
         console.log(opts.msg);
         if (opts.error) console.log(opts.error);
       }
       // try to set some opts vars for which server the error is running on...
-      try { opts.errorString = JSON.stringify(opts.error); } catch(err) {}
+      try { opts.error = JSON.stringify(opts.error); } catch(err) {}
       try {
-        API.es.insert('/' + (API.settings.name ? API.settings.name : 'noddy') + '/log_'+today,opts);
+        log.insert(opts);
       } catch(err) {
-        var safer = {
-          msg: opts.msg,
-          level: opts.level,
-          errorString: opts.errorString,
-          createdAt: opts.createdAt,
-          created_date: opts.created_date
-        }
-        try { safer.safeError = JSON.stringify(opts); } catch(err) { safer.safeIssue = 'Could not stringify all opts passed to the logger'; }
-        API.es.insert('/' + (API.settings.name ? API.settings.name : 'noddy') + '/log_'+today,safer);
+        console.log('LOGGER ERROR INSERTION FAILED!!!')
       }
       if (opts.notify && API.settings.log.notify) {
         try {

@@ -8,7 +8,7 @@ if (!Meteor.settings || !Meteor.settings.es) {
   API.log('WARNING - ELASTICSEARCH SEEMS TO BE REQUIRED BUT SETTINGS HAVE NOT BEEN PROVIDED.');  
 } else {
   try {
-    var s = Meteor.http.call('GET',Meteor.settings.es.url);
+    var s = API.es._call('GET',Meteor.settings.es.url);
   } catch(err) {
     console.log('ELASTICSEARCH INSTANCE AT ' + Meteor.settings.es.url + ' APPEARS TO BE UNREACHABLE. SHUTTING DOWN.');
     console.log(err);
@@ -62,6 +62,33 @@ if (API.settings.dev && !API.settings.es.prefix) API.log("NOTE, settings indicat
 
 API.es = {};
 
+API.es._call = function(action,url,pl) {
+  var it = url.replace('http://','').replace('https://','').split('/')[1];
+  if (API.settings.es.prefix && it.indexOf('_') !== 0) {
+    url = url.replace(it,API.settings.es.prefix + it);
+    API.log('Changing ES URL to ' + url + ' for dev.');
+  }
+  return Meteor.http.call(action,url,pl);
+}
+
+API.es.exists = function(route,url) {
+  if (url === undefined) url = Meteor.settings.es.url;
+  if (route.indexOf('/') !== 0) route = '/' + route;
+  var routeparts = route.substring(1,route.length).split('/');
+  var rt = '/' + routeparts[0] + '/';
+  if (routeparts[1]) {
+    rt += API.settings.es.version > 1 ? '/_mapping/' + routeparts[1] : '/' + routeparts[1] + '/_mapping';
+  }
+  try {
+    API.es._call('HEAD',url + rt);
+    API.log('Confirmed existence of ' + route);
+    return true;
+  } catch(err) {
+    API.log(route + ' confirmed not existing');
+    return false;
+  }
+}
+
 API.es.action = function(uid,action,urlp,params,data) {
   var rt = '';
   for ( var up in urlp ) rt += '/' + urlp[up];
@@ -111,46 +138,28 @@ API.es.action = function(uid,action,urlp,params,data) {
   }
 }
 
-API.es.exists = function(route,url) {
-  if ( route.indexOf('/') !== 0 ) route = '/' + route;
-  var routeparts = route.substring(1,route.length).split('/');
-  var esurl = url ? url : API.settings.es.url;
-  var db = esurl + '/';
-  if (API.settings.es.prefix && routeparts[0].indexOf(API.settings.es.prefix) !== 0 ) db += API.settings.es.prefix;
-  db += routeparts[0];
-  try {
-    var dbexists = Meteor.http.call('HEAD',db);
-    return true;
-  } catch(err) {
-    return false;
-  }  
-}
-
 // TODO add other actions in addition to map, for exmaple _reindex would be useful
 // how about _alias? And check for others too, and add here
 
-API.es.map = function(route,map,url) {
-  if ( map === undefined ) map = Meteor.http.call('GET','http://static.cottagelabs.com/mapping.json').data;
-  if ( route.indexOf('/') !== 0 ) route = '/' + route;
-  var routeparts = route.substring(1,route.length).split('/');
-  var esurl = url ? url : API.settings.es.url;
-  var db = esurl + '/';
-  if (API.settings.es.prefix && routeparts[0].indexOf(API.settings.es.prefix) !== 0 ) db += API.settings.es.prefix;
-  db += routeparts[0];
-  API.log('creating es mapping for ' + db + '/' + routeparts[1]);
-  if (!API.es.exists(route)) {
-    if (Meteor.settings.es.version && Meteor.settings.es.version > 5) {
-      Meteor.http.call('PUT',db);
-    } else {
-      Meteor.http.call('POST',db);
+API.es.map = function(route,map,url,overwrite) {
+  if (overwrite || !API.es.exists(route,url)) {
+    if ( map === undefined ) map = Meteor.http.call('GET','http://static.cottagelabs.com/mapping.json').data;
+    if ( route.indexOf('/') !== 0 ) route = '/' + route;
+    var routeparts = route.substring(1,route.length).split('/');
+    if (url === undefined) url = API.settings.es.url;
+    var db = '/' + routeparts[0];
+    if (!API.es.exists(db,url)) {
+      API.log('Index ' + db + ' does not exist, creating it.');
+      var pt = Meteor.settings.es.version && Meteor.settings.es.version > 5 ? API.es._call('PUT',url + db) : API.es._call('POST',url + db);
+      API.log('Index ' + url + db + ' creation returned ' + pt.statusCode);
     }
-  }
-  var maproute = db + '/_mapping/' + routeparts[1];
-  if ( API.settings.es.version < 1 ) maproute = db + '/' + routeparts[1] + '/_mapping';
-  try {
-    return Meteor.http.call('PUT',maproute,{data:map});
-  } catch(err) {
-    API.log({msg:'PUT mapping to ' + maproute + ' failed.',error:err});
+    var maproute = API.settings.es.version > 1 ? db + '/_mapping/' + routeparts[1] : maproute = db + '/' + routeparts[1] + '/_mapping';
+    try {
+      var mp = API.es._call('PUT',maproute,{data:map});
+      API.log('Mapping created for ' + maproute + ', ' + mp.statusCode);
+    } catch(err) {
+      API.log({msg:'PUT mapping to ' + maproute + ' failed.',error:err});
+    }
   }
 }
 
@@ -161,8 +170,7 @@ API.es.terms = function(index,type,key,url) {
   var opts = {data:{query:{"match_all":{}},size:0,facets:{}}};
   opts.data.facets[key] = {terms:{field:key,size:size}}; // TODO need some way to decide if should check on .exact?
   try {
-    if (API.settings.es.prefix) index = API.settings.es.prefix + index;
-    var ret = Meteor.http.call('POST',esurl+'/'+index+'/'+type+'/_search',opts);
+    var ret = API.es._call('POST',esurl+'/'+index+'/'+type+'/_search',opts);
     return ret.data.facets[key].terms;
   } catch(err) {
     return {info: 'the call to es returned an error', err:err}
@@ -173,10 +181,8 @@ API.es.query = function(action,route,data,url) {
   if (url) API.log('To url ' + url);
   var esurl = url ? url : API.settings.es.url;
   if (route.indexOf('/') !== 0) route = '/' + route;
-  if (API.settings.es.prefix && route !== '/_status' && route !== '/_stats' && route !== '/_cluster/health') route = '/' + API.settings.es.prefix + route.substring(1,route.length);
-  //API.log('Performing elasticsearch ' + action + ' on ' + route);
   var routeparts = route.substring(1,route.length).split('/');
-  if (route.indexOf('/_') === -1 && routeparts.length >= 1 && action !== 'DELETE' && action !== 'GET') API.es.map(route);
+  if (route.indexOf('/_') === -1 && routeparts.length >= 1 && action !== 'DELETE' && action !== 'GET') API.es.map(route,url);
   var opts = {};
   if (data) opts.data = data;
   if (route.indexOf('source') !== -1 && route.indexOf('random=true') !== -1) {
@@ -211,7 +217,7 @@ API.es.query = function(action,route,data,url) {
   }
   var ret;
   try {
-    ret = Meteor.http.call(action,esurl+route,opts).data;
+    ret = APi.es._call(action,esurl+route,opts).data;
   } catch(err) {
     // TODO check for various types of ES error - for some we may want retries, others may want to trigger specific log alerts
     API.log(err);
@@ -277,7 +283,7 @@ API.es.import = function(data,format,index,type,url,bulk,mappings,ids) {
       addr = url + '/' + idx + '/' + tp;
       if (id !== undefined) addr += '/' + id;
       try {
-        Meteor.http.call('POST',addr,{data:rec});
+        API.es._call('POST',addr,{data:rec});
       } catch(err) {
         failures += 1;
       }
