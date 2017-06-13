@@ -1,7 +1,8 @@
 
 // elasticsearch API
 
-// handle authn and authz for es indexes and types (and possibly backup triggers)
+// because the logger uses ES to log logs, ES does not use the logger
+
 // NOTE: if an index/type can be public, just make it public and have nginx route to it directly, saving app load.
 
 var es = {
@@ -58,40 +59,29 @@ API.es.action = function(uid,action,urlp,params,data) {
     rt += '?';
     for ( var op in params ) rt += op + '=' + params[op] + '&';
   }
-  // unless the user is in global root group, check that the url is in the allowed routes
-  // also check that the user is in the necessary group to access the route
-  // so there needs to be an elasticsearch group that gives user permissions on certain roles, like blocked_GET, or something like that
   var user = uid ? API.accounts.retrieve(uid) : undefined;
   var allowed = user && API.accounts.auth('root',user) ? true : false; // should the root user get access to everything or only the open routes?
   // NOTE that the call to this below still requires user auth on PUT and DELETE, so there cannot be any public allowance on those
   if (!allowed) {
     var auth = API.settings.es.auth;
-    for ( var a in auth ) {
-      if (rt.indexOf(o) === 0) {
-        var ort = open[o];
-        if (ort.public) {
-          allowed = true;
-          break;
-        } else if (user) {
-          // if part of the route is listed in the list of open routes, then a user who is in a group matching
-          // the name of the route without slashes will have some permissions on that index
-          if (action === 'GET' && API.accounts.auth(ort+'.read',user)) {
-            allowed = true; // any user in the group can GET
-            break;
-          } else if (action === 'POST' && API.accounts.auth(ort+'.edit',user)) {
-            allowed = true;
-            break;
-          } else if (action === 'PUT' && API.accounts.auth(ort+'.publish',user)) {
-            allowed = true;
-            break;
-          } else if (action === 'DELETE' && API.accounts.auth(ort+'.owner'),user) {
-            allowed = true;
-            break;
-          }
-          // also the settings for the route may declare actions and groups that can perform that action
-          // other settings could go in there too, but this has yet to be implemented
-        }
+    if (auth && auth[urlp.ra]) {
+      auth = auth[urlp.ra];
+      if (auth[urlp.rb]) {
+        auth = auth[urlp.rb]
+        if (auth[urlp.rc]) auth = auth[urlp.rc];
       }
+    }
+    if (auth === true) allowed = true; // if the whole index or whole type or endpoint points to true, it is public
+  }
+  if (user && !allowed) {
+    var ort = urlp.ra;
+    if (urlp.rb) ort += '_' + urlp.rb;
+    if ( ( action === 'GET' || ( action === 'POST' && urlp.rc === '_search' ) ) && API.accounts.auth(ort+'.read',user)) {
+      allowed = true;
+    } else if ( ( action === 'POST' || action === 'PUT' ) && API.accounts.auth(ort+'.edit',user)) {
+      allowed = true;
+    } else if (action === 'DELETE' && API.accounts.auth(ort+'.owner'),user) {
+      allowed = true;
     }
   }
   if (allowed) {
@@ -166,6 +156,9 @@ API.es.call = function(action,route,data,url) {
   } catch(err) {
     // TODO check for various types of ES error - for some we may want retries, others may want to trigger specific log alerts
     console.log(err);
+    console.log(action);
+    console.log(url+route);
+    console.log(opts);
     ret = {info: 'the call to es returned an error, but that may not necessarily be bad', err:err}
   }
   return ret;
