@@ -97,7 +97,7 @@ API.es.action = function(uid,action,urlp,params,data) {
 API.es.map = function(index,type,mapping,url) {
   if (url === undefined) url = Meteor.settings.es.url;
   try {
-    Meteor.http.call('HEAD',url + '/' + index,undefined,url);
+    Meteor.http.call('HEAD',url + '/' + index);
   } catch(err) {
     var pt = Meteor.settings.es.version && Meteor.settings.es.version > 5 ? Meteor.http.call('PUT',url + '/' + index) : Meteor.http.call('POST',url + '/' + index);
   }
