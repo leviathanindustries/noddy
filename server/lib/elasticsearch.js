@@ -10,7 +10,8 @@ if (!Meteor.settings || !Meteor.settings.es) {
   try {
     var s = Meteor.http.call('GET',Meteor.settings.es.url);
   } catch(err) {
-    API.log({msg:'ELASTICSEARCH INSTANCE AT ' + Meteor.settings.es.url + ' APPEARS TO BE UNREACHABLE. SHUTTING DOWN.', error:err});
+    console.log('ELASTICSEARCH INSTANCE AT ' + Meteor.settings.es.url + ' APPEARS TO BE UNREACHABLE. SHUTTING DOWN.');
+    console.log(err);
     process.exit(-1);
   }
 }

@@ -12,7 +12,7 @@ API.collection = function (opts) {
   this._mapping = opts.mapping;
   this._route = '/' + opts.index + '/';
   if (opts.type) this._route += opts.type + '/';
-  if (!API.es.exists(this._route)) API.es.map(this._route,this._mapping);
+  API.es.map(this._route,this._mapping);
 };
 
 API.collection.prototype.insert = function (obj) {
