@@ -35,10 +35,10 @@ perhaps this chaining feature should be a separate API function which can be use
 
 */
 
-job_meta = new API.es.coll({index:"job",type:"meta"});
-job_job = new API.es.coll({index:"job",type:"job"});
-job_process = new API.es.coll({index:"job",type:"process"});
-job_result = new API.es.coll({index:"job",type:"result"});
+job_meta = new API.collection({index:"job",type:"meta"});
+job_job = new API.collection({index:"job",type:"job"});
+job_process = new API.collection({index:"job",type:"process"});
+job_result = new API.collection({index:"job",type:"result"});
 
 API.addRoute('job', {
   get: {
