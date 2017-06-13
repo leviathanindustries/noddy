@@ -4,15 +4,6 @@
 // handle authn and authz for es indexes and types (and possibly backup triggers)
 // NOTE: if an index/type can be public, just make it public and have nginx route to it directly, saving app load.
 
-API.addRoute('es/import', {
-  post: {
-    roleRequired: 'root', // decide which roles should get access - probably within the function, depending on membership of corresponding groups
-    action: function() {
-      return {status: 'success', data: API.es.import(this.request.body)};
-    }
-  }
-});
-
 var es = {
   get: {
     action: function() {
@@ -46,46 +37,17 @@ API.addRoute('es/:ra/:rb', es);
 API.addRoute('es/:ra/:rb/:rc', es);
 API.addRoute('es/:ra/:rb/:rc/:rd', es);
 
-if (API.settings.dev && !API.settings.es.prefix) API.log("NOTE, settings indicate a dev setup, but there is no ES prefix set. If ES url is same as production, this means that dev actions could write into production indexes...");
-
 API.es = {};
-
-API.es._call = function(action,url,pl) {
-  var it = url.replace('http://','').replace('https://','').split('/')[1];
-  if (API.settings.es.prefix && it && it.indexOf('_') !== 0) {
-    url = url.replace(it,API.settings.es.prefix + it);
-    API.log('Changing ES URL to ' + url + ' for dev.');
-  }
-  return Meteor.http.call(action,url,pl);
-}
 
 if (!Meteor.settings || !Meteor.settings.es) {
   API.log('WARNING - ELASTICSEARCH SEEMS TO BE REQUIRED BUT SETTINGS HAVE NOT BEEN PROVIDED.');  
 } else {
   try {
-    var s = API.es._call('GET',Meteor.settings.es.url);
+    var s = Meteor.http.call('GET',Meteor.settings.es.url);
   } catch(err) {
     console.log('ELASTICSEARCH INSTANCE AT ' + Meteor.settings.es.url + ' APPEARS TO BE UNREACHABLE. SHUTTING DOWN.');
     console.log(err);
     process.exit(-1);
-  }
-}
-
-API.es.exists = function(route,url) {
-  if (url === undefined) url = Meteor.settings.es.url;
-  if (route.indexOf('/') !== 0) route = '/' + route;
-  var routeparts = route.substring(1,route.length).split('/');
-  var rt = '/' + routeparts[0] + '/';
-  if (routeparts[1]) {
-    rt += API.settings.es.version > 1 ? '/_mapping/' + routeparts[1] : '/' + routeparts[1] + '/_mapping';
-  }
-  try {
-    API.es._call('HEAD',url + rt);
-    API.log('Confirmed existence of ' + route);
-    return true;
-  } catch(err) {
-    API.log(route + ' confirmed not existing');
-    return false;
   }
 }
 
@@ -103,23 +65,28 @@ API.es.action = function(uid,action,urlp,params,data) {
   var allowed = user && API.accounts.auth('root',user) ? true : false; // should the root user get access to everything or only the open routes?
   // NOTE that the call to this below still requires user auth on PUT and DELETE, so there cannot be any public allowance on those
   if (!allowed) {
-    var open = API.settings.es.routes;
-    for ( var o in open ) {
-      if (!allowed && rt.indexOf(o) === 0) {
+    var auth = API.settings.es.auth;
+    for ( var a in auth ) {
+      if (rt.indexOf(o) === 0) {
         var ort = open[o];
         if (ort.public) {
           allowed = true;
+          break;
         } else if (user) {
           // if part of the route is listed in the list of open routes, then a user who is in a group matching
           // the name of the route without slashes will have some permissions on that index
           if (action === 'GET' && API.accounts.auth(ort+'.read',user)) {
             allowed = true; // any user in the group can GET
+            break;
           } else if (action === 'POST' && API.accounts.auth(ort+'.edit',user)) {
             allowed = true;
+            break;
           } else if (action === 'PUT' && API.accounts.auth(ort+'.publish',user)) {
             allowed = true;
+            break;
           } else if (action === 'DELETE' && API.accounts.auth(ort+'.owner'),user) {
             allowed = true;
+            break;
           }
           // also the settings for the route may declare actions and groups that can perform that action
           // other settings could go in there too, but this has yet to be implemented
@@ -128,11 +95,7 @@ API.es.action = function(uid,action,urlp,params,data) {
     }
   }
   if (allowed) {
-    if (urlp.rc === '_facet' && urlp.rd !== undefined) {
-      return API.es.facet(urlp.ra,urlp.rb,urlp.rd);
-    } else {
-      return API.es.query(action,rt,data);
-    }
+    return API.es.call(action,rt,data);
   } else {
     return {statusCode:401,body:{status:"error",message:"401 unauthorized"}}
   }
@@ -141,21 +104,25 @@ API.es.action = function(uid,action,urlp,params,data) {
 // TODO add other actions in addition to map, for exmaple _reindex would be useful
 // how about _alias? And check for others too, and add here
 
-API.es.map = function(route,map,url,overwrite) {
-  if (overwrite || !API.es.exists(route,url)) {
-    if ( map === undefined ) map = Meteor.http.call('GET','http://static.cottagelabs.com/mapping.json').data;
-    if ( route.indexOf('/') !== 0 ) route = '/' + route;
-    var routeparts = route.substring(1,route.length).split('/');
-    if (url === undefined) url = API.settings.es.url;
-    var db = '/' + routeparts[0];
-    if (!API.es.exists(db,url)) {
-      API.log('Index ' + db + ' does not exist, creating it.');
-      var pt = Meteor.settings.es.version && Meteor.settings.es.version > 5 ? API.es._call('PUT',url + db) : API.es._call('POST',url + db);
-      API.log('Index ' + url + db + ' creation returned ' + pt.statusCode);
-    }
-    var maproute = API.settings.es.version > 1 ? db + '/_mapping/' + routeparts[1] : maproute = db + '/' + routeparts[1] + '/_mapping';
+API.es.map = function(index,type,mapping,url) {
+  try {
+    API.es.call('HEAD','/' + index,undefined,url);
+  } catch(err) {
+    API.log('Index ' + index + ' does not exist, creating it.');
+    var pt = Meteor.settings.es.version && Meteor.settings.es.version > 5 ? Meteor.http.call('PUT',url + '/' + index) : Meteor.http.call('POST',url + '/' + index);
+    API.log('Index ' + url + '/' + index + ' creation returned ' + pt.statusCode);
+  }
+  var maproute = API.settings.es.version > 1 ? index + '/_mapping/' + type : maproute = index + '/' + type + '/_mapping';
+  if ( mapping === undefined ) {
     try {
-      var mp = API.es._call('PUT',maproute,{data:map});
+      API.es.call('HEAD',maproute,undefined,url);      
+    } catch(err) {
+      mapping = Meteor.http.call('GET','http://static.cottagelabs.com/mapping.json').data;
+    }
+  }
+  if (mapping) {
+    try {
+      var mp = API.es.call('PUT',maproute,{data:mapping},url);
       API.log('Mapping created for ' + maproute + ', ' + mp.statusCode);
     } catch(err) {
       API.log({msg:'PUT mapping to ' + maproute + ' failed.',error:err});
@@ -163,26 +130,12 @@ API.es.map = function(route,map,url,overwrite) {
   }
 }
 
-API.es.terms = function(index,type,key,url) {
-  //API.log('Performing elasticsearch facet on ' + index + ' ' + type + ' ' + key);
-  var size = 100;
-  var esurl = url ? url : API.settings.es.url;
-  var opts = {data:{query:{"match_all":{}},size:0,facets:{}}};
-  opts.data.facets[key] = {terms:{field:key,size:size}}; // TODO need some way to decide if should check on .exact?
-  try {
-    var ret = API.es._call('POST',esurl+'/'+index+'/'+type+'/_search',opts);
-    return ret.data.facets[key].terms;
-  } catch(err) {
-    return {info: 'the call to es returned an error', err:err}
-  }
-}
-
-API.es.query = function(action,route,data,url) {
+API.es.call = function(action,route,data,url) {
   if (url) API.log('To url ' + url);
-  var esurl = url ? url : API.settings.es.url;
+  if (url === undefined) url = API.settings.es.url;
   if (route.indexOf('/') !== 0) route = '/' + route;
   var routeparts = route.substring(1,route.length).split('/');
-  if (route.indexOf('/_') === -1 && routeparts.length >= 1 && action !== 'DELETE' && action !== 'GET') API.es.map(route,url);
+  if (route.indexOf('/_') === -1 && routeparts.length >= 1 && ( action === 'POST' || action === 'PUT' ) ) API.es.map(routeparts[0],routeparts[1],url);
   var opts = {};
   if (data) opts.data = data;
   if (route.indexOf('source') !== -1 && route.indexOf('random=true') !== -1) {
@@ -217,7 +170,7 @@ API.es.query = function(action,route,data,url) {
   }
   var ret;
   try {
-    ret = APi.es._call(action,esurl+route,opts).data;
+    ret = Meteor.http.call(action,url+route,opts).data;
   } catch(err) {
     // TODO check for various types of ES error - for some we may want retries, others may want to trigger specific log alerts
     API.log(err);
@@ -225,88 +178,4 @@ API.es.query = function(action,route,data,url) {
   }
   return ret;
 }
-
-API.es.get = function(route,url) {
-  return API.es.query('GET',route,undefined,url);
-}
-API.es.insert = function(route,data,url) {
-  return API.es.query('POST',route,data,url);
-}
-API.es.delete = function(route,url) {
-  return API.es.query('DELETE',route,undefined,url);
-}
-
-API.es.import = function(data,format,index,type,url,bulk,mappings,ids) {
-  API.log('starting es import');
-  if (format === undefined) format = 'es';
-  if (ids === undefined) ids = 'es';
-  if (bulk === undefined) {
-    bulk = 10000;
-  } else if (bulk === false) {
-    bulk = 1;
-  }
-  if (url === undefined) url = API.settings.es.url;
-  var rows = format === 'es' ? data.hits.hits : data;
-  if (!Array.isArray(rows)) rows = [rows];
-  var recs = [];
-  var counter = 0;
-  var failures = 0;
-  var dump = '';
-  // TODO if mappings are provided, load them first
-  if (mappings) {
-    for ( var m in mappings ) {
-      var madr = url + '/' + m;
-      var map = mappings[m] ? mappings[m] : undefined;
-      API.es.map(madr,map);
-    }
-  }
-  var bulkinfo = [];
-  for ( var i in rows ) {
-    var rec;
-    if (format === 'es') {
-      rec = rows[i]._source !== undefined ? rows[i]._source : rows[i]._fields;
-    } else {
-      rec = rows[i];
-    }
-    var tp = type !== undefined ? type : rows[i]._type;
-    var idx = index !== undefined ? index : rows[i]._index;
-    if (API.settings.es.prefix) {
-      idx = API.settings.es.prefix + idx;
-      if (rows[i]._index) rows[i]._index = idx;
-    }
-    var id, addr;
-    if (ids) {
-      id = ids === true || ids === 'es'? rows[i]._id : rec[ids];
-    }
-    if ( bulk === 1 ) {
-      API.log('es import doing singular insert');
-      addr = url + '/' + idx + '/' + tp;
-      if (id !== undefined) addr += '/' + id;
-      try {
-        API.es._call('POST',addr,{data:rec});
-      } catch(err) {
-        failures += 1;
-      }
-    } else {
-      counter += 1;
-      var meta = {"index": {"_index": idx, "_type":tp}};
-      if (id !== undefined) meta.index._id = id;
-      dump += JSON.stringify(meta) + '\n';
-      dump += JSON.stringify(rec) + '\n';
-      if ( (counter === bulk || i == (rows.length - 1) ) && idx && tp ) { // NOTE THIS: i as an iterator is a string not a number, so === would return false...
-        API.log('bulk importing to es');
-        addr = url + '/_bulk';
-        var b = API.post(addr,dump);
-        bulkinfo.push(b);
-        dump = '';
-        counter = 0;
-      }
-    }
-  }
-  API.log(rows.length + ' ' + failures);
-  return {records:rows.length,failures:failures,bulk:bulkinfo};
-}
-
-
-
 

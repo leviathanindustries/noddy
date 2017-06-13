@@ -9,10 +9,13 @@ API.collection = function (opts) {
   this._type = opts.type;
   this._history = opts.history;
   this._replicate = opts.replicate;
-  this._mapping = opts.mapping;
   this._route = '/' + opts.index + '/';
   if (opts.type) this._route += opts.type + '/';
-  //API.es.map(this._route,this._mapping);
+  API.es.map(this._index,this._type); // only has effect if no mapping already
+};
+
+API.collection.prototype.map = function (mapping) {
+  return API.es.map(this._index,this._type,mapping); // would overwrite any existing mapping
 };
 
 API.collection.prototype.insert = function (obj) {
@@ -22,19 +25,19 @@ API.collection.prototype.insert = function (obj) {
   }
   var r = this._route;
   if (obj._id) r += obj._id;
-  return API.es.insert(r, obj);
+  return API.es.call('POST',r, obj);
 };
 
 API.collection.prototype.update = function (obj) {
-  var doc = API.es.get(this._route + obj._id);
+  var doc = API.es.call('GET',this._route + obj._id);
   // TODO need error out if not found, or merge in the dot noted obj updates
   doc.updateAt = Date.now();
   doc.updated_date = moment(obj.createdAt,"x").format("YYYY-MM-DD HHmm");
-  return API.es.insert(this._route + doc._id, doc);
+  return API.es.call('POST',this._route + doc._id, doc);
 };
 
 API.collection.prototype.remove = function(uid) {
-  if (uid) return API.es.delete(this._route + obj._id);
+  if (uid) return API.es.call('DELETE',this._route + uid);
 }
 
 API.collection.prototype.search = function(qry,qp) {
@@ -43,13 +46,13 @@ API.collection.prototype.search = function(qry,qp) {
     for ( var op in this.queryParams ) rt += op + '=' + this.queryParams[op] + '&';
     var data;
     if ( JSON.stringify(this.bodyParams).length > 2 ) data = this.bodyParams;
-    return API.es.query('GET',rt,data);
+    return API.es.call('GET',rt,data);
   } else if (qry) {
     var dt;
     if ( JSON.stringify(qry).length > 2 ) dt = this.bodyParams;
-    return API.es.query('POST',this._route + '/_search',dt);
+    return API.es.call('POST',this._route + '/_search',dt);
   } else {
-    return API.es.query('GET',this._route + '/_search');
+    return API.es.call('GET',this._route + '/_search');
   }
 }
 
@@ -68,7 +71,7 @@ API.collection.prototype.find = function(q,opts) {
   // TODO build an ES query out of the possible incoming mongo queries
   // TODO handle options as well, like sort etc
   try {
-    return API.es.query('POST',this._route,qry).hits.hits[0];
+    return API.es.call('POST',this._route,qry).hits.hits[0];
   } catch(err) {
     return [];
   }
