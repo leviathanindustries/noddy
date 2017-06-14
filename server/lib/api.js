@@ -91,13 +91,6 @@ API = new Restivus({
 
 API.settings = Meteor.settings;
 
-
-var _logindex = Meteor.settings.es.index ? Meteor.settings.es.index + '_log' : Meteor.settings.name + '_log';
-var log = new API.collection({
-  index: _logindex,
-  type: moment(Date.now(),"x").format("YYYYMMDD")
-});
-
 API.log = function(opts) {
   try {
     // opts must contain msg and should contain level and error, and anything else should be stored as delivered
@@ -105,9 +98,14 @@ API.log = function(opts) {
     if (!opts.level) opts.level = 'debug';
     opts.createdAt = Date.now();
     opts.created_date = moment(opts.createdAt,"x").format("YYYY-MM-DD HHmm");
+    var logindex = Meteor.settings.es.index ? Meteor.settings.es.index + '_log' : Meteor.settings.name + '_log';
     var today = moment(opts.createdAt,"x").format("YYYYMMDD");
-    if (!API.es.exists(Meteor.settings.es.url + '/' + _logindex + '/' + today)) {
-      log = new API.collection({index:_logindex,type:today});
+    var log;
+    if (!API.es.exists(Meteor.settings.es.url + '/' + logindex + '/' + today)) {
+      log = new API.collection({index:logindex,type:today});
+      var future = new Future(); // a delay to ensure new log index is mapped
+      setTimeout(function() { future.return(); }, 1000);
+      future.wait();
     }
     var loglevels = ['all','trace','debug','info','warn','error','fatal','off'];
     var loglevel = API.settings.log && API.settings.log.level ? API.settings.log.level : 'all';
