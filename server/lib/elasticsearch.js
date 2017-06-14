@@ -110,7 +110,15 @@ API.es.map = function(index,type,mapping,url) {
     }
   }
   if (mapping) {
-    return Meteor.http.call('PUT',url + '/' + maproute,{data:mapping}).data;
+    try {
+      Meteor.http.call('PUT',url + '/' + maproute,{data:mapping}).data;
+      return true;
+    } catch(err) {
+      console.log('ES MAPPING ERROR!!!');
+      var msg = {msg:'Unable to map for ' + index + '/' + type,error:err};
+      if (type.indexOf('log_') !== 0) API.log(msg);
+      return msg;
+    }
   }
 }
 
