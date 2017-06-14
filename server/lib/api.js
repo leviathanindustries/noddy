@@ -154,6 +154,8 @@ if (API.settings.cron && API.settings.cron.enabled) {
 JsonRoutes.Middleware.use(function(req, res, next) {
   try {
     API.log({request:{
+      url: req.url,
+      originalUrl: req.originalUrl,
       headers: req.headers,
       query: req.query,
       body: req.body
