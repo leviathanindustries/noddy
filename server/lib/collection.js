@@ -4,7 +4,7 @@
 
 API.collection = function (opts) {
   if (typeof opts === 'string') opts = {type:opts};
-  if (opts.index === undefined && opts.type !== undefined) opts.index = API.settings.name ? API.settings.name : 'noddy';
+  if (opts.index === undefined && opts.type !== undefined) opts.index = API.settings.es.index ? API.settings.es.index : (API.settings.name ? API.settings.name : 'noddy');
   this._index = opts.index;
   this._type = opts.type;
   this._history = opts.history;
