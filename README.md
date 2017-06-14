@@ -47,11 +47,10 @@ The main gateway machine also needs nginx and squid, and ufw rules to allow rout
 TODO install DO monitoring instead of newrelic.
 
 apt-add-repository ppa:chris-lea/node.js
-# requires enter keypress
 apt-get update
-apt-get -q -y install nodejs
+apt-get install nodejs
 
-apt-get -q -y install mcelog screen htop nginx git-core curl sysv-rc-conf bc vnstat build-essential libxml2-dev libssl-dev
+apt-get install mcelog screen htop nginx git-core curl sysv-rc-conf bc vnstat build-essential libxml2-dev libssl-dev
 
 added a block to gateway nginx config to allow 443 basic auth access to the index
 installed apache2-utils on the gateway server for this
@@ -66,19 +65,22 @@ sudo htpasswd -c /home/cloo/repl/gateway/nginx/htpasswd [exampleuser]
 ## Making an ES VM for the ES cluster
 
 Create a new VM - a cluster of two or more machines with 32GB RAM each is probably ideal.
-For test, using a 2GB machine on DO, with Ubuntu OS.
-Installing the latest ES 5.x
+Install ES 1.7.6
 
-curl -X GET https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-5.4.1.deb -o es.deb
+add-apt-repository -y ppa:webupd8team/java
+apt-get update
+echo "debconf shared/accepted-oracle-license-v1-1 select true" | debconf-set-selections
+echo "debconf shared/accepted-oracle-license-v1-1 seen true" | debconf-set-selections
+apt-get install oracle-java7-installer
+
+curl -X GET https://download.elastic.co/elasticsearch/elasticsearch/elasticsearch-1.7.6.deb -o es.deb
 dpkg -i es.deb
 
-Need latest java 8 for ES 5.x - which says it does work with openjdk, although old versions had errors
-apt-ge install default-jre
-
 cd /etc/elasticsearch
-edit elasticsearch.yml to give it a cluster.name, enable bootstrap.memory-lock, network.host: _eth1:ipv4_
+edit elasticsearch.yml to give it a cluster.name, enable bootstrap.mlockall, network.host: _eth1:ipv4_
 also discovery.zen.ping.multicast false and discovery.zen.ping.unicast.hosts list private IP addresses of all cluster machines
-and http.cors.enabled
+and http.cors.enabled and http.jsonp.enable
+and index.number_of_shards and index.number_of_replicas and set to 4 and 1
 
 mkdir /etc/systemd/system/elasticsearch.service.d
 vim /etc/systemd/system/elasticsearch.service.d/elasticsearch.conf
@@ -89,31 +91,36 @@ LimitMEMLOCK=infinity
 
 vim /etc/default/elasticsearch
 and uncomment MAX_LOCKED_MEMORY
-
-vim /etc/elasticsearch/jvm.options
-and set xms and xmx to same preferred value
+and set ES_HEAP_SIZE as required
 
 vim /etc/security/limits.conf
 elasticsearch hard nproc 100000
 
 cd /usr/share/elasticsearch
-sudo bin/elasticsearch-plugin install ingest-attachment
-sudo bin/elasticsearch-plugin install repository-s3
-
-TODO read about x-pack and kibana improvements and see if alerting and monitoring features are useful
-https://www.elastic.co/products/x-pack
-https://www.elastic.co/products/kibana
+sudo bin/plugin install elasticsearch/elasticsearch-mapper-attachments/2.7.1
+sudo bin/plugin install elasticsearch/elasticsearch-cloud-aws/2.7.1
+sudo bin/plugin install lukas-vlcek/bigdesk/2.5.0
+sudo bin/plugin -install mobz/elasticsearch-head/1.x
 
 sudo /bin/systemctl daemon-reload
 sudo /bin/systemctl enable elasticsearch.service
 sudo systemctl start elasticsearch.service
 
+cd
+curl -X GET https://artifacts.elastic.co/downloads/kibana/kibana-5.4.1-amd64.deb -o kibana.deb
+sudo dpkg -i kibana.deb
+
+Edit /etc/kibana/kibana.yml with address of ES (which is prob not available on localhost) and any other necessary settings
+
+sudo /bin/systemctl daemon-reload
+sudo /bin/systemctl enable kibana.service
+sudo systemctl start kibana.service
 
 
 allow gateway to access 9200 then allow other cluster machines to access 9300
-sudo ufw allow in on eth1 from 10.131.190.77 to any port 9200
+sudo ufw allow in on eth1 from GATEWAYINTERNALIP to any port 9200
 do similar to allow the other index machines to access 9300
-added ufw allow in on eth1 from 10.131.178.95 to any port 9200
+added ufw allow in on eth1 from OTHERESCLUSTERIP to any port 9200
 and the same for the other apps machine
 so that elasticsearch cluster can be queried only via gateway from apps machines on the private network
 

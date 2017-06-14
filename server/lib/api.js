@@ -152,6 +152,7 @@ if (API.settings.cron && API.settings.cron.enabled) {
 }
 
 JsonRoutes.Middleware.use(function(req, res, next) {
+  console.log(req);
   if (req.headers && req.headers['content-type'] && req.headers['content-type'].match(/^multipart\/form\-data/)) {
     var Busboy = Meteor.npmRequire('busboy');
     var busboy = new Busboy({headers: req.headers});
