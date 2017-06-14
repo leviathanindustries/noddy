@@ -91,6 +91,13 @@ API = new Restivus({
 
 API.settings = Meteor.settings;
 
+
+var _logindex = Meteor.settings.es.index ? Meteor.settings.es.index + '_log' : Meteor.settings.name + '_log';
+var log = new API.collection({
+  index: _logindex,
+  type: moment(Date.now(),"x").format("YYYYMMDD")
+});
+
 API.log = function(opts) {
   try {
     // opts must contain msg and should contain level and error, and anything else should be stored as delivered
@@ -99,7 +106,9 @@ API.log = function(opts) {
     opts.createdAt = Date.now();
     opts.created_date = moment(opts.createdAt,"x").format("YYYY-MM-DD HHmm");
     var today = moment(opts.createdAt,"x").format("YYYYMMDD");
-    var log = new API.collection("log_"+today);
+    if (!API.es.exists(Meteor.settings.es.url + '/' + _logindex + '/' + today)) {
+      log = new API.collection({index:_logindex,type:today});
+    }
     var loglevels = ['all','trace','debug','info','warn','error','fatal','off'];
     var loglevel = API.settings.log && API.settings.log.level ? API.settings.log.level : 'all';
     if (loglevels.indexOf(loglevel) <= loglevels.indexOf(opts.level)) {
