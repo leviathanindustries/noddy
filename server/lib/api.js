@@ -93,16 +93,16 @@ API.settings = Meteor.settings;
 
 API.log = function(opts) {
   try {
-    var today = moment(opts.createdAt,"x").format("YYYYMMDD");
-    var log = new API.collection("log_"+today);
     // opts must contain msg and should contain level and error, and anything else should be stored as delivered
     if (typeof opts === 'string') opts = {msg: opts};
     if (!opts.level) opts.level = 'debug';
+    opts.createdAt = Date.now();
+    opts.created_date = moment(opts.createdAt,"x").format("YYYY-MM-DD HHmm");
+    var today = moment(opts.createdAt,"x").format("YYYYMMDD");
+    var log = new API.collection("log_"+today);
     var loglevels = ['all','trace','debug','info','warn','error','fatal','off'];
     var loglevel = API.settings.log && API.settings.log.level ? API.settings.log.level : 'all';
     if (loglevels.indexOf(loglevel) <= loglevels.indexOf(opts.level)) {
-      opts.createdAt = Date.now();
-      opts.created_date = moment(opts.createdAt,"x").format("YYYY-MM-DD HHmm");
       if (loglevels.indexOf(loglevel) <= loglevels.indexOf('debug')) {
         console.log(opts.created_date);
         console.log(opts.msg);
