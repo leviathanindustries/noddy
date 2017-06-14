@@ -115,7 +115,7 @@ API.es.map = function(index,type,mapping,url) {
       return true;
     } catch(err) {
       console.log('ES MAPPING ERROR!!!');
-      var msg = {msg:'Unable to map for ' + index + '/' + type,error:err};
+      var msg = {msg:'Unable to map for ' + index + '/' + type,mapping:mapping,error:err};
       if (type.indexOf('log_') !== 0) API.log(msg);
       console.log(msg);
       return msg;
