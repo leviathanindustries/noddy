@@ -94,23 +94,24 @@ API.es.action = function(uid,action,urlp,params,data) {
 // TODO add other actions in addition to map, for exmaple _reindex would be useful
 // how about _alias? And check for others too, and add here
 
-API.es.map = function(index,type,mapping,url) {
-  console.log(mapping)
-  if (url === undefined) url = Meteor.settings.es.url;
+API.es.exists = function(route) {
   try {
-    Meteor.http.call('HEAD',url + '/' + index);
+    Meteor.http.call('HEAD',route);
+    return true;
   } catch(err) {
-    var pt = Meteor.settings.es.version && Meteor.settings.es.version > 5 ? Meteor.http.call('PUT',url + '/' + index) : Meteor.http.call('POST',url + '/' + index);
+    return false;
+  }
+}
+
+API.es.map = function(index,type,mapping,url) {
+  if (url === undefined) url = Meteor.settings.es.url;
+  if (!API.es.exists(url + '/' + index)) {
+    Meteor.settings.es.version && Meteor.settings.es.version > 5 ? Meteor.http.call('PUT',url + '/' + index) : Meteor.http.call('POST',url + '/' + index);
   }
   var maproute = API.settings.es.version > 1 ? index + '/_mapping/' + type : index + '/' + type + '/_mapping';
-  if ( mapping === undefined ) {
-    try {
-      Meteor.http.call('HEAD',url + '/' + maproute);      
-    } catch(err) {
-      mapping = API.settings.es.version >= 5 ? Meteor.http.call('GET','http://static.cottagelabs.com/mapping5.json').data : Meteor.http.call('GET','http://static.cottagelabs.com/mapping.json').data;
-    }
+  if ( mapping === undefined && !API.es.exists(url + '/' + maproute) ) {
+    mapping = API.settings.es.version >= 5 ? Meteor.http.call('GET','http://static.cottagelabs.com/mapping5.json').data : Meteor.http.call('GET','http://static.cottagelabs.com/mapping.json').data;
   }
-  console.log(mapping)
   if (mapping) {
     try {
       Meteor.http.call('PUT',url + '/' + maproute,{data:mapping}).data;
@@ -129,7 +130,7 @@ API.es.call = function(action,route,data,url) {
   if (url === undefined) url = API.settings.es.url;
   if (route.indexOf('/') !== 0) route = '/' + route;
   var routeparts = route.substring(1,route.length).split('/');
-  if (route.indexOf('/_') === -1 && routeparts.length >= 1 && ( action === 'POST' || action === 'PUT' ) ) API.es.map(routeparts[0],routeparts[1],url);
+  if (route.indexOf('/_') === -1 && routeparts.length >= 1 && ( action === 'POST' || action === 'PUT' ) ) API.es.map(routeparts[0],routeparts[1],undefined,url);
   var opts = {};
   if (data) opts.data = data;
   if (route.indexOf('source') !== -1 && route.indexOf('random=true') !== -1) {
