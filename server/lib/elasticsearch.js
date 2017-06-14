@@ -106,7 +106,7 @@ API.es.map = function(index,type,mapping,url) {
     try {
       Meteor.http.call('HEAD',url + '/' + maproute);      
     } catch(err) {
-      mapping = Meteor.http.call('GET','http://static.cottagelabs.com/mapping.json').data;
+      mapping = API.settings.es.version >= 5 ? Meteor.http.call('GET','http://static.cottagelabs.com/mapping5.json').data : Meteor.http.call('GET','http://static.cottagelabs.com/mapping.json').data;
     }
   }
   if (mapping) {
