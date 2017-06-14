@@ -95,13 +95,14 @@ API.es.action = function(uid,action,urlp,params,data) {
 // how about _alias? And check for others too, and add here
 
 API.es.map = function(index,type,mapping,url) {
+  console.log(mapping)
   if (url === undefined) url = Meteor.settings.es.url;
   try {
     Meteor.http.call('HEAD',url + '/' + index);
   } catch(err) {
     var pt = Meteor.settings.es.version && Meteor.settings.es.version > 5 ? Meteor.http.call('PUT',url + '/' + index) : Meteor.http.call('POST',url + '/' + index);
   }
-  var maproute = API.settings.es.version > 1 ? index + '/_mapping/' + type : maproute = index + '/' + type + '/_mapping';
+  var maproute = API.settings.es.version > 1 ? index + '/_mapping/' + type : index + '/' + type + '/_mapping';
   if ( mapping === undefined ) {
     try {
       Meteor.http.call('HEAD',url + '/' + maproute);      
@@ -109,6 +110,7 @@ API.es.map = function(index,type,mapping,url) {
       mapping = API.settings.es.version >= 5 ? Meteor.http.call('GET','http://static.cottagelabs.com/mapping5.json').data : Meteor.http.call('GET','http://static.cottagelabs.com/mapping.json').data;
     }
   }
+  console.log(mapping)
   if (mapping) {
     try {
       Meteor.http.call('PUT',url + '/' + maproute,{data:mapping}).data;
