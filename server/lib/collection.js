@@ -43,13 +43,13 @@ API.collection.prototype.remove = function(uid) {
 API.collection.prototype.search = function(qry,qp) {
   if (qp) {
     var rt = this._route + '/_search?';
-    for ( var op in this.queryParams ) rt += op + '=' + this.queryParams[op] + '&';
+    for ( var op in qp ) rt += op + '=' + qp[op] + '&';
     var data;
-    if ( JSON.stringify(this.bodyParams).length > 2 ) data = this.bodyParams;
+    if ( JSON.stringify(qry).length > 2 ) data = qry;
     return API.es.call('GET',rt,data);
   } else if (qry) {
     var dt;
-    if ( JSON.stringify(qry).length > 2 ) dt = this.bodyParams;
+    if ( JSON.stringify(qry).length > 2 ) dt = qry;
     return API.es.call('POST',this._route + '/_search',dt);
   } else {
     return API.es.call('GET',this._route + '/_search');

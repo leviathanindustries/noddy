@@ -42,23 +42,11 @@ API.addRoute('mail/error', {
 API.addRoute('mail/progress', {
   get: {
     action: function() {
-      var rt = '/clapi/mail/_search';
-      if (!this.queryParams.sort) this.queryParams.sort = 'createdAt:desc';
-      if (this.queryParams) {
-        rt += '?';
-        for ( var op in this.queryParams ) rt += op + '=' + this.queryParams[op] + '&';
-      }
-      var data;
-      if ( JSON.stringify(this.bodyParams).length > 2 ) data = this.bodyParams;
-      return API.es.query('GET',rt,data);
+      return mailprogress.search(this.bodyParams,this.queryParams);
     }
   },
   post: {
     action: function() {
-      //var headers = []
-      //for ( var h in this.request ) headers.push(h)
-      //console.log(headers)
-      console.log(this.request.files)
       API.mail.progress(this.request.body,this.queryParams.token);
       return {};      
     }
