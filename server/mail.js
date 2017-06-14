@@ -1,7 +1,7 @@
 
 // an email forwarder
-mail_template = new API.collection({index:"mail",type:"template"});
-mail_progress = new API.collection({index:"mail",type:"progress"});
+mail_template = new API.collection("mailtemplate");
+mail_progress = new API.collection("mailprogress");
 
 API.addRoute('mail/validate', {
   get: {
