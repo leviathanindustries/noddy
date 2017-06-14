@@ -1,5 +1,5 @@
 
-import { Future } from 'fibers/future';
+import Future from 'fibers/future';
 import moment from 'moment';
 import fs from 'fs';
 import marked from 'marked';
