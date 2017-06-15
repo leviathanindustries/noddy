@@ -67,11 +67,8 @@ API.addRoute('mail/test', {
 API.mail = {}
 
 API.mail.send = function(opts,mail_url) {
-  console.log('Sending an email');
-  // should change this to use mailgun API instead of smtp
-  // https://documentation.mailgun.com/quickstart-sending.html?utm_source=mailgun&utm_medium=email&utm_campaign=transactional-dns-propagation#send-via-smtp
-  if ( !opts.from ) opts.from = Meteor.settings.ADMIN_ACCOUNT_ID;
-  if ( !opts.to ) opts.to = Meteor.settings.ADMIN_ACCOUNT_ID; // also takes cc, bcc, replyTo, but not required. Can be strings or lists of strings
+  if ( !opts.from ) opts.from = Meteor.settings.log.from;
+  if ( !opts.to ) opts.to = Meteor.settings.log.to; // also takes cc, bcc, replyTo, but not required. Can be strings or lists of strings
   if ( !opts.subject ) opts.subject = 'MAIL SENT WITHOUT SUBJECT!';
   
   if (opts.template) {
@@ -81,49 +78,44 @@ API.mail.send = function(opts,mail_url) {
   }
   // TODO what if list of emails to go with list of records?
   
-  if ( !opts.text && !opts.html ) {
-    opts.text = opts.content ? opts.content : "";
-  }
+  if ( !opts.text && !opts.html ) opts.text = opts.content ? opts.content : "";
   if (opts.content) delete opts.content;
   
   // can also take opts.headers
   // also takes opts.attachments, but not required. Should be a list of objects as per 
   // https://github.com/nodemailer/mailcomposer/blob/7c0422b2de2dc61a60ba27cfa3353472f662aeb5/README.md#add-attachments
   
-  if (opts.post && opts.attachments === undefined) {
-    // TODO once tested switch the var check so that using api is default, and opts.smtp has to be set true to send by smtp
-    // send via POST to mailgun API
+  if (opts.smtp || opts.attachments === undefined) {
+    delete opts.smtp;
+    process.env.MAIL_URL = mail_url ? mail_url : Meteor.settings.mail.url;
+    API.log({msg:'Sending mail via mailgun SMTP',mail:opts});
+    Email.send(opts);
+    if (mail_url) process.env.MAIL_URL = Meteor.settings.mail.url;
+    return {};
+  } else {
     delete opts.post;
-    var mailgunapi = 'https://api.mailgun.net/v3';
-    var service = opts.mail_service ? opts.mail_service : Meteor.settings.MAIL_SERVICE;
-    var url = mailgunapi + '/' + service + '/messages';
-    var apik = opts.mail_apikey ? opts.mail_apikey : Meteor.settings.MAIL_APIKEY;
+    var mailapi = Meteor.settings.mail.api ? Meteor.settings.mail.api : 'https://api.mailgun.net/v3';
+    var service = opts.mail_service ? opts.mail_service : Meteor.settings.mail.service;
+    var url = mailapi + '/' + service + '/messages';
+    var apik = opts.mail_apikey ? opts.mail_apikey : Meteor.settings.mail.apikey;
     delete opts.mail_service;
     delete opts.mail_apikey
     if (typeof opts.to === 'object') opts.to = opts.to.join(',');
-    console.log('Sending mail via mailgun API on URL ' + url);
-    console.log(opts)
+    API.log({msg:'Sending mail via mailgun API',mail:opts,url:url});
     try {
       var posted = Meteor.http.call('POST',url,{params:opts,auth:'api:'+apik});
-      console.log(posted);
+      API.log({posted:posted});
       return posted;
     } catch(err) {
+      API.log({msg:'Sending mail failed',error:err});
       return err;
     }
-  } else {
-    if (mail_url) {
-      process.env.MAIL_URL = mail_url;
-      console.log('temporarily setting mail url to ' + mail_url);
-    }
-    Email.send(opts);
-    if (mail_url) process.env.MAIL_URL = Meteor.settings.MAIL_URL;
-    return {};
   }
 }
 
 
 API.mail.validate = function(email,apikey) {
-  if (apikey === undefined) apikey = Meteor.settings.MAIL_PUBLIC_APIKEY; // NOTE should use public key, not private key
+  if (apikey === undefined) apikey = Meteor.settings.mail.pubkey; // NOTE should use public key, not private key
   var u = 'https://api.mailgun.net/v3/address/validate?syntax_only=false&address=' + encodeURIComponent(email) + '&api_key=' + apikey;
   try {
     var v = Meteor.http.call('GET',u);
@@ -197,7 +189,7 @@ API.mail.error = function(content,token) {
       to = Meteor.settings.mail.error.tokens[token].to;
       mail_url = Meteor.settings.mail.error.tokens[token].mail_url;
       subject = Meteor.settings.mail.error.tokens[token].service + ' ' + subject;
-      console.log('Sending error email for ' + Meteor.settings.mail.error.tokens[token].service);
+      API.log('Sending error email for ' + Meteor.settings.mail.error.tokens[token].service);
     } catch(err) {}
   }
   if (to !== undefined) {

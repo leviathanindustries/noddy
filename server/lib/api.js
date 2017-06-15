@@ -92,6 +92,7 @@ API = new Restivus({
 API.settings = Meteor.settings;
 
 API.log = function(opts) {
+  console.log(this.name);
   try {
     // opts must contain msg and should contain level and error, and anything else should be stored as delivered
     if (typeof opts === 'string') opts = {msg: opts};
