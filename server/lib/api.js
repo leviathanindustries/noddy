@@ -156,6 +156,7 @@ API.addRoute('/', {
 });
 
 if (API.settings.cron && API.settings.cron.enabled) {
+  API.log('Cron starting.');
   SyncedCron.config(Meteor.settings.cron.config ? Meteor.settings.cron.config : {utc:true});
   SyncedCron.start();
 }
@@ -189,7 +190,7 @@ JsonRoutes.Middleware.use(function(req, res, next) {
 
       var buffers = [];
       file.on('data', function(data) {
-        API.log({msg:'uploaded file received of length: ' + data.length});
+        API.log({msg:'File received',length:data.length,filename:filename});
         buffers.push(data);
       });
       file.on('end', function() {
