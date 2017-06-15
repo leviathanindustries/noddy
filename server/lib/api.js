@@ -120,7 +120,9 @@ API.log = function(opts) {
       try {
         log.insert(opts);
       } catch(err) {
-        console.log('LOGGER ERROR INSERTION FAILED!!!')
+        console.log('LOGGER ERROR INSERTION FAILED!!!');
+        console.log(opts);
+        console.log(err);
       }
       if (opts.notify && API.settings.log.notify) {
         try {
