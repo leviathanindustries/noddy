@@ -92,7 +92,6 @@ API = new Restivus({
 API.settings = Meteor.settings;
 
 API.log = function(opts) {
-  console.log(this.name);
   try {
     // opts must contain msg and should contain level and error, and anything else should be stored as delivered
     if (typeof opts === 'string') opts = {msg: opts};
@@ -113,7 +112,7 @@ API.log = function(opts) {
     if (loglevels.indexOf(loglevel) <= loglevels.indexOf(opts.level)) {
       if (loglevels.indexOf(loglevel) <= loglevels.indexOf('debug')) {
         console.log(opts.created_date);
-        console.log(opts.msg);
+        if (opts.msg) console.log(opts.msg);
         if (opts.error) console.log(opts.error);
       }
       // try to set some opts vars for which server the error is running on...
@@ -163,6 +162,7 @@ if (API.settings.cron && API.settings.cron.enabled) {
 }
 
 JsonRoutes.Middleware.use(function(req, res, next) {
+  console.log(res);
   try {
     API.log({request:{
       url: req.url,
