@@ -100,9 +100,9 @@ API.log = function(opts) {
     opts.created_date = moment(opts.createdAt,"x").format("YYYY-MM-DD HHmm");
     var logindex = Meteor.settings.es.index ? Meteor.settings.es.index + '_log' : Meteor.settings.name + '_log';
     var today = moment(opts.createdAt,"x").format("YYYYMMDD");
-    var log;
-    if (!API.es.exists(Meteor.settings.es.url + '/' + logindex + '/' + today)) {
-      log = new API.collection({index:logindex,type:today});
+    var logexisted = API.es.exists(Meteor.settings.es.url + '/' + logindex + '/' + today);
+    var log = new API.collection({index:logindex,type:today});
+    if (!logexisted) {
       var future = new Future(); // a delay to ensure new log index is mapped
       setTimeout(function() { future.return(); }, 1000);
       future.wait();
