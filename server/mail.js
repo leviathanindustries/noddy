@@ -42,7 +42,7 @@ API.addRoute('mail/error', {
 API.addRoute('mail/progress', {
   get: {
     action: function() {
-      return mailprogress.search(this.bodyParams,this.queryParams);
+      return mail_progress.search(this.bodyParams,this.queryParams);
     }
   },
   post: {
