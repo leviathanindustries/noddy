@@ -129,12 +129,17 @@ API.log = function(opts) {
           if (opts.notify === true) {
             opts.notify = {};
           } else if (typeof opts.notify === 'string') {
-            // resolve the opts.notify to the dot noted settings object represented by the provided string
+            if (opts.notify.indexOf('@') !== -1) {
+              opts.notify = {to:opts.notify};
+            } else {
+              // resolve the opts.notify to the dot noted settings object represented by the provided string            
+            }
           }
           if (opts.notify.msg === undefined && opts.msg) opts.notify.msg = opts.msg;
           if (opts.notify.subject === undefined) opts.notify.subject = (Meteor.settings.name ? Meteor.settings.name + ' ' : '') + 'API log message';
           if (opts.notify.from === undefined) opts.notify.from = Meteor.settings.log.from ? Meteor.settings.log.from : 'alert@cottagelabs.com';
           if (opts.notify.to === undefined) opts.notify.to = Meteor.settings.log.to ? Meteor.settings.log.to : 'mark@cottagelabs.com';
+          API.mail.send(opts.notify);
         } catch(err) {
           console.log('LOGGER NOTIFICATION ERRORING OUT!!!');
         }
@@ -162,7 +167,6 @@ if (API.settings.cron && API.settings.cron.enabled) {
 }
 
 JsonRoutes.Middleware.use(function(req, res, next) {
-  console.log(res);
   try {
     API.log({request:{
       url: req.url,

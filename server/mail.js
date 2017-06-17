@@ -29,7 +29,7 @@ API.addRoute('mail/send', {
 });
 
 // leaving this one in as deprecated, in use elsewhere
-API.addRoute('sendmail/error', { post: { action: function() { API.mail.error(this.request.body); return {}; } } });
+API.addRoute('sendmail/error', { post: { action: function() { API.mail.error(this.request.body,this.queryParams.token); return {}; } } });
 API.addRoute('mail/error', {
   post: {
     action: function() {
@@ -93,17 +93,14 @@ API.mail.send = function(opts,mail_url) {
     if (mail_url) process.env.MAIL_URL = Meteor.settings.mail.url;
     return {};
   } else {
-    delete opts.post;
-    var mailapi = Meteor.settings.mail.api ? Meteor.settings.mail.api : 'https://api.mailgun.net/v3';
-    var service = opts.mail_service ? opts.mail_service : Meteor.settings.mail.service;
-    var url = mailapi + '/' + service + '/messages';
-    var apik = opts.mail_apikey ? opts.mail_apikey : Meteor.settings.mail.apikey;
-    delete opts.mail_service;
-    delete opts.mail_apikey
+    var mailapi = 'https://api.mailgun.net/v3';
+    var ms = opts.service ? Meteor.settings.service[opts.service].mail : Meteor.settings.mail;
+    var url = mailapi + '/' + ms.domain + '/messages';
+    delete opts.domain;
     if (typeof opts.to === 'object') opts.to = opts.to.join(',');
     API.log({msg:'Sending mail via mailgun API',mail:opts,url:url});
     try {
-      var posted = Meteor.http.call('POST',url,{params:opts,auth:'api:'+apik});
+      var posted = Meteor.http.call('POST',url,{params:opts,auth:'api:'+ms.apikey});
       API.log({posted:posted});
       return posted;
     } catch(err) {
@@ -121,14 +118,7 @@ API.mail.validate = function(email,apikey) {
     var v = Meteor.http.call('GET',u);
     return v.data;
   } catch(err) {
-    CLapi.internals.mail.send({
-      post:true,
-      from: "alert@cottagelabs.com",
-      to: "alert@cottagelabs.com",
-      subject: 'mailgun validate error',
-      text: JSON.stringify(err),
-    });
-    console.log(err); // mailgun can 401 us if we send too many
+    API.log({msg:JSON.stringify(err),notify:{subject:'Mailgun validate error'}});
     return {};
   }
 }
@@ -154,26 +144,27 @@ API.mail.test = function() {
 API.mail.progress = function(content,token) {
   // could do a token check here
   // could delete mail logs older than 1 week or so
-  // if a failure event, ping an error msg to me
+  // if a failure event, notify someone
   if (content['message-id'] !== undefined && content['Message-Id'] === undefined) content['Message-Id'] = '<' + content['message-id'] + '>';
   mail_progress.insert(content);
   try {
     if (content.event === 'dropped') {
-      if (content.domain.indexOf('cottagelabs') !== -1) {
-        API.mail.send({
-          from: "alert@cottagelabs.com",
-          to: ["mark@cottagelabs.com"],
-          subject: "mailgun dropped email",
-          text: JSON.stringify(content,undefined,2)
-        });    
-      } else if (content.domain.indexOf('openaccessbutton') !== -1) {
-        API.mail.send({
-          from: "requests@openaccessbutton.org",
-          to: ["natalianorori@gmail.com"],
-          subject: "mailgun dropped email",
-          text: JSON.stringify(content,undefined,2)
-        },Meteor.settings.openaccessbutton.mail_url);
+      var obj = {msg:'Mail service dropped email',error:JSON.stringify(content,undefined,2),notify:{msg:JSON.stringify(content,undefined,2),subject:'Mail service dropped email'}};
+      if (content.domain !== Meteor.settings.mail.domain) {
+        for ( var s in Meteor.settings.service) {
+          if (Meteor.settings.service[s].mail && Meteor.settings.service[s].mail.domain === content.domain) {
+            obj.notify.service = s;
+            if (Meteor.settings.service[s].mail.notify) {
+              if (typeof Meteor.settings.service[s].mail.notify === 'string') {
+                obj.notify.to = Meteor.settings.service[s].mail.notify;
+              } else if (Meteor.settings.service[s].mail.notify.dropped) {
+                obj.notify.to = Meteor.settings.service[s].mail.notify.dropped;
+              }
+            }
+          }
+        }
       }
+      API.log(obj);
     }
   } catch(err) {}
 }
@@ -184,8 +175,6 @@ API.mail.error = function(content,token) {
   var subject = 'error dump';
   if (token) {
     try {
-      // for robin this could check tokens against actual user tokens on the live service
-      // but then would only work if the live service is up - so don't bother for now
       to = Meteor.settings.mail.error.tokens[token].to;
       mail_url = Meteor.settings.mail.error.tokens[token].mail_url;
       subject = Meteor.settings.mail.error.tokens[token].service + ' ' + subject;
@@ -194,7 +183,7 @@ API.mail.error = function(content,token) {
   }
   if (to !== undefined) {
     API.mail.send({
-      from: "sysadmin@cottagelabs.com",
+      from: Meteor.settings.mail.from,
       to: to,
       subject: subject,
       text: JSON.stringify(content,undefined,2)
