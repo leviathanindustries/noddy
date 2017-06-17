@@ -67,8 +67,8 @@ API.addRoute('mail/test', {
 API.mail = {}
 
 API.mail.send = function(opts,mail_url) {
-  if ( !opts.from ) opts.from = Meteor.settings.log.from;
-  if ( !opts.to ) opts.to = Meteor.settings.log.to; // also takes cc, bcc, replyTo, but not required. Can be strings or lists of strings
+  if ( !opts.from ) opts.from = API.settings.log.from;
+  if ( !opts.to ) opts.to = API.settings.log.to; // also takes cc, bcc, replyTo, but not required. Can be strings or lists of strings
   if ( !opts.subject ) opts.subject = 'MAIL SENT WITHOUT SUBJECT!';
   
   if (opts.template) {
@@ -87,20 +87,20 @@ API.mail.send = function(opts,mail_url) {
   
   if (opts.smtp || opts.attachments === undefined) {
     delete opts.smtp;
-    process.env.MAIL_URL = mail_url ? mail_url : Meteor.settings.mail.url;
+    process.env.MAIL_URL = mail_url ? mail_url : API.settings.mail.url;
     API.log({msg:'Sending mail via mailgun SMTP',mail:opts});
     Email.send(opts);
-    if (mail_url) process.env.MAIL_URL = Meteor.settings.mail.url;
+    if (mail_url) process.env.MAIL_URL = API.settings.mail.url;
     return {};
   } else {
     var mailapi = 'https://api.mailgun.net/v3';
-    var ms = opts.service ? Meteor.settings.service[opts.service].mail : Meteor.settings.mail;
+    var ms = opts.service ? API.settings.service[opts.service].mail : API.settings.mail;
     var url = mailapi + '/' + ms.domain + '/messages';
     delete opts.domain;
     if (typeof opts.to === 'object') opts.to = opts.to.join(',');
     API.log({msg:'Sending mail via mailgun API',mail:opts,url:url});
     try {
-      var posted = Meteor.http.call('POST',url,{params:opts,auth:'api:'+ms.apikey});
+      var posted = HTTP.call('POST',url,{params:opts,auth:'api:'+ms.apikey});
       API.log({posted:posted});
       return posted;
     } catch(err) {
@@ -112,10 +112,10 @@ API.mail.send = function(opts,mail_url) {
 
 
 API.mail.validate = function(email,apikey) {
-  if (apikey === undefined) apikey = Meteor.settings.mail.pubkey; // NOTE should use public key, not private key
+  if (apikey === undefined) apikey = API.settings.mail.pubkey; // NOTE should use public key, not private key
   var u = 'https://api.mailgun.net/v3/address/validate?syntax_only=false&address=' + encodeURIComponent(email) + '&api_key=' + apikey;
   try {
-    var v = Meteor.http.call('GET',u);
+    var v = HTTP.call('GET',u);
     return v.data;
   } catch(err) {
     API.log({msg:JSON.stringify(err),notify:{subject:'Mailgun validate error'}});
@@ -125,10 +125,9 @@ API.mail.validate = function(email,apikey) {
 
 API.mail.test = function() {
   return API.mail.send({
-    post:true,
-    from: "dnr@openaccessbutton.io",
-    to: ["mark@cottagelabs.com"],
-    subject: 'Test me via POST',
+    from: Meteor.settings.mail.from,
+    to: Meteor.settings.mail.to,
+    subject: 'Test me via default POST',
     text: "hello",
     html: '<p><b>hello</b></p>'
     /*attachments:[{
@@ -150,15 +149,15 @@ API.mail.progress = function(content,token) {
   try {
     if (content.event === 'dropped') {
       var obj = {msg:'Mail service dropped email',error:JSON.stringify(content,undefined,2),notify:{msg:JSON.stringify(content,undefined,2),subject:'Mail service dropped email'}};
-      if (content.domain !== Meteor.settings.mail.domain) {
-        for ( var s in Meteor.settings.service) {
-          if (Meteor.settings.service[s].mail && Meteor.settings.service[s].mail.domain === content.domain) {
+      if (content.domain !== API.settings.mail.domain) {
+        for ( var s in API.settings.service) {
+          if (API.settings.service[s].mail && API.settings.service[s].mail.domain === content.domain) {
             obj.notify.service = s;
-            if (Meteor.settings.service[s].mail.notify) {
-              if (typeof Meteor.settings.service[s].mail.notify === 'string') {
-                obj.notify.to = Meteor.settings.service[s].mail.notify;
-              } else if (Meteor.settings.service[s].mail.notify.dropped) {
-                obj.notify.to = Meteor.settings.service[s].mail.notify.dropped;
+            if (API.settings.service[s].mail.notify) {
+              if (typeof API.settings.service[s].mail.notify === 'string') {
+                obj.notify.to = API.settings.service[s].mail.notify;
+              } else if (API.settings.service[s].mail.notify.dropped) {
+                obj.notify.to = API.settings.service[s].mail.notify.dropped;
               }
             }
           }
@@ -175,15 +174,15 @@ API.mail.error = function(content,token) {
   var subject = 'error dump';
   if (token) {
     try {
-      to = Meteor.settings.mail.error.tokens[token].to;
-      mail_url = Meteor.settings.mail.error.tokens[token].mail_url;
-      subject = Meteor.settings.mail.error.tokens[token].service + ' ' + subject;
-      API.log('Sending error email for ' + Meteor.settings.mail.error.tokens[token].service);
+      to = API.settings.mail.error.tokens[token].to;
+      mail_url = API.settings.mail.error.tokens[token].mail_url;
+      subject = API.settings.mail.error.tokens[token].service + ' ' + subject;
+      API.log('Sending error email for ' + API.settings.mail.error.tokens[token].service);
     } catch(err) {}
   }
   if (to !== undefined) {
     API.mail.send({
-      from: Meteor.settings.mail.from,
+      from: API.settings.mail.from,
       to: to,
       subject: subject,
       text: JSON.stringify(content,undefined,2)
