@@ -85,7 +85,7 @@ API.mail.send = function(opts,mail_url) {
   // also takes opts.attachments, but not required. Should be a list of objects as per 
   // https://github.com/nodemailer/mailcomposer/blob/7c0422b2de2dc61a60ba27cfa3353472f662aeb5/README.md#add-attachments
   
-  if (opts.smtp || opts.attachments === undefined) {
+  if (opts.smtp || opts.attachments !== undefined) {
     delete opts.smtp;
     process.env.MAIL_URL = mail_url ? mail_url : API.settings.mail.url;
     API.log({msg:'Sending mail via mailgun SMTP',mail:opts});
