@@ -30,14 +30,7 @@ API.addRoute('mail/send', {
 
 // leaving this one in as deprecated, in use elsewhere
 API.addRoute('sendmail/error', { post: { action: function() { API.mail.error(this.request.body,this.queryParams.token); return {}; } } });
-API.addRoute('mail/error', {
-  post: {
-    action: function() {
-      API.mail.error(this.request.body,this.queryParams.token);
-      return {};
-    }
-  }
-});
+API.addRoute('mail/error', { post: { action: function() { API.mail.error(this.request.body,this.queryParams.token); return {}; } } });
 
 API.addRoute('mail/progress', {
   get: {
@@ -98,6 +91,8 @@ API.mail.send = function(opts,mail_url) {
     var url = mailapi + '/' + ms.domain + '/messages';
     delete opts.domain;
     if (typeof opts.to === 'object') opts.to = opts.to.join(',');
+    if (!opts.from) opts.from = ms.from;
+    if (!opts.to) opts.to = ms.to;
     API.log({msg:'Sending mail via mailgun API',mail:opts,url:url});
     try {
       var posted = HTTP.call('POST',url,{params:opts,auth:'api:'+ms.apikey});
@@ -152,14 +147,10 @@ API.mail.progress = function(content,token) {
       if (content.domain !== API.settings.mail.domain) {
         for ( var s in API.settings.service) {
           if (API.settings.service[s].mail && API.settings.service[s].mail.domain === content.domain) {
+            obj.msg = s + ' ' + obj.msg;
+            obj.notify.subject = obj.msg;
             obj.notify.service = s;
-            if (API.settings.service[s].mail.notify) {
-              if (typeof API.settings.service[s].mail.notify === 'string') {
-                obj.notify.to = API.settings.service[s].mail.notify;
-              } else if (API.settings.service[s].mail.notify.dropped) {
-                obj.notify.to = API.settings.service[s].mail.notify.dropped;
-              }
-            }
+            obj.notify.notify = 'dropped';
           }
         }
       }
@@ -169,24 +160,14 @@ API.mail.progress = function(content,token) {
 }
 
 API.mail.error = function(content,token) {
-  var to;
-  var mail_url;
-  var subject = 'error dump';
-  if (token) {
-    try {
-      to = API.settings.mail.error.tokens[token].to;
-      mail_url = API.settings.mail.error.tokens[token].mail_url;
-      subject = API.settings.mail.error.tokens[token].service + ' ' + subject;
-      API.log('Sending error email for ' + API.settings.mail.error.tokens[token].service);
-    } catch(err) {}
-  }
-  if (to !== undefined) {
+  if (token && API.settings.mail.error[token] && API.settings.mail.error[token].to) {
+    API.log('Sending error email for ' + token);
     API.mail.send({
-      from: API.settings.mail.from,
-      to: to,
-      subject: subject,
+      from: (API.settings.mail.error[token].from ? API.settings.mail.error[token].from : API.settings.mail.from),
+      to: API.settings.mail.error[token].to,
+      subject: (API.settings.mail.error[token].subject ? API.settings.mail.error[token].subject : API.settings.name + ' forwarded error message'),
       text: JSON.stringify(content,undefined,2)
-    },mail_url);
+    },API.settings.mail.error[token].url);
   }
 }
 

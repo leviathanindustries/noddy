@@ -132,14 +132,32 @@ API.log = function(opts) {
             if (opts.notify.indexOf('@') !== -1) {
               opts.notify = {to:opts.notify};
             } else {
-              // resolve the opts.notify to the dot noted settings object represented by the provided string            
+              opts.notify = false;
+              var pts = opts.notify.split('.');
+              var srv = pts[0];
+              var nt = pts[1];
+              if (API.settings.service[srv]) {
+                var svs = API.settings.service[srv];
+                var df = svs.mail ? svs.mail : API.settings.mail;
+                var on = df.mail.notify && df.mail.notify[nt] ? df.mail.notify[nt] : df;
+                if (opts.notify.disabled) {
+                  opts.notify = false;
+                } else {
+                  for ( var mn in opts.notify ) {
+                    if (mn !== 'service' && mn !== 'notify') on[mn] = opts.notify[mn];
+                  }
+                  opts.notify = on;
+                }                
+              }
             }
           }
-          if (opts.notify.msg === undefined && opts.msg) opts.notify.msg = opts.msg;
-          if (opts.notify.subject === undefined) opts.notify.subject = (API.settings.name ? API.settings.name + ' ' : '') + 'API log message';
-          if (opts.notify.from === undefined) opts.notify.from = API.settings.log.from ? API.settings.log.from : 'alert@cottagelabs.com';
-          if (opts.notify.to === undefined) opts.notify.to = API.settings.log.to ? API.settings.log.to : 'mark@cottagelabs.com';
-          API.mail.send(opts.notify);
+          if (opts.notify) {
+            if (opts.notify.msg === undefined && opts.msg) opts.notify.msg = opts.msg;
+            if (opts.notify.subject === undefined) opts.notify.subject = (API.settings.name ? API.settings.name + ' ' : '') + 'API log message';
+            if (opts.notify.from === undefined) opts.notify.from = API.settings.log.from ? API.settings.log.from : 'alert@cottagelabs.com';
+            if (opts.notify.to === undefined) opts.notify.to = API.settings.log.to ? API.settings.log.to : 'mark@cottagelabs.com';
+            API.mail.send(opts.notify);
+          }
         } catch(err) {
           console.log('LOGGER NOTIFICATION ERRORING OUT!!!');
         }

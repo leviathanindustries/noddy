@@ -3,6 +3,85 @@
 The new home of nod
 
 
+## Running noddy
+
+Install meteor.com
+
+Clone this repo.
+
+MONGO_URL="http://nowhere" && meteor --settings settings.json
+
+
+## Configuring noddy
+
+Edit the settings.json file. If it does not yet exist (it is not included in the repo because it will contain secrets), 
+then copy the settings_example.json file. Have a look at it to see what to configure.
+
+name and version should be set to your preference.
+
+Using the default noddy logging requires the log section to be completed.
+log.connections means all connections to the API will be logged. log.level indicates the log level 
+('all','trace','debug','info','warn','error','fatal','off'). log.notify indicates whether or not notifications should be sent.
+See the "Using logging" section below for more info. log.from and log.to indicate the default from and to email addresses to use.
+
+The es section is also required by default. It needs the es.url to connect to your elasticsearch cluster, the es.index for the 
+name of the default index to use, the es.version number (as an actual decimal number, not the full semver version - anything 
+pre-5.x should work, and after 5.x may work or at least with just a few tweaks). es.auth can be populated with index names 
+that should be accessible, and the name can point to "true" or to an object that contains types within the index to make public - 
+which itself can be "true" or an object containing the type endpoints to make public. Full granular access control can be managed 
+with users and groups (see the below section for more info).
+
+The mail section is also necessary by default. It should provide the mail.url to what is assumed to be a mailgun account, along 
+with the mail.domain registered for that account, the mail.apikey for the account, and the mail.pubkey. The mail section can also 
+include a mail.error key which should point to an object. That object should contain unique random keys that also point to objects, 
+within which settings for sending error emails can be set. This allows any remote system that you wish to forward error messages 
+to do so - see the server/mail.js file and the API.mail.error function for more info. Mail settings for specific services can also 
+be provided within the service settings (see below for more info about service configuration).
+
+If any of the API you wish to use relies on cron jobs, the cron section must be included and must indicate cron.enabled as "true". 
+The cron.config can also be customised if so desired.
+
+The cookie section should provide the cookie.name you would like your API to store cookies as on user browsers.
+
+
+## Using logging
+
+Use API.log to write a log. Provide a string to simply log a message string, or provide an object for more options. In an object, 
+the message should be in the msg field. You can also provide the error message in the error field, and can set a specific log 
+level in the level field.
+
+You can also send notifications from a log message using the notify field. This should point to "true" to send a notification to 
+the default mail.from and mail.to address. or it can be a string providing an email address to send to. Or it can be a string 
+with a service name to use the default mail of a given service config, or a specific service notification config can be provided 
+in dot notation as "servicename.notifyname", and if a suitably named mail config object exists in settings.service.servicename.notify 
+then those settings will be used. Finally notify can just point to a mail config object itself.
+
+
+## Users and groups
+
+
+## Services
+
+Any specific services that are required should be written in the server/service directory. If they exist there, and if they need 
+specific config, then their config should be provided in settings.json in an object named with the service name. See some service 
+examples for how this works in general.
+
+Each service can specify its own service.servicename.mail key, providing a mail object with the usual settings of the mail config 
+as described above. It can also include a service.servicename.mail.notify key, providing an object that lists names of specific 
+notification events you would like to trigger. Then the service code can submit logs that include include the notify.service key 
+with the service name, and the notify.notify key with the notification name - the logger will look up the relevant 
+service.servicename.mail.notify.notifyname object to retrieve mail settings such as from, to, etc, so that these can be easily 
+configured via settings rather than code editing. If a relevant notify object does not exist, the default mail settings for the 
+service will be used instead (and this defaults to the default mail settings for the API if there is no service mail config. 
+These notifications can also be conveniently turned off by including the disabled key within the notify object, and setting it to true.
+
+
+## Externals
+
+
+## Scripts
+
+
 ## Making a VM that can run in a noddy cluster
 
 A 2GB DO machine with the latest Ubuntu server works fine, and can have deployment handled by mupx.
