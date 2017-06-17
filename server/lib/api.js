@@ -65,7 +65,7 @@ API = new Restivus({
             xid = u._id;
             xapikey = u.api.keys[0].key;
           } else {
-            API.log({msg:'POTENTIAL COOKIE THEFT!!! ' + cookie.userId});
+            API.log({msg:'POTENTIAL COOKIE THEFT!!! ' + cookie.userId,notify:true});
           }
         } catch(err) {}
       }
@@ -98,9 +98,9 @@ API.log = function(opts) {
     if (!opts.level) opts.level = 'debug';
     opts.createdAt = Date.now();
     opts.created_date = moment(opts.createdAt,"x").format("YYYY-MM-DD HHmm");
-    var logindex = Meteor.settings.es.index ? Meteor.settings.es.index + '_log' : Meteor.settings.name + '_log';
+    var logindex = API.settings.es.index ? API.settings.es.index + '_log' : API.settings.name + '_log';
     var today = moment(opts.createdAt,"x").format("YYYYMMDD");
-    var logexisted = API.es.exists(Meteor.settings.es.url + '/' + logindex + '/' + today);
+    var logexisted = API.es.exists(API.settings.es.url + '/' + logindex + '/' + today);
     var log = new API.collection({index:logindex,type:today});
     if (!logexisted) {
       var future = new Future(); // a delay to ensure new log index is mapped
@@ -136,9 +136,9 @@ API.log = function(opts) {
             }
           }
           if (opts.notify.msg === undefined && opts.msg) opts.notify.msg = opts.msg;
-          if (opts.notify.subject === undefined) opts.notify.subject = (Meteor.settings.name ? Meteor.settings.name + ' ' : '') + 'API log message';
-          if (opts.notify.from === undefined) opts.notify.from = Meteor.settings.log.from ? Meteor.settings.log.from : 'alert@cottagelabs.com';
-          if (opts.notify.to === undefined) opts.notify.to = Meteor.settings.log.to ? Meteor.settings.log.to : 'mark@cottagelabs.com';
+          if (opts.notify.subject === undefined) opts.notify.subject = (API.settings.name ? API.settings.name + ' ' : '') + 'API log message';
+          if (opts.notify.from === undefined) opts.notify.from = API.settings.log.from ? API.settings.log.from : 'alert@cottagelabs.com';
+          if (opts.notify.to === undefined) opts.notify.to = API.settings.log.to ? API.settings.log.to : 'mark@cottagelabs.com';
           API.mail.send(opts.notify);
         } catch(err) {
           console.log('LOGGER NOTIFICATION ERRORING OUT!!!');
@@ -162,22 +162,24 @@ API.addRoute('/', {
 
 if (API.settings.cron && API.settings.cron.enabled) {
   API.log('Cron starting.');
-  SyncedCron.config(Meteor.settings.cron.config ? Meteor.settings.cron.config : {utc:true});
+  SyncedCron.config(API.settings.cron.config ? API.settings.cron.config : {utc:true});
   SyncedCron.start();
 }
 
 JsonRoutes.Middleware.use(function(req, res, next) {
-  try {
-    API.log({request:{
-      url: req.url,
-      originalUrl: req.originalUrl,
-      headers: req.headers,
-      query: req.query,
-      body: req.body
-    }});
-  } catch(err) {
-    console.log('API LOGGING OF INCOMING QUERIES IS FAILING!');
-    console.log(err);
+  if (API.settings.log.connections) {
+    try {
+      API.log({request:{
+        url: req.url,
+        originalUrl: req.originalUrl,
+        headers: req.headers,
+        query: req.query,
+        body: req.body
+      }});
+    } catch(err) {
+      console.log('API LOGGING OF INCOMING QUERIES IS FAILING!');
+      console.log(err);
+    }
   }
   if (req.headers && req.headers['content-type'] && req.headers['content-type'].match(/^multipart\/form\-data/)) {
     var Busboy = Meteor.npmRequire('busboy');

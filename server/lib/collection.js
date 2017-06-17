@@ -1,6 +1,7 @@
 
 // worth extending mongo.collection, or just not use it?
 // https://stackoverflow.com/questions/34979661/extending-mongo-collection-breaks-find-method
+// decided not to use it. If Mongo is desired in future, this collection object can be used to extend and wrap it
 
 API.collection = function (opts) {
   if (typeof opts === 'string') opts = {type:opts};

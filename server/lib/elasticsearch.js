@@ -40,13 +40,13 @@ API.addRoute('es/:ra/:rb/:rc/:rd', es);
 
 API.es = {};
 
-if (!Meteor.settings || !Meteor.settings.es) {
+if (!API.settings.es) {
   console.log('WARNING - ELASTICSEARCH SEEMS TO BE REQUIRED BUT SETTINGS HAVE NOT BEEN PROVIDED.');  
 } else {
   try {
-    var s = Meteor.http.call('GET',Meteor.settings.es.url);
+    var s = HTTP.call('GET',API.settings.es.url);
   } catch(err) {
-    console.log('ELASTICSEARCH INSTANCE AT ' + Meteor.settings.es.url + ' APPEARS TO BE UNREACHABLE. SHUTTING DOWN.');
+    console.log('ELASTICSEARCH INSTANCE AT ' + API.settings.es.url + ' APPEARS TO BE UNREACHABLE. SHUTTING DOWN.');
     console.log(err);
     process.exit(-1);
   }
@@ -96,7 +96,7 @@ API.es.action = function(uid,action,urlp,params,data) {
 
 API.es.exists = function(route) {
   try {
-    Meteor.http.call('HEAD',route);
+    HTTP.call('HEAD',route);
     return true;
   } catch(err) {
     return false;
@@ -104,17 +104,17 @@ API.es.exists = function(route) {
 }
 
 API.es.map = function(index,type,mapping,url) {
-  if (url === undefined) url = Meteor.settings.es.url;
+  if (url === undefined) url = API.settings.es.url;
   if (!API.es.exists(url + '/' + index)) {
-    Meteor.settings.es.version && Meteor.settings.es.version > 5 ? Meteor.http.call('PUT',url + '/' + index) : Meteor.http.call('POST',url + '/' + index);
+    API.settings.es.version && API.settings.es.version > 5 ? HTTP.call('PUT',url + '/' + index) : HTTP.call('POST',url + '/' + index);
   }
   var maproute = API.settings.es.version > 1 ? index + '/_mapping/' + type : index + '/' + type + '/_mapping';
   if ( mapping === undefined && !API.es.exists(url + '/' + maproute) ) {
-    mapping = API.settings.es.version >= 5 ? Meteor.http.call('GET','http://static.cottagelabs.com/mapping5.json').data : Meteor.http.call('GET','http://static.cottagelabs.com/mapping.json').data;
+    mapping = API.settings.es.version >= 5 ? HTTP.call('GET','http://static.cottagelabs.com/mapping5.json').data : HTTP.call('GET','http://static.cottagelabs.com/mapping.json').data;
   }
   if (mapping) {
     try {
-      Meteor.http.call('PUT',url + '/' + maproute,{data:mapping}).data;
+      HTTP.call('PUT',url + '/' + maproute,{data:mapping}).data;
       return true;
     } catch(err) {
       console.log('ES MAPPING ERROR!!!');
@@ -165,7 +165,7 @@ API.es.call = function(action,route,data,url) {
   }
   var ret;
   try {
-    ret = Meteor.http.call(action,url+route,opts).data;
+    ret = HTTP.call(action,url+route,opts).data;
   } catch(err) {
     // TODO check for various types of ES error - for some we may want retries, others may want to trigger specific log alerts
     console.log(err);
