@@ -55,7 +55,7 @@ API.collection.prototype.update = function (qry,obj,refresh) {
     }
     doc.updatedAt = Date.now();
     doc.updated_date = moment(obj.createdAt,"x").format("YYYY-MM-DD HHmm");
-    API.es.call('POST',rt + qry, doc, refresh);
+    API.es.call('POST',rt + doc._id, doc, refresh);
     return doc;
   }
   if (rec) {
@@ -73,8 +73,9 @@ API.collection.prototype.remove = function(qry) {
       return true;
     }
   }
+  var rt = this._route;
   var remove = function(doc) {
-    API.es.call('DELETE',this._route + doc._id);
+    API.es.call('DELETE',rt + doc._id);
   }
   return this.each(qry,remove);
 }
