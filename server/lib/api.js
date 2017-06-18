@@ -131,6 +131,7 @@ API.log = function(opts) {
           }
           if (opts.notify) {
             if (opts.notify.msg === undefined && opts.msg) opts.notify.msg = opts.msg;
+            if (opts.notify.text === undefined) opts.notify.text = opts.notify.msg;
             if (opts.notify.subject === undefined) opts.notify.subject = (API.settings.name ? API.settings.name + ' ' : '') + 'API log message';
             if (opts.notify.from === undefined) opts.notify.from = API.settings.log.from ? API.settings.log.from : 'alert@cottagelabs.com';
             if (opts.notify.to === undefined) opts.notify.to = API.settings.log.to ? API.settings.log.to : 'mark@cottagelabs.com';

@@ -107,7 +107,7 @@ API.es.exists = function(route,url) {
 API.es.refresh = function(route,url) {
   if (url === undefined) url = API.settings.es.url;
   try {
-    HTTP.call('POST',url + route + '/_refresh');
+    var h = HTTP.call('POST',url + route + '/_refresh');
     return true;
   } catch(err) {
     return false;
