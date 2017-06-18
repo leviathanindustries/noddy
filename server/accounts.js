@@ -9,7 +9,7 @@ API.addRoute('accounts', {
       if ( API.accounts.auth('root', this.user) ) {
         return Users.search(this.bodyParams,this.queryParams);
       } else {
-        return {status: 'success', data: Users.count() };
+        return {count: Users.count() };
       }
     }
   },
@@ -20,31 +20,21 @@ API.addRoute('accounts', {
     }
   }
 });
+API.addRoute('accounts/xsrf', {
+  post: { authRequired: true, action: function() { return API.accounts.xsrf(this.user); } }
+});
 API.addRoute('accounts/token', {
-  get: {
-    action: function() {
-      return API.accounts.token(this.queryParams.email,this.queryParams.location,this.queryParams.fingerprint);
-    }
-  },
-  post: {
-    action: function() {
-      return API.accounts.token(this.request.body.email,this.request.body.location,this.request.body.fingerprint);
-    }
-  }
+  get: { action: function() { return API.accounts.token(this.queryParams); } },
+  post: { action: function() { return API.accounts.token(this.bodyParams); } }
 });
 API.addRoute('accounts/login', {
-  post: {
-    action: function() {
-      return API.accounts.login(this.request.body.email,this.request.body.location,this.request.body.token,this.request.body.hash,this.request.body.fingerprint,this.request.body.resume,this.request.body.timestamp,this.request)
-    }
-  }
+  post: { action: function() { return API.accounts.login(this.bodyParams,this.request) } }
 });
 API.addRoute('accounts/logout', {
-  post: {
-    action: function() {
-      return API.accounts.logout(this.request.body.email,this.request.body.resume,this.request.body.timestamp,this.request.body.location)
-    }
-  }
+  post: { authRequired: true, action: function() { return API.accounts.logout(this.userId) } }
+});
+API.addRoute('accounts/logout/:id', {
+  post: { roleRequired: 'root', action: function() { return API.accounts.logout(this.urlParams.id) } }
 });
 
 API.addRoute('accounts/:id', {
@@ -58,6 +48,7 @@ API.addRoute('accounts/:id', {
   post: {
     authRequired: true,
     action: function() {
+      if (!this.queryParams.xsrf || !API.accounts.xsrf(this.user,this.queryParams.xsrf)) return {statusCode: 401, body: {}}
       var u = API.accounts.retrieve(this.urlParams.id);
       if (!u) {
         return {statusCode: 404, body:'404 NOT FOUND' };
@@ -70,6 +61,7 @@ API.addRoute('accounts/:id', {
   put: {
     authRequired: true,
     action: function() {
+      if (!this.queryParams.xsrf || !API.accounts.xsrf(this.user,this.queryParams.xsrf)) return {statusCode: 401, body: {}}
       var u = API.accounts.retrieve(this.urlParams.id);
       if (!u) {
         return {statusCode: 404, body:'404 NOT FOUND' };
@@ -82,6 +74,7 @@ API.addRoute('accounts/:id', {
   delete: {
     authRequired: true,
     action: function() {
+      if (!this.queryParams.xsrf || !API.accounts.xsrf(this.user,this.queryParams.xsrf)) return {statusCode: 401, body: {}}
       var u = API.accounts.retrieve(this.urlParams.id);
       if (!u) {
         return {statusCode: 404, body:'404 NOT FOUND' };
@@ -93,10 +86,28 @@ API.addRoute('accounts/:id', {
   }
 });
 
+API.addRoute('accounts/:id/auth/:grouproles', {
+  get: {
+    action: function() {
+      var u = API.accounts.retrieve(this.urlParams.id);
+      var authd = false;
+      var rset = this.urlParams.grouproles.split(',');
+      for (var r in rset) {
+        authd = API.accounts.auth(rset[r], u);
+      }
+      if ( authd ) {
+        return {status: 'success', data: {auth: authd} };
+      } else {
+        return {statusCode: 404, body: {status: 'success', data: {auth: false} }};
+      }
+    }
+  }
+});
 API.addRoute('accounts/:id/roles/:grouprole', {
   post: {
     authRequired: true,
     action: function() {
+      if (!this.queryParams.xsrf || !API.accounts.xsrf(this.user,this.queryParams.xsrf)) return {statusCode: 401, body: {}}
       // group and role must not contain . or , because . is used to distinguish group from role, and comma to list them
       // what other characters should be allowed / blocked from groups and roles?
       var grp, role;
@@ -120,6 +131,7 @@ API.addRoute('accounts/:id/roles/:grouprole', {
   delete: {
     authRequired: true,
     action: function() {
+      if (!this.queryParams.xsrf || !API.accounts.xsrf(this.user,this.queryParams.xsrf)) return {statusCode: 401, body: {}}
       var grp, role;
       var grpts = this.urlParams.grouprole.split('.');
       if (grpts.length !== 2) return {status: 'error', data: 'grouprole param must be of form group.role'}
@@ -134,23 +146,6 @@ API.addRoute('accounts/:id/roles/:grouprole', {
           statusCode: 403,
           body: {status: 'error', data: {message: 'you do not have permission to alter users in this role'} }
         };
-      }
-    }
-  }
-});
-API.addRoute('accounts/:id/auth/:grouproles', {
-  get: {
-    action: function() {
-      var u = API.accounts.retrieve(this.urlParams.id);
-      var authd = false;
-      var rset = this.urlParams.grouproles.split(',');
-      for (var r in rset) {
-        authd = API.accounts.auth(rset[r], u);
-      }
-      if ( authd ) {
-        return {status: 'success', data: {auth: authd} };
-      } else {
-        return {statusCode: 404, body: {status: 'success', data: {auth: false} }};
       }
     }
   }
@@ -171,323 +166,165 @@ function generate_random_code(length,set) {
   return random_hash;
 }
 
-function template(str,opts) {
-  for ( var k in opts ) {
-    var re = new RegExp('\{\{' + k.toUpperCase() + '\}\}','g');
-    str = str.replace(re,opts[k]);
-  }
-  return str;
-}
-
 API.accounts = {};
 
-API.accounts.service = function(location) {
-  // update this to accept settings object too, which should update the service settings
-  // at which point perhaps service settings should be on mongo rather than in a text file
-  // return the options for a given location
-  location = location.trim('/');
-  if ( login_services[location] === undefined) {
-    API.log('BAD TOKEN ATTEMPT FROM ' + location);
-    return false;
-    // should not be logging in from a page we don't set as being able to provide login functionality. 
-    // Say nothing, no explanation. Worth sending a sysadmin email?
-  } else {
-    var opts = {};
-    for ( var o in login_services.default ) opts[o] = login_services.default[o];
-    for ( var k in login_services[location] ) opts[k] = login_services[location][k];
-    return opts;
-  }
-}
-
 // receive a device fingerprint and perhaps some settings (e.g. to make it a registered / named device)
-API.accounts.fingerprint = function(uid,fingerprint) {
+API.accounts.fingerprint = function(uacc,fingerprint) {
   // TODO fingerprint should go in devices area of account, with mutliple fingerprints and useful info possible
+  // perhaps if fingerprint is not yet in devices list, a notification should be sent to the user account?
   // for now just sets the fingerprint
-  var user = API.accounts.retrieve(uid);
   var set = {}
-  if (user.security) {
-    set['security.fingerprint'] = fingerprint;    
+  if (uacc.security) {
+    set['security.fingerprint'] = fingerprint;
   } else {
     set.security = {fingerprint:fingerprint}
   }
-  Users.update(user._id, {$set: set});
+  Users.update(uacc._id, {$set: set});
 }
 
-// require email string, optional fingerprint string
-// expect service object, containing a service key pointing to service object data
-// which can contain a role - or get role from service options now?
-API.accounts.register = function(opts) {
-  if (JSON.stringify(opts).indexOf('<script') !== -1) return false; // naughty catcher
-  if (opts.email === undefined) return false;
-  // fingerprint cannot be mandatory because it can not be used easily on APIs
-  var user = API.accounts.retrieve(opts.email);
-  if ( !user ) {
-    var set = { email: opts.email };
-    if (opts.fingerprint) {
-      //set.devices = {};
-      //set.devices[opts.fingerprint] = {};
-      set.security = {fingerprint:opts.fingerprint};
-      // TODO should have a devices area with mutliple fingerprints and device info possible
-    }
-    set.service = {};
-    if ( opts.service ) set.service[opts.service.service] = {profile:{}}; // TODO this should save service info if necessary
-    var creds = API.accounts.create( set );
-    user = API.accounts.retrieve(creds._id);
-  } else if (opts.fingerprint) {
-    API.accounts.fingerprint(user._id,opts.fingerprint);
-  }
-  if ( opts.service ) {
-    if ( user.service === undefined ) user.service = {};
-    if ( user.service[opts.service.service] === undefined ) user.service[opts.service.service] = {profile:{}};
-    // TODO are there any values in service settings that should be saved into the service object on account creation?
-    Users.update(user._id, {$set: {'service':user.service}});
-    if (opts.service.role && ( !user.roles || !user.roles[opts.service.service] || user.roles[opts.service.service].indexOf(opts.service.role) === -1 ) ) {
-      API.accounts.addrole(user._id, opts.service.service, opts.service.role);
-    }
-  }
-}
-
-API.accounts.token = function(email,loc,fingerprint) {
-  // check that loc is in the allowed signin locations list (can be faked, but worthwhile)
-  // TODO need a check to see if the location they want to sign in to is one that allows registrations without confirmation
-  // if it does not, and if the user account is not already known and with access to the requested service name, then the token should be denied
-  // if this does happen, then an account request for the specified service should probably be generated somehow
-  var opts = API.accounts.service(loc);
-  if (!opts) return {};
-  API.log(email + ' token request via API');
-  opts.logincode = generate_random_code(Meteor.settings.LOGIN_CODE_LENGTH);
-  var loginhash = generate_random_code();
-  if (opts.loginurl === undefined) opts.loginurl = loc;
-  opts.loginurl += "#" + loginhash;
-  var until = (new Date()).valueOf() + (opts.timeout * 60 * 1000);
-  opts.timeout = opts.timeout >= 60 ? (opts.timeout/60) + ' hour(s)' : opts.timeout + ' minute(s)';
-  var user = API.accounts.retrieve(email);
-  opts.action = user && API.accounts.auth(opts.service+'.'+opts.role,user) ? "login" : "registration";
-  API.log(opts);
-
-  if (opts.action === "registration" && !opts.registration) {
-    // TODO could register a registration request somehow, and then email whoever should be in charge of those for this service
-    // should be a group role request, which should trigger a request email which should have an allow/deny link
-    return { known:(user !== undefined), registration:opts.registration };
+API.accounts.xsrf = function(uacc,xsrf) {
+  if (xsrf) {
+    var match = uacc.security.xsrf === xsrf;
+    Users.update(uacc._id, {$set:{'security.xsrf':undefined}});
+    return match;
   } else {
-    var known = false;
-    if (user) {
-      known = true;
-      // check the user has a user role in this service, otherwise give it to them
-      if (opts.action === "registration" && !API.accounts.auth(opts.service+'.'+opts.role,user)) {
-        API.accounts.addrole(user._id,opts.service,opts.role);
-      }
-      if (fingerprint) API.accounts.fingerprint(user._id,fingerprint);
-    } else {
-      if (!opts.role) opts.role = 'user';
-      user = API.accounts.register({email:email,service:opts,fingerprint:fingerprint});
-    }
-    
-    var up = {email:email,code:opts.logincode,hash:loginhash,timeout:until,service:opts.service};
-    if ( fingerprint ) up.fp = fingerprint;
-    loginCodes.upsert({email:email},up);
-    
-    var snd = {from: opts.from, to: email}
-    if (opts.template) {
-      snd.template = {filename:opts.template,service:opts.service};
-      snd.vars = {
-        useremail:email,
-        loginurl:opts.loginurl,
-        logincode:opts.logincode
-      };
-    } else {
-      snd.subject = template(opts.subject,opts);
-      snd.text = template(opts.text,opts);
-      snd.html = template(opts.html,opts);
-    }
-    var sent;
-    try {
-      // try / catch on this lets things continue if say on dev the email is disabled
-      snd.post = true;
-      if (snd.post && Meteor.settings[opts.service] && Meteor.settings[opts.service].mail_service && Meteor.settings[opts.service].mail_apikey) {
-        snd.mail_service = Meteor.settings[opts.service].mail_service;
-        snd.mail_apikey = Meteor.settings[opts.service].mail_apikey;
-      } else if (snd.post && Meteor.settings.MAIL_SERVICE && Meteor.settings.MAIL_APIKEY) {
-        snd.mail_service = Meteor.settings.MAIL_SERVICE;
-        snd.mail_apikey = Meteor.settings.MAIL_APIKEY;
-      } else {
-        snd.post = false;
-      }
-      sent = API.mail.send(snd,Meteor.settings.service_mail_urls[opts.service]);
-      API.log(sent)
-    } catch(err) {}
-
-    var future = new Future(); // a delay here helps stop spamming of the login mechanisms
-    setTimeout(function() { future.return(); }, 333);
-    future.wait();
-    var mid = sent && sent.data && sent.data.id ? sent.data.id : undefined;
-    return { known:known, mid: mid };
+    // for actions that can edit data or execute dangerous things, the frontend can ask for an xsrf nonce first
+    // the nonce should then be returned with the data change
+    xsrf = Random.hexstring(30);
+    Users.update(uacc._id, {$set:{'security.xsrf':API.accounts.hash(xsrf)}});
+    return {xsrf:xsrf};
   }
 }
 
-API.accounts.login = function(email,loc,token,hash,fingerprint,resume,timestamp,request) {
-  var opts = API.accounts.service(loc);
+API.accounts.token = function(email,url,service,fingerprint) {
+  var opts = API.settings.service[service].accounts;
   if (!opts) return {};
-  // given an email address or token or hash, plus a fingerprint, login the user
-  API.log("API login for email address: " + email + " at location " + loc + " - with token: " + token + " or hash: " + hash + " or fingerprint: " + fingerprint + " or resume " + resume + " and timestamp " + timestamp);
-  loginCodes.remove({ timeout: { $lt: (new Date()).valueOf() } }); // remove old logincodes
-  var loginCode;
-  var user;
-  if (token !== undefined && email !== undefined) loginCode = loginCodes.findOne({email:email,code:token});
-  if (!loginCode && fingerprint !== undefined && email !== undefined) loginCode = loginCodes.findOne( { $and: [ { email:email, fp:fingerprint } ] } );
-  if (!loginCode && hash !== undefined && fingerprint !== undefined) loginCode = loginCodes.findOne( { $and: [ { hash:hash, fp:fingerprint } ] } );
-  if (!loginCode && hash !== undefined) loginCode = loginCodes.findOne({hash:hash});
-  if (!loginCode && email !== undefined && resume !== undefined && timestamp !== undefined) {
-    API.log('searching for login for user email via timestamped resume token');
-    user = Users.findOne({'emails.address':email,'security.resume.token':resume,'security.resume.timestamp':timestamp});
+  opts.email = email;
+  opts._id = email;
+  opts.service = service;
+  opts.fingerprint = fingerprint;
+  var token = generate_random_code(7);
+  opts.token = API.accounts.hash(token);
+  var hash = Random.hexString(30);
+  opts.hash = API.accounts.hash(hash);
+  if (opts.url === undefined) opts.url = url;
+  opts.url += "#" + hash;
+  opts.timeout = (new Date()).valueOf() + ( (opts.timeout !== undefined ? opts.timeout : 30) * 60 * 1000 )
+  loginCodes.insert(opts);
+
+  var snd = {from: opts.from, to: email}
+  if (opts.template) {
+    snd.template = {filename:opts.template,service:opts.service};
+    snd.vars = {
+      useremail:email,
+      loginurl:opts.url,
+      logincode:token
+    };
+  } else {
+    snd.subject = opts.subject;
+    var re = new RegExp('\{\{LOGINCODE\}\}','g');
+    snd.text = snd.text.replace(re,token);
+    snd.html = snd.html.replace(re,token);
+    var ure = new RegExp('\{\{LOGINURL\}\}','g');
+    snd.text = snd.text.replace(ure,opts.url);
+    snd.html = snd.html.replace(ure,opts.url);
   }
-  // TODO could also check by email and fingerprint if both present - but fingerprint on its own is far too weak
-  // any site can generate the fingerprint and then guess the email address
+  var sent;
+  try { // try / catch on this lets things continue if say on dev the email is disabled
+    snd.service = service;
+    sent = API.mail.send(snd);
+  } catch(err) {}
+
   var future = new Future(); // a delay here helps stop spamming of the login mechanisms
   setTimeout(function() { future.return(); }, 333);
   future.wait();
-  if (loginCode || user) {
-    if (email === undefined && loginCode) email = loginCode.email;
-    if (fingerprint === undefined && loginCode && loginCode.fingerprint) fingerprint = loginCode.fingerprint;
-    if (loginCode) loginCodes.remove({email:email}); // login only gets one chance
-    if (!user) {
-      API.accounts.register({email:email,fingerprint:fingerprint,service:{service:loginCode.service}});
-      user = API.accounts.retrieve(email);
+  return { known:known, mid: (sent && sent.data && sent.data.id ? sent.data.id : undefined) };
+}
+
+API.accounts.login = function(email,token,hash,fingerprint,request) {
+  loginCodes.remove({ timeout: { $lt: (new Date()).valueOf() } }); // remove old logincodes
+  var future = new Future(); // a delay here helps stop spamming of the login mechanisms
+  setTimeout(function() { future.return(); }, 333);
+  future.wait();
+  var loginCode = hash ? loginCodes.find({hash:API.accounts.hash(hash)}) : loginCodes.find({email:email,token:API.accounts.hash(token)}); // could restrict to same fingerprint device if desired
+  if (loginCode) {
+    if (email === undefined) email = loginCode.email;
+    loginCodes.remove({email:email}); // login only gets one chance
+    var user = API.accounts.retrieve(email);
+    if (!user) user = API.accounts.create(email);
+    if (fingerprint) API.accounts.fingerprint(user,fingerprint);
+    if (!API.accounts.auth(loginCode.service+'.user',user)) API.accounts.addrole(user._id,loginCode.service,'user');
+    if (request && API.settings.log.root && user.roles && user.roles.__global_roles__ && user.roles.__global_roles__.indexOf('root') !== -1) {
+      var sb = 'root user login from ' + request.headers['x-real-ip'];
+      API.log({msg:sb,notify:{subject:sb, text: 'root user logged in\n\n' + user._id + '\n\n' + loc + '\n\n' + request.headers['x-real-ip'] + '\n\n' + request.headers['x-forwarded-for'] + '\n\n'}});
     }
-    if (Meteor.settings.ROOT_LOGIN_WARN && user.roles && user.roles.__global_roles__ && user.roles.__global_roles__.indexOf('root') !== -1) {
-      API.log('root user logged in ' + user._id);
-      if (!Meteor.settings.dev) {
-        var from = 'alert@cottagelabs.com';
-        var xf = request.headers['x-forwarded-for'];
-        var xr = request.headers['x-real-ip'];
-        var subject = 'root account login ' + xr;
-        API.mail.send({from: from, to:'mark@cottagelabs.com',subject:subject,text:'root user logged in\n\n' + user._id + '\n\n' + loc + '\n\n' + xr + '\n\n' + xf + '\n\n'});
-      }
-    }
-    // generating new resume tokens every time was always going to push quite a load to the db, 
-    // but it also seems impossible to reliably implement, due to what appears to be browser prefetching
-    // so for now only create new ones on first login attempt, otherwise just pass the same ones back
-    // can implement a resume timeout length here too, if timestamp is too old, throw it away
-    var newresume = resume ? resume : generate_random_code();
-    var newtimestamp = timestamp ? timestamp : Date.now();
-    if (newresume !== resume) Users.update(user._id, {$set: {'security.resume':{token:newresume,timestamp:newtimestamp}}});
-    var service = {};
-    if ( user.service[opts.service] ) {
-      service[opts.service] = {};
-      if (user.service[opts.service].profile) service[opts.service].profile = user.service[opts.service].profile;
-      // which service info can be returned to the user account?
-      // TODO should probably have public and private sections, for now has profile section, 
-      // which can definitely be shared whereas nothing else cannot. Maybe that will do.      
-    }
-    //API.log('accounts login returning successfully');
-    var username = user.username ? user.username : user.emails[0].address;
+    var resume = Random.hexString(30);
+    var ts = Date.now();
+    Users.update(user._id, {$set: {'security.resume':{token:resume,timestamp:ts}}});
     return {
-      status:'success', 
-      data: {
-        apikey: user.api.keys[0].key,
-        account: {
-          _id:user._id,
-          username:user.username,
-          profile:user.profile,
-          roles:user.roles,
-          service:service
-        },
-        cookie: {
-          email:email,
-          userId:user._id,
-          username:username,
-          roles:user.roles,
-          timestamp:newtimestamp,
-          domain:opts.domain,
-          url:loc,
-          domain: opts.domain,
-          resume: newresume
-        },
-        settings: {
-          path:'/',
-          domain: opts.domain,
-          expires: Meteor.settings.public.loginState.maxage,
-          httponly: Meteor.settings.public.loginState.HTTPONLY_COOKIES,
-          secure: opts.secure !== undefined ? opts.secure : Meteor.settings.public.loginState.SECURE_COOKIES
-        }
+      apikey: user.api.keys[0].key,
+      account: {
+        email:email,
+        _id:user._id,
+        username:(user.username ? user.username : user.emails[0].address),
+        profile:user.profile,
+        roles:user.roles,
+        serviceProfile:(user.service && user.service[loginCode.service] ? user.service[loginCode.service].profile : {})
+      },
+      settings: {
+        timestamp:ts,
+        resume: resume,
+        path:'/',
+        domain: loginCode.domain,
+        expires: (API.settings.cookie.expires !== undefined ? API.settings.cookie.expires : 60),
+        httponly: (API.settings.cookie.httponly !== undefined ? API.settings.cookie.httponly : false),
+        secure: loginCode.secure !== undefined ? loginCode.secure : API.settings.cookie.secure
       }
     }
   } else {
-    //API.log('returning accounts login false');
     return {statusCode: 401, body: {status: 'error', data:'401 unauthorized'}}
   }
 }
 
-API.accounts.logout = function(email,resume,timestamp,loc) {
-  if ( login_services[loc] === undefined) {
-    API.log('BAD LOGOUT ATTEMPT FROM ' + loc);
-    return {}; // should not be logging in from a page we don't set as being able to provide login functionality. Say nothing, no explanation. Worth sending a sysadmin email?
-  }
+API.accounts.logout = function(val) {
   // may want an option to logout of all sessions...
-  if (email !== undefined && resume !== undefined && timestamp !== undefined) {
-    var user = Users.findOne({'emails.address':email,'security.resume.token':resume,'security.resume.timestamp':timestamp});
-    if (user) {
-      var opts = {};
-      for ( var o in login_services.default ) opts[o] = login_services.default[o];
-      for ( var k in login_services[loc] ) opts[k] = login_services[loc][k];
-      Users.update(user._id, {$set: {'security.resume':{}}}); // TODO what else could be thrown away here? resume tokens?
-      return {status:'success',data:{domain:opts.domain}} // so far this is all that is needed to clear the user login cookie
-    } else {
-      return {statusCode: 401, body: {status: 'error', data:'401 unauthorized'}}
-    }
+  var user = API.accounts.retrieve(val);
+  if (user) {
+    Users.update(user._id, {$set: {'security.resume':{}}});
+    return true;
   } else {
     return {statusCode: 401, body: {status: 'error', data:'401 unauthorized'}}
   }
 }
 
-
-API.accounts.create = function(data) {
-  if (JSON.stringify(data).indexOf('<script') !== -1) return false; // naughty catcher
-  if (data.email === undefined) throw new Error('At least email field required');
-  if (data.password === undefined) data.password = Random.hexString(30);
-  var userId = Accounts.createUser({email:data.email,password:data.password});
-  API.log("CREATED userId = " + userId);
-  // create a group for this user, that they own?
-  if (data.apikey === undefined) data.apikey = Random.hexString(30);
-  // need checks for profile data, service data, and other special fields in the incoming data
-  var sets = {
-    profile: data.profile ? data.profile : {}, // profile data, all of which can be changed by the user
-    devices: data.devices ? data.devices : {}, // user devices associated by device fingerprint
-    security: data.security ? data.security : {}, // user devices associated by device fingerprint
+API.accounts.create = function(email) {
+  if (JSON.stringify(email).indexOf('<script') !== -1 || email.indexOf('@') === -1) return false; // naughty catcher
+  var password = Random.hexString(30);
+  var apikey = Random.hexString(30);
+  var uacc = Users.insert({
+    email:email,
+    password:password,
+    profile: {}, // profile data, all of which can be changed by the user
+    devices: {}, // user devices associated by device fingerprint
+    security: {},
     service: {}, // services identified by service name, which can be changed by those in control of the service
-    api: {
-      keys: [
-        {
-          key: data.apikey, 
-          hashedToken: API.accounts.hash(data.apikey), 
-          name: 'default'
-        }
-      ] 
-    }, 
-    'emails.0.verified': true
-  }
-  if (data.username) sets.username = data.username;
-  if (data.service) {
-    for ( var s in data.service ) {
-      if ( data.service[s].role ) {
-        API.accounts.addrole(userId, s, data.service[s].role);
-        delete data.service[s].role;
+    api: { keys: [ { key: apikey, hashedToken: API.accounts.hash(apikey), name: 'default' } ] },
+    emails: [
+      {
+        address: email,
+        verified: true
       }
-      sets.service[s] = data.service[s];
-    }
-  }
-  Users.update(userId, {$set: sets});
-  if ( Users.count() === 1 ) API.accounts.addrole(userId, '__global_roles__', 'root');
-  return {_id:userId,password:data.password,apikey:data.apikey};
+    ]
+  });
+  API.log("Created userId = " + uacc._id);
+  // create a group for this user, that they own?
+  if ( Users.count() === 1 ) API.accounts.addrole(uacc._id, '__global_roles__', 'root');
+  return {_id:uacc._id,password:password,apikey:apikey};
 }
 
-API.accounts.retrieve = function(uid) {
+API.accounts.retrieve = function(val) {
   // finds and returns the full user account - NOT what should be returned to a user
-  var u = Users.findOne(uid);
-  if (!u) u = Users.findOne({username:uid});
-  if (!u) u = Users.findOne({'emails.address':uid});
-  if (!u) u = Users.findOne({'api.keys.key':uid});
-  return u;
+  return Users.find('_id.exact:"' + val + '" OR username.exact:"' + val + '" OR emails.address.exact:"' + val + '" OR api.keys.key.exact:"' + val + '"');
 }
 
 API.accounts.details = function(uid,user) {
@@ -655,6 +492,14 @@ API.accounts.addrole = function(uid,group,role,uacc) {
   if (uacc.roles[group].indexOf(role) === -1) uacc.roles[group].push(role);
   var set = {};
   set['roles.'+group] = uacc.roles[group];
+  if ( API.settings.service[group] ) {
+    if (uacc.service === undefined) {
+      set.service = {};
+      set.service[group] = {profile:{}};
+    } else if (uacc.service[group] === undefined) {
+      set['service.'+group] = {profile:{}};
+    }
+  }
   Users.update(uacc._id,{$set:set});
   return {status: 'success'};
 }
@@ -678,7 +523,7 @@ API.accounts.removerole = function(uid,group,role,uacc) {
 
 
 API.accounts.hash = function(token) {
-  return token; // TODO need to be a function that hashes what is provided, to be matched against a stored hash
-  // to replace Accounts._hashLoginToken
-  // although so far only needed if /login and /logout routes are used in restivus.coffee, which so far they are not
+  var hash = crypto.createHash('sha256');
+  hash.update(token);
+  return hash.digest('base64');
 }

@@ -60,9 +60,7 @@ API.addRoute('mail/test', {
 API.mail = {}
 
 API.mail.send = function(opts,mail_url) {
-  if ( !opts.from ) opts.from = API.settings.log.from;
-  if ( !opts.to ) opts.to = API.settings.log.to; // also takes cc, bcc, replyTo, but not required. Can be strings or lists of strings
-  if ( !opts.subject ) opts.subject = 'MAIL SENT WITHOUT SUBJECT!';
+  // also takes cc, bcc, replyTo, but not required. Can be strings or lists of strings
   
   if (opts.template) {
     var parts = API.mail.construct(opts.template,opts.vars);
@@ -72,27 +70,28 @@ API.mail.send = function(opts,mail_url) {
   // TODO what if list of emails to go with list of records?
   
   if ( !opts.text && !opts.html ) opts.text = opts.content ? opts.content : "";
-  if (opts.content) delete opts.content;
+  delete opts.content;
   
   // can also take opts.headers
   // also takes opts.attachments, but not required. Should be a list of objects as per 
   // https://github.com/nodemailer/mailcomposer/blob/7c0422b2de2dc61a60ba27cfa3353472f662aeb5/README.md#add-attachments
-  
-  if (opts.smtp || opts.attachments !== undefined) {
+
+  var ms = opts.service ? API.settings.service[opts.service].mail : API.settings.mail;
+  delete opts.service;
+  if (!opts.from) opts.from = ms.from;
+  if (!opts.to) opts.to = ms.to;
+
+  if (opts.smtp || opts.attachments !== undefined || ms.domain === undefined) {
     delete opts.smtp;
+    if (mail_url === undefined && ms.url) mail_url = ms.url;
     process.env.MAIL_URL = mail_url ? mail_url : API.settings.mail.url;
     API.log({msg:'Sending mail via mailgun SMTP',mail:opts});
     Email.send(opts);
     if (mail_url) process.env.MAIL_URL = API.settings.mail.url;
     return {};
   } else {
-    var mailapi = 'https://api.mailgun.net/v3';
-    var ms = opts.service ? API.settings.service[opts.service].mail : API.settings.mail;
-    var url = mailapi + '/' + ms.domain + '/messages';
-    delete opts.domain;
+    var url = 'https://api.mailgun.net/v3/' + ms.domain + '/messages';
     if (typeof opts.to === 'object') opts.to = opts.to.join(',');
-    if (!opts.from) opts.from = ms.from;
-    if (!opts.to) opts.to = ms.to;
     API.log({msg:'Sending mail via mailgun API',mail:opts,url:url});
     try {
       var posted = HTTP.call('POST',url,{params:opts,auth:'api:'+ms.apikey});
@@ -119,17 +118,22 @@ API.mail.validate = function(email,apikey) {
 }
 
 API.mail.test = function() {
-  return API.mail.send({
-    from: Meteor.settings.mail.from,
-    to: Meteor.settings.mail.to,
-    subject: 'Test me via default POST',
-    text: "hello",
-    html: '<p><b>hello</b></p>'
-    /*attachments:[{
-      fileName: 'myfile.txt',
-      filePath: '/home/cloo/att_test.txt'
-    }]*/
-  });
+  try {
+    var res = API.mail.send({
+      from: Meteor.settings.mail.from,
+      to: Meteor.settings.mail.to,
+      subject: 'Test me via default POST',
+      text: "hello",
+      html: '<p><b>hello</b></p>'
+      /*attachments:[{
+        fileName: 'myfile.txt',
+        filePath: '/home/cloo/att_test.txt'
+      }]*/
+    });
+    return {passed: res.statusCode === 200 && res.data.message.indexOf('Queued') !== -1};
+  } catch(err) {
+    return {passed: false};
+  }
 }
 
 // mailgun progress webhook target
@@ -138,10 +142,10 @@ API.mail.test = function() {
 API.mail.progress = function(content,token) {
   // could do a token check here
   // could delete mail logs older than 1 week or so
-  // if a failure event, notify someone
   if (content['message-id'] !== undefined && content['Message-Id'] === undefined) content['Message-Id'] = '<' + content['message-id'] + '>';
   mail_progress.insert(content);
   try {
+    // if a failure event, notify someone
     if (content.event === 'dropped') {
       var obj = {msg:'Mail service dropped email',error:JSON.stringify(content,undefined,2),notify:{msg:JSON.stringify(content,undefined,2),subject:'Mail service dropped email'}};
       if (content.domain !== API.settings.mail.domain) {

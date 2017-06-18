@@ -1,4 +1,5 @@
 
+import crypto from 'crypto';
 import Future from 'fibers/future';
 import moment from 'moment';
 import fs from 'fs';
@@ -16,29 +17,15 @@ API = new Restivus({
     token: 'api.keys.key', // should perhaps be hashedToken and change below to pass a hashed value instead
     user: function () {
       var u;
-      var xid = this.request.headers['x-id'];
-      if ( !xid ) xid = this.request.query.id;
-      if ( !xid && this.request.query.email ) {
-        u = API.accounts.retrieve(this.request.query.email);
+      var xid = this.request.headers['x-id'] ? this.request.headers['x-id'] : this.request.query.id;
+      if ( !xid && ( this.request.query.email || this.request.query.username ) ) {
+        u = API.accounts.retrieve( ( this.request.query.email ? this.request.query.email : this.request.query.username ) );
         if (u) xid = u._id;
       }
-      if ( !xid && this.request.query.username ) {
-        u = API.accounts.retrieve(this.request.query.username);
-        if (u) xid = u._id;
-      }
-      var xapikey = this.request.headers['x-apikey'];
-      if ( !xapikey && this.request.query.apikey ) {
-        xapikey = this.request.query.apikey;
-      } else if ( !xapikey && this.request.query.api_key ) {
-        xapikey = this.request.query.api_key;
-      } else if ( !xapikey && this.request.body.apikey ) {
-        xapikey = this.request.body.apikey;
-      } else if ( !xapikey && this.request.body.api_key ) {
-        xapikey = this.request.body.api_key;
-      }
+      var xapikey = this.request.headers['x-apikey'] ? this.request.headers['x-apikey'] : this.request.query.apikey;
       if ( xid === undefined && xapikey ) {
         u = API.accounts.retrieve(xapikey);
-        if(u) xid = u._id;
+        if (u) xid = u._id;
       }
 
       if (!xid && this.request.headers.cookie && API.settings.cookie && API.settings.cookie.name) {
@@ -54,32 +41,25 @@ API = new Restivus({
             }
             return "";
           }()));
-          u = Users.findOne({'emails.address':cookie.email,'security.resume.token':API.accounts.hash(cookie.resume),'security.resume.timestamp':cookie.timestamp});
-          if (u) {
-            API.log({msg:'User authenticated by cookie with timestamped resume token'});
-          } else {
-            u = Users.findOne({'emails.address':cookie.email,'security.fingerprint':cookie.fp,'security.resume.timestamp':cookie.timestamp});          
-            if (u) API.log({msg:'User authenticated by cookie with timestamp and fingerprint'});
-          }
+          u = Users.findOne({'emails.address':cookie.email,'security.resume.token':API.accounts.hash(cookie.resume),'security.resume.timestamp':API.accounts.hash(cookie.timestamp)});
           if (u) {
             xid = u._id;
             xapikey = u.api.keys[0].key;
-          } else {
-            API.log({msg:'POTENTIAL COOKIE THEFT!!! ' + cookie.userId,notify:true});
           }
         } catch(err) {}
       }
       
       if ( xid === undefined ) xid = '';
       if ( xapikey === undefined ) xapikey = '';
-      if (xid) API.log({msg:'user ' + xid + ' authenticated to API with key ' + xapikey});
-      if (!API.settings.dev && u && u.roles && u.roles.__global_roles__ && u.roles.__global_roles__.indexOf('root') !== -1) {
+      if (API.settings.log.root && u && u.roles && u.roles.__global_roles__ && u.roles.__global_roles__.indexOf('root') !== -1) {
         API.log({
           msg:'root user ' + xid + ' logged in to ' + this.request.url + ' from ' + this.request.headers['x-forwarded-for'] + ' ' + this.request.headers['x-real-ip'],
           notify: {
             subject: 'API root login ' + this.request.headers['x-real-ip']
           }
         });
+      } else if (xid) {
+        API.log({msg:'user ' + xid + ' authenticated to API with key ' + xapikey});
       }
       return {
         userId: xid,
@@ -143,10 +123,8 @@ API.log = function(opts) {
                 if (opts.notify.disabled) {
                   opts.notify = false;
                 } else {
-                  for ( var mn in opts.notify ) {
-                    if (mn !== 'service' && mn !== 'notify') on[mn] = opts.notify[mn];
-                  }
-                  opts.notify = on;
+                  for ( var mn in on ) df[mn] = on[mn];
+                  opts.notify = df;
                 }                
               }
             }

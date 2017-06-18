@@ -32,7 +32,7 @@ API.collection.prototype.insert = function (obj) {
 API.collection.prototype.update = function (obj) {
   var doc = API.es.call('GET',this._route + obj._id);
   // TODO need error out if not found, or merge in the dot noted obj updates
-  doc.updateAt = Date.now();
+  doc.updatedAt = Date.now();
   doc.updated_date = moment(obj.createdAt,"x").format("YYYY-MM-DD HHmm");
   return API.es.call('POST',this._route + doc._id, doc);
 };
@@ -72,9 +72,9 @@ API.collection.prototype.find = function(q,opts) {
   // TODO build an ES query out of the possible incoming mongo queries
   // TODO handle options as well, like sort etc
   try {
-    return API.es.call('POST',this._route,qry).hits.hits[0];
+    return API.es.call('POST',this._route,qry).hits.hits[0]._source;
   } catch(err) {
-    return [];
+    return false;
   }
 }
 

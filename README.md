@@ -62,6 +62,9 @@ then those settings will be used. Finally notify can just point to a mail config
 
 ## Services
 
+A service is a set of API endpoints that serve a specific purpose, such as the API of a website. This is a useful way of encapsulating 
+a set of functionality.
+
 Any specific services that are required should be written in the server/service directory. If they exist there, and if they need 
 specific config, then their config should be provided in settings.json in an object named with the service name. See some service 
 examples for how this works in general.
@@ -74,6 +77,10 @@ service.servicename.mail.notify.notifyname object to retrieve mail settings such
 configured via settings rather than code editing. If a relevant notify object does not exist, the default mail settings for the 
 service will be used instead (and this defaults to the default mail settings for the API if there is no service mail config. 
 These notifications can also be conveniently turned off by including the disabled key within the notify object, and setting it to true.
+
+The API.mail system will provide a notification email whenever an attempt to send an email fails - this is called a "dropped" 
+notification. It will try to do this by matching the mail.domain to that of the mail config of any configured service. If there is a 
+notify section, then it will also look for any specific settings in the notify.dropped object, if it exists.
 
 
 ## Externals
