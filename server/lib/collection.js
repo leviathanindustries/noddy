@@ -56,7 +56,7 @@ API.collection.prototype.update = function (qry,obj,refresh) {
       upd[last] = obj[k];
     }
     doc.updatedAt = Date.now();
-    doc.updated_date = moment(obj.createdAt,"x").format("YYYY-MM-DD HHmm");
+    doc.updated_date = moment(doc.updatedAt,"x").format("YYYY-MM-DD HHmm");
     API.es.call('POST',rt + doc._id, doc, refresh);
     return doc;
   }
