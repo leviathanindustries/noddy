@@ -34,7 +34,7 @@ API.collection.prototype.insert = function (uid,obj,refresh) {
     obj.created_date = moment(obj.createdAt,"x").format("YYYY-MM-DD HHmm");
   }
   var r = this._route;
-  if (!obj._id) obj._id = Random.id;
+  if (!obj._id) obj._id = Random.id();
   r += obj._id;
   return API.es.call('POST',r, obj,refresh);
 };
