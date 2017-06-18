@@ -200,6 +200,12 @@ API.collection.test = function() {
   result.passed = result.remove2 === 2;
   result.remaining = tc.count();
   result.passed = result.remaining === 1;
+  result.removeLast = tc.remove(2);
+  result.passed = result.removeLast = true;
+  future = new Future();
+  setTimeout(function() { future.return(); }, 999);
+  future.wait();
+  result.passed = tc.count() === 0;
   return result;
 }
 
