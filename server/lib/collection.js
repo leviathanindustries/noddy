@@ -145,7 +145,6 @@ API.collection.prototype.each = function(q,fn) {
 
 
 API.collection.test = function() {
-  var future = new Future();
   var result = {passed:true};
   var tc = new API.collection({index:API.settings.es.index + '_test',type:'collection'});
   var recs = [
@@ -156,6 +155,7 @@ API.collection.test = function() {
   ];
   result.recs = recs;
   for ( var r in recs ) tc.insert(recs[r]);
+  var future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
   result.count = tc.count();
@@ -176,18 +176,21 @@ API.collection.test = function() {
   result.each = tc.each('goodbye:"marianne"',function() { return; });
   result.passed = result.each === 2;
   result.update = tc.update({hello:'world'},{goodbye:'world'});
+  future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
   result.passed = typeof result.update === 'object' && result.update.goodbye === 'world';
   result.goodbyes = tc.count('goodbye:world');
   result.passed = result.goodbyes === 3;
   result.remove1 = tc.remove(1);
+  future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
   result.passed = result.remove1 === true;
   result.helloWorlds = tc.count({hello:'world'});
   result.passed = result.helloWorlds === 0;
   result.remove2 = tc.remove({hello:'sunshine'});
+  future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
   result.passed = result.remove2 === 2;
