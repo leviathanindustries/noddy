@@ -1,6 +1,7 @@
 
 import Future from 'fibers/future';
 import moment from 'moment';
+import { Random } from 'meteor/random';
 
 // worth extending mongo.collection, or just not use it?
 // https://stackoverflow.com/questions/34979661/extending-mongo-collection-breaks-find-method
@@ -33,7 +34,8 @@ API.collection.prototype.insert = function (uid,obj,refresh) {
     obj.created_date = moment(obj.createdAt,"x").format("YYYY-MM-DD HHmm");
   }
   var r = this._route;
-  if (obj._id) r += obj._id;
+  if (!obj._id) obj._id = Random.id;
+  r += obj._id;
   return API.es.call('POST',r, obj,refresh);
 };
 
