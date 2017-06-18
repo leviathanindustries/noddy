@@ -112,7 +112,7 @@ API.collection.prototype.count = function(qry,qp,find) {
 }
 
 API.collection.prototype.find = function(q) {
-  if (typeof q === 'number' || ( typeof q === 'string' && qry.indexOf(' ') === -1 ) ) {
+  if (typeof q === 'number' || ( typeof q === 'string' && q.indexOf(' ') === -1 ) ) {
     var check = API.es.call('GET',this._route + q);
     if (check.found !== false) return check._source;
   }
