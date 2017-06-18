@@ -3,10 +3,6 @@
 // https://stackoverflow.com/questions/34979661/extending-mongo-collection-breaks-find-method
 // decided not to use it. If Mongo is desired in future, this collection object can be used to extend and wrap it
 
-var _parseFind = function(str) {
-  
-}
-
 API.collection = function (opts) {
   if (typeof opts === 'string') opts = {type:opts};
   if (opts.index === undefined && opts.type !== undefined) opts.index = API.settings.es.index ? API.settings.es.index : (API.settings.name ? API.settings.name : 'noddy');

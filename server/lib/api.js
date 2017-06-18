@@ -156,7 +156,7 @@ API.addRoute('/', {
   }
 });
 
-API.addRoute('/test', {
+API.addRoute('test', {
   get: {
     //roleRequired: 'root',
     action: function() {
