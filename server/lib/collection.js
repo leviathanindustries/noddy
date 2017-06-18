@@ -173,14 +173,16 @@ API.collection.test = function() {
   result.passed = typeof result.objFind === 'object';
   result.objFindMulti = tc.find({goodbye:'world'});
   result.passed = typeof result.objFindMulti === 'object';
-  result.each = tc.each('goodbye:"marianne"',function() { return; });
+  result.each = tc.each('goodbye:"world"',function() { return; });
   result.passed = result.each === 2;
   result.update = tc.update({hello:'world'},{goodbye:'world'});
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
   result.passed = typeof result.update === 'object' && result.update.goodbye === 'world';
-  result.goodbyes = tc.count('goodbye:world');
+  result.retrieveUpdated = tc.find({hello:'world'});
+  result.passed = typeof result.retrieveUpdated === 'object' && result.retrieveUpdated.goodbye === 'world';
+  result.goodbyes = tc.count('goodbye:"world"');
   result.passed = result.goodbyes === 3;
   result.remove1 = tc.remove(1);
   future = new Future();
