@@ -119,7 +119,7 @@ API.collection.prototype.count = function(qry,qp,find) {
 API.collection.prototype.find = function(q) {
   if (typeof q === 'number' || ( typeof q === 'string' && q.indexOf(' ') === -1 ) ) {
     var check = API.es.call('GET',this._route + q);
-    if (check.found !== false) return check._source;
+    if ( check.found !== false && check.status !== 'error' && check.statusCode !== 404 && check._source ) return check._source;
   }
   try {
     var res = this.search(undefined,undefined,q).hits.hits[0];
@@ -199,7 +199,7 @@ API.collection.test = function() {
   future.wait();
   result.passed = result.remove2 === 2;
   result.remaining = tc.count();
-  result.passed = result.remaining === 2;
+  result.passed = result.remaining === 1;
   return result;
 }
 

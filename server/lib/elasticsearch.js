@@ -184,7 +184,7 @@ API.es.call = function(action,route,data,refresh,url) {
     console.log(action);
     console.log(url+route);
     console.log(opts);
-    ret = {info: 'the call to es returned an error, but that may not necessarily be bad', err:err}
+    ret = {status:'error', statusCode: err.response.statusCode, info: 'the call to es returned an error, but that may not necessarily be bad', err:err}
   }
   return ret;
 }
