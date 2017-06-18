@@ -44,6 +44,7 @@ API.collection.prototype.update = function (qry,obj,refresh) {
     if (check.found !== false) rec = check;
   }
   delete obj._id; // just in case, can't replace the object ID.
+  var rt = this._route;
   var update = function(doc) {
     for ( var k in obj ) {
       var upd = doc;
@@ -54,7 +55,7 @@ API.collection.prototype.update = function (qry,obj,refresh) {
     }
     doc.updatedAt = Date.now();
     doc.updated_date = moment(obj.createdAt,"x").format("YYYY-MM-DD HHmm");
-    API.es.call('POST',this._route + qry, doc, refresh);
+    API.es.call('POST',rt + qry, doc, refresh);
     return doc;
   }
   if (rec) {
