@@ -157,7 +157,7 @@ API.addRoute('/', {
   }
 });
 
-API.test = function(trigger) {
+API.test = function(trigger,verbose) {
   var tests = {passed:true,trigger:trigger};
   // could add an elasticsearch test, but a collection test won't succeed unless ES succeeds anyway
   if (API.collection && API.collection.test) {
@@ -186,6 +186,11 @@ API.test = function(trigger) {
   }
   var notify = tests.passed ? undefined : {msg:JSON.stringify(tests,undefined,2)};
   API.log({msg:'Completed testing',tests:tests,notify:notify});
+  if (!verbose) {
+    for ( var t in tests ) {
+      if (tests[t].passed) tests[t] = {passed:true};
+    }
+  }
   return tests;
 }
 
@@ -193,7 +198,7 @@ API.addRoute('test', {
   get: {
     //roleRequired: 'root',
     action: function() {
-      return API.test('API');
+      return API.test('API',this.queryParams.verbose);
     }
   }
 });
