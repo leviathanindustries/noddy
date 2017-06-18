@@ -52,7 +52,7 @@ if (!API.settings.es) {
   }
 }
 
-API.es.action = function(uid,action,urlp,params,data) {
+API.es.action = function(uid,action,urlp,params,data,refresh) {
   var rt = '';
   for ( var up in urlp ) rt += '/' + urlp[up];
   if (params) {
@@ -85,7 +85,7 @@ API.es.action = function(uid,action,urlp,params,data) {
     }
   }
   if (allowed) {
-    return API.es.call(action,rt,data);
+    return API.es.call(action,rt,data,refresh);
   } else {
     return {statusCode:401,body:{status:"error",message:"401 unauthorized"}}
   }
@@ -137,7 +137,7 @@ API.es.map = function(index,type,mapping,url) {
   }
 }
 
-API.es.call = function(action,route,data,url) {
+API.es.call = function(action,route,data,refresh,url) {
   if (url === undefined) url = API.settings.es.url;
   if (route.indexOf('/') !== 0) route = '/' + route;
   var routeparts = route.substring(1,route.length).split('/');
@@ -177,7 +177,7 @@ API.es.call = function(action,route,data,url) {
   var ret;
   try {
     ret = HTTP.call(action,url+route,opts).data;
-    if (action === 'POST' || action === 'PUT' && routeparts.length === 3) API.es.refresh('/' + routeparts[0] + '/' + routeparts[1],url);
+    if (refresh && action === 'POST' || action === 'PUT' && routeparts.length === 3) API.es.refresh('/' + routeparts[0] + '/' + routeparts[1],url);
   } catch(err) {
     // TODO check for various types of ES error - for some we may want retries, others may want to trigger specific log alerts
     console.log(err);

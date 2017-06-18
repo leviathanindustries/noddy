@@ -1,4 +1,5 @@
 
+import Future from 'fibers/future';
 import moment from 'moment';
 
 // worth extending mongo.collection, or just not use it?
@@ -21,7 +22,7 @@ API.collection.prototype.map = function (mapping) {
   return API.es.map(this._index,this._type,mapping); // would overwrite any existing mapping
 };
 
-API.collection.prototype.insert = function (uid,obj) {
+API.collection.prototype.insert = function (uid,obj,refresh) {
   if (typeof uid === 'string' && typeof obj === 'object') {
     obj._id = uid;
   } else if (typeof uid === 'object' && obj === undefined) {
@@ -33,10 +34,10 @@ API.collection.prototype.insert = function (uid,obj) {
   }
   var r = this._route;
   if (obj._id) r += obj._id;
-  return API.es.call('POST',r, obj);
+  return API.es.call('POST',r, obj,refresh);
 };
 
-API.collection.prototype.update = function (qry,obj) {
+API.collection.prototype.update = function (qry,obj,refresh) {
   var rec;
   if (typeof qry === 'string' && qry.indexOf(' ') === -1) {
     var check = API.es.call('GET',this._route + qry);
@@ -53,7 +54,7 @@ API.collection.prototype.update = function (qry,obj) {
     }
     doc.updatedAt = Date.now();
     doc.updated_date = moment(obj.createdAt,"x").format("YYYY-MM-DD HHmm");
-    API.es.call('POST',this._route + qry, doc);
+    API.es.call('POST',this._route + qry, doc, refresh);
     return doc;
   }
   if (rec) {
@@ -142,6 +143,7 @@ API.collection.prototype.each = function(q,fn) {
 
 
 API.collection.test = function() {
+  var future = new Future();
   var result = {passed:true};
   var tc = new API.collection({index:API.settings.es.index + '_test',type:'collection'});
   var recs = [
@@ -152,6 +154,8 @@ API.collection.test = function() {
   ];
   result.recs = recs;
   for ( var r in recs ) tc.insert(recs[r]);
+  setTimeout(function() { future.return(); }, 999);
+  future.wait();
   result.count = tc.count();
   result.passed = result.count === recs.length;
   result.search = tc.search();
@@ -170,14 +174,20 @@ API.collection.test = function() {
   result.each = tc.each('goodbye:"marianne"',function() { return; });
   result.passed = result.each === 2;
   result.update = tc.update({hello:'world'},{goodbye:'world'});
+  setTimeout(function() { future.return(); }, 999);
+  future.wait();
   result.passed = typeof result.update === 'object' && result.update.goodbye === 'world';
   result.goodbyes = tc.count('goodbye:world');
   result.passed = result.goodbyes === 3;
   result.remove1 = tc.remove(1);
+  setTimeout(function() { future.return(); }, 999);
+  future.wait();
   result.passed = result.remove1 === true;
   result.helloWorlds = tc.count({hello:'world'});
   result.passed = result.helloWorlds === 0;
   result.remove2 = tc.remove({hello:'sunshine'});
+  setTimeout(function() { future.return(); }, 999);
+  future.wait();
   result.passed = result.remove2 === 2;
   result.remaining = tc.count();
   result.passed = result.remaining === 2;
