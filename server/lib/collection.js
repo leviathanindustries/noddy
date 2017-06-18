@@ -93,7 +93,7 @@ API.collection.prototype.search = function(qry,qp,find) {
     var rt = this._route + '/_search?';
     for ( var op in qp ) rt += op + '=' + qp[op] + '&';
     var data;
-    if ( JSON.stringify(qry).length > 2 ) data = qry;
+    if ( qry && JSON.stringify(qry).length > 2 ) data = qry;
     return API.es.call('GET',rt,data);
   } else if (qry && JSON.stringify(qry).length > 2) {
     return API.es.call('POST',this._route + '/_search',qry);
