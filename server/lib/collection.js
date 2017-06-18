@@ -183,6 +183,7 @@ API.collection.test = function() {
   result.passed = result.remove2 === 2;
   result.remaining = tc.count();
   result.passed = result.remaining === 2;
+  return result;
 }
 
 

@@ -186,6 +186,9 @@ API.addRoute('/test', {
           tests.passed = tests.use[u].passed;
         }
       }
+      var notify = tests.passed ? undefined : {msg:JSON.stringify(tests,undefined,2)};
+      API.log({msg:'Completed testing',tests:tests,notify:notify});
+      return tests;
     }
   }
 });
