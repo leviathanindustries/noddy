@@ -83,7 +83,7 @@ API.collection.prototype.search = function(qry,qp,find) {
       qp = {q:''}
       for ( var o in find ) {
         qp.q += qp.q.length === 0 ? '' : ' AND ';
-        qp.q += o + '.exact:"' + find[o] + '"';
+        qp.q += o + ':' + (typeof find[o] === 'string' && find[o].indexOf(' ') !== -1 ? '"' + find[o] + '"' : find[o]);
       }
     } else {
       qp = {q:find}

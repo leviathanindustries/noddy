@@ -94,9 +94,20 @@ API.es.action = function(uid,action,urlp,params,data) {
 // TODO add other actions in addition to map, for exmaple _reindex would be useful
 // how about _alias? And check for others too, and add here
 
-API.es.exists = function(route) {
+API.es.exists = function(route,url) {
+  if (url === undefined) url = API.settings.es.url;
   try {
-    HTTP.call('HEAD',route);
+    HTTP.call('HEAD',url + route);
+    return true;
+  } catch(err) {
+    return false;
+  }
+}
+
+API.es.refresh = function(route,url) {
+  if (url === undefined) url = API.settings.es.url;
+  try {
+    HTTP.call('POST',url + route + '/_refresh');
     return true;
   } catch(err) {
     return false;
@@ -105,11 +116,11 @@ API.es.exists = function(route) {
 
 API.es.map = function(index,type,mapping,url) {
   if (url === undefined) url = API.settings.es.url;
-  if (!API.es.exists(url + '/' + index)) {
+  if (!API.es.exists('/' + index,url)) {
     API.settings.es.version && API.settings.es.version > 5 ? HTTP.call('PUT',url + '/' + index) : HTTP.call('POST',url + '/' + index);
   }
   var maproute = API.settings.es.version > 1 ? index + '/_mapping/' + type : index + '/' + type + '/_mapping';
-  if ( mapping === undefined && !API.es.exists(url + '/' + maproute) ) {
+  if ( mapping === undefined && !API.es.exists('/' + maproute,url) ) {
     mapping = API.settings.es.version >= 5 ? HTTP.call('GET','http://static.cottagelabs.com/mapping5.json').data : HTTP.call('GET','http://static.cottagelabs.com/mapping.json').data;
   }
   if (mapping) {
@@ -166,6 +177,7 @@ API.es.call = function(action,route,data,url) {
   var ret;
   try {
     ret = HTTP.call(action,url+route,opts).data;
+    if (action === 'POST' || action === 'PUT' && routeparts.length === 3) API.es.refresh('/' + routeparts[0] + '/' + routeparts[1],url);
   } catch(err) {
     // TODO check for various types of ES error - for some we may want retries, others may want to trigger specific log alerts
     console.log(err);

@@ -164,11 +164,11 @@ API.addRoute('test', {
       // could add an elasticsearch test...
       if (API.collection && API.collection.test) {
         tests.collection = API.collection.test();
-        tests.passed = tests.collection.passed;
+        tests.passed = tests.passed && tests.collection.passed;
       }
       if (API.mail && API.mail.test) {
         tests.mail = API.mail.test();
-        tests.passed = tests.mail.passed;
+        tests.passed = tests.passed && tests.mail.passed;
       }
       // add an accounts test?
       // add a job test?
@@ -176,14 +176,14 @@ API.addRoute('test', {
       for ( var s in API.service ) {
         if (API.service[s].test) {
           tests.service[s] = API.service[s].test();
-          tests.passed = tests.service[s].passed;
+          tests.passed = tests.passed && tests.service[s].passed;
         }
       }
       tests.use = {};
       for ( var u in API.use ) {
         if (API.use[u].test) {
           tests.use[u] = API.use[u].test();
-          tests.passed = tests.use[u].passed;
+          tests.passed = tests.passed && tests.use[u].passed;
         }
       }
       var notify = tests.passed ? undefined : {msg:JSON.stringify(tests,undefined,2)};
