@@ -41,7 +41,7 @@ API = new Restivus({
             }
             return "";
           }()));
-          u = Users.findOne({'emails.address':cookie.email,'security.resume.token':API.accounts.hash(cookie.resume),'security.resume.timestamp':API.accounts.hash(cookie.timestamp)});
+          u = Users.find({'emails.address':cookie.email,'security.resume.token':API.accounts.hash(cookie.resume),'security.resume.timestamp':cookie.timestamp});
           if (u) {
             xid = u._id;
             xapikey = u.api.keys[0].key;
@@ -53,7 +53,7 @@ API = new Restivus({
       if ( xapikey === undefined ) xapikey = '';
       if (API.settings.log.root && u && u.roles && u.roles.__global_roles__ && u.roles.__global_roles__.indexOf('root') !== -1) {
         API.log({
-          msg:'root user ' + xid + ' logged in to ' + this.request.url + ' from ' + this.request.headers['x-forwarded-for'] + ' ' + this.request.headers['x-real-ip'],
+          msg:'root user logged in to ' + this.request.url + ' from ' + this.request.headers['x-forwarded-for'] + ' ' + this.request.headers['x-real-ip'],
           notify: {
             subject: 'API root login ' + this.request.headers['x-real-ip']
           }
@@ -152,6 +152,40 @@ API.addRoute('/', {
   get: {
     action: function() {
       return {name:(API.settings.name ? API.settings.name : 'API'),version:(API.settings.version ? API.settings.version : "0.0.1")}
+    }
+  }
+});
+
+API.addRoute('/test', {
+  get: {
+    //roleRequired: 'root',
+    action: function() {
+      var tests = {passed:true};
+      // could add an elasticsearch test...
+      if (API.collection && API.collection.test) {
+        tests.collection = API.collection.test();
+        tests.passed = tests.collection.passed;
+      }
+      if (API.mail && API.mail.test) {
+        tests.mail = API.mail.test();
+        tests.passed = tests.mail.passed;
+      }
+      // add an accounts test?
+      // add a job test?
+      tests.service = {};
+      for ( var s in API.service ) {
+        if (API.service[s].test) {
+          tests.service[s] = API.service[s].test();
+          tests.passed = tests.service[s].passed;
+        }
+      }
+      tests.use = {};
+      for ( var u in API.use ) {
+        if (API.use[u].test) {
+          tests.use[u] = API.use[u].test();
+          tests.passed = tests.use[u].passed;
+        }
+      }
     }
   }
 });

@@ -24,11 +24,11 @@ API.addRoute('accounts/xsrf', {
   post: { authRequired: true, action: function() { return API.accounts.xsrf(this.user); } }
 });
 API.addRoute('accounts/token', {
-  get: { action: function() { return API.accounts.token(this.queryParams); } },
-  post: { action: function() { return API.accounts.token(this.bodyParams); } }
+  get: { action: function() { return API.accounts.token(this.queryParams.email,this.queryParams.url,this.queryParams.service,this.queryParams.fingerprint); } },
+  post: { action: function() { return API.accounts.token(this.bodyParams.email,this.bodyParams.url,this.bodyParams.service,this.bodyParams.fingerprint); } }
 });
 API.addRoute('accounts/login', {
-  post: { action: function() { return API.accounts.login(this.bodyParams,this.request) } }
+  post: { action: function() { return API.accounts.login(this.bodyParams.email,this.bodyParams.token,this.bodyParams.hash,this.bodyParams.fingerprint,this.request) } }
 });
 API.addRoute('accounts/logout', {
   post: { authRequired: true, action: function() { return API.accounts.logout(this.userId) } }
@@ -179,19 +179,19 @@ API.accounts.fingerprint = function(uacc,fingerprint) {
   } else {
     set.security = {fingerprint:fingerprint}
   }
-  Users.update(uacc._id, {$set: set});
+  Users.update(uacc._id, set);
 }
 
 API.accounts.xsrf = function(uacc,xsrf) {
   if (xsrf) {
     var match = uacc.security.xsrf === xsrf;
-    Users.update(uacc._id, {$set:{'security.xsrf':undefined}});
+    Users.update(uacc._id, {'security.xsrf':undefined});
     return match;
   } else {
     // for actions that can edit data or execute dangerous things, the frontend can ask for an xsrf nonce first
     // the nonce should then be returned with the data change
     xsrf = Random.hexstring(30);
-    Users.update(uacc._id, {$set:{'security.xsrf':API.accounts.hash(xsrf)}});
+    Users.update(uacc._id, {'security.xsrf':API.accounts.hash(xsrf)});
     return {xsrf:xsrf};
   }
 }
@@ -242,7 +242,7 @@ API.accounts.token = function(email,url,service,fingerprint) {
 }
 
 API.accounts.login = function(email,token,hash,fingerprint,request) {
-  loginCodes.remove({ timeout: { $lt: (new Date()).valueOf() } }); // remove old logincodes
+  loginCodes.remove('timeout.exact:"<' + (new Date()).valueOf() + '"'); // remove old logincodes
   var future = new Future(); // a delay here helps stop spamming of the login mechanisms
   setTimeout(function() { future.return(); }, 333);
   future.wait();
@@ -256,11 +256,11 @@ API.accounts.login = function(email,token,hash,fingerprint,request) {
     if (!API.accounts.auth(loginCode.service+'.user',user)) API.accounts.addrole(user._id,loginCode.service,'user');
     if (request && API.settings.log.root && user.roles && user.roles.__global_roles__ && user.roles.__global_roles__.indexOf('root') !== -1) {
       var sb = 'root user login from ' + request.headers['x-real-ip'];
-      API.log({msg:sb,notify:{subject:sb, text: 'root user logged in\n\n' + user._id + '\n\n' + loc + '\n\n' + request.headers['x-real-ip'] + '\n\n' + request.headers['x-forwarded-for'] + '\n\n'}});
+      API.log({msg:sb,notify:{subject:sb, text: 'root user logged in\n\n' + loginCode.url + '\n\n' + request.headers['x-real-ip'] + '\n\n' + request.headers['x-forwarded-for'] + '\n\n'}});
     }
     var resume = Random.hexString(30);
     var ts = Date.now();
-    Users.update(user._id, {$set: {'security.resume':{token:resume,timestamp:ts}}});
+    Users.update(user._id, {'security.resume':{token:resume,timestamp:ts}});
     return {
       apikey: user.api.keys[0].key,
       account: {
@@ -290,7 +290,7 @@ API.accounts.logout = function(val) {
   // may want an option to logout of all sessions...
   var user = API.accounts.retrieve(val);
   if (user) {
-    Users.update(user._id, {$set: {'security.resume':{}}});
+    Users.update(user._id, {'security.resume':{}});
     return true;
   } else {
     return {statusCode: 401, body: {status: 'error', data:'401 unauthorized'}}
@@ -401,7 +401,7 @@ API.accounts.update = function(uid,user,keys,replace) {
     if ( API.accounts.auth('root', user) ) {
       // the root user could also set a bunch of other things perhaps
     }
-    Users.update(uid, {$set: allowed});
+    Users.update(uid, allowed);
     return true;
   } else if ( uacc.service ) {
     for ( var r in uacc.service ) {
@@ -414,7 +414,7 @@ API.accounts.update = function(uid,user,keys,replace) {
           // TODO this will not loop down levels at all - so could overwrite stuff in an object, for example
           for ( var kr in keys.service[r] ) allowed['service.'+r+'.'+kr] = keys.service[r][kr];
         }
-        Users.update(uid, {$set: allowed});
+        Users.update(uid, allowed);
         return true;
       }
     }
@@ -500,7 +500,7 @@ API.accounts.addrole = function(uid,group,role,uacc) {
       set['service.'+group] = {profile:{}};
     }
   }
-  Users.update(uacc._id,{$set:set});
+  Users.update(uacc._id, set);
   return {status: 'success'};
 }
 
@@ -513,7 +513,7 @@ API.accounts.removerole = function(uid,group,role,uacc) {
         uacc.roles[group].splice(pos,1);
         var set = {};
         set['roles.'+group] = uacc.roles[group];
-        Users.update(uacc._id,{$set:set});
+        Users.update(uacc._id, set);
       }
     }
   }

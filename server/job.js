@@ -90,7 +90,7 @@ API.addRoute('job/:job', {
     action: function() {
       // return the info of the job - the job metadata and the progress so far
       // TODO if user is not the job creator or is not admin, 401
-      var job = job_job.findOne(this.urlParams.job);
+      var job = job_job.find({_id:this.urlParams.job});
       if ( !API.job.allowed(job,this.user) ) {
         return {statusCode:401, body:{}}
       } else if (job) {
@@ -118,7 +118,7 @@ API.addRoute('job/:job/progress', {
     //roleRequired: 'root',
     action: function() {
       // return the info of the job - the job metadata and the progress so far
-      var job = job_job.findOne(this.urlParams.job);
+      var job = job_job.find({_id:this.urlParams.job});
       if ( !API.job.allowed(job,this.user) ) return {statusCode:401, body:{}}
       if (job) {
         var progress = API.job.progress(this.urlParams.job);
@@ -135,7 +135,7 @@ API.addRoute('job/:job/todo', {
     //roleRequired: 'root',
     action: function() {
       // return the parts of the job still to do, does not check for results found since last progress check
-      var job = job_job.findOne(this.urlParams.job);
+      var job = job_job.find({_id:this.urlParams.job});
       if ( !API.job.allowed(job,this.user) ) return {statusCode:401, body:{}}
       if (job) {
         var todo = API.job.todo(this.urlParams.job);
@@ -152,7 +152,7 @@ API.addRoute('job/:job/results', {
     //roleRequired: 'root',
     action: function() {
       // return the results for this job as JSON
-      var job = job_job.findOne(this.urlParams.job);
+      var job = job_job.find({_id:this.urlParams.job});
       if ( !API.job.allowed(job,this.user) ) return {statusCode:401, body:{}}
       // TODO may add restriction on how long old jobs can be returned for 
       // could be implemented by deleting them, or by checking here for how long the user can 
@@ -183,17 +183,7 @@ API.addRoute('job/jobs', {
   get: {
     //roleRequired: 'root',
     action: function() {
-      var results = [];
-      var jobs = job_job.find();
-      jobs.forEach(function(job) {
-        if (job.processes && job.processes.length === 0) {
-          job_job.remove(job._id);
-        } else {
-          delete job.processes;
-          results.push(job);          
-        }
-      });
-      return {status: 'success', data: {total:results.length, jobs: results} }
+      return job_job.search(this.bodyParams,this.queryParams);
     }
   }
 });
@@ -202,8 +192,8 @@ API.addRoute('job/jobs/todo', {
   delete: {
     roleRequired: 'root',
     action: function() {
-      var count = job_job.find({done:{$not:{$eq:true}}}).count();
-      job_job.remove({done:{$not:{$eq:true}}});
+      var count = job_job.count('NOT done:true');
+      job_job.remove('NOT done:true');
       // TODO should this remove all processes associated with the jobs being deleted? - and why is deletion here?
       return {status: 'success', total: count}
     }
@@ -221,12 +211,10 @@ API.addRoute('job/jobs/reload', {
 
 API.addRoute('job/jobs/:email', {
   get: {
-    //roleRequired: 'root',
     action: function() {
       var results = [];
       if ( !( API.accounts.auth('root',this.user) || this.user.emails[0].address === this.urlParams.email ) ) return {statusCode:401,body:{}}
-      var jobs = job_job.find({email:this.urlParams.email});
-      jobs.forEach(function(job) {
+      job_job.each({email:this.urlParams.email},function(job) {
         job.processes = job.processes.length;
         results.push(job);
       });
@@ -239,14 +227,14 @@ API.addRoute('job/jobs/:email', {
 API.addRoute('job/processes', {
   get: {
     action: function() {
-      return {status: 'success', data: job_process.find({}).count() }
+      return {status: 'success', data: job_process.count() }
     }
   }
 });
 API.addRoute('job/processes/running', {
   get: {
     action: function() {
-      return {status: 'success', data: job_process.find({processing:{$eq:true}}).count() }
+      return {status: 'success', data: job_process.count({processing:true}) }
     }
   }
 });
@@ -301,13 +289,13 @@ API.addRoute('job/fields/:email', {
       if ( API.accounts.auth('root',this.user) || this.user.emails[0].address === this.urlParams.email ) {
         if (this.user.service.job.profile === undefined) {
           this.user.service.job.profile = {fields:{}};
-          Users.update(this.userId, {$set: {'service.job.profile':{fields:{}}}});
+          Users.update(this.userId, {'service.job.profile':{fields:{}}});
         } else if (this.user.service.job.profile.fields === undefined) {
           this.user.service.job.profile.fields = {};
-          Users.update(this.userId, {$set: {'service.job.profile.fields':{}}});
+          Users.update(this.userId, {'service.job.profile.fields':{}});
         }
         for ( var p in this.request.body ) this.user.service.job.profile.fields[p] = this.request.body[p];
-        Users.update(this.userId, {$set: {'service.job.profile.fields':this.user.service.job.profile.fields}});
+        Users.update(this.userId, {'service.job.profile.fields':this.user.service.job.profile.fields});
         return {status: 'success', data: this.user.service.job.profile.fields }
       } else {
         return {statusCode:401, body:{}}
@@ -358,8 +346,7 @@ API.job.quota = function(uid) {
   var count = 0;
   var d = new Date();
   var t = d.setDate(d.getDate() - backtrack);
-  var j = job_job.find({$and:[{email:email},{createdAt:{$gte:t}}]},{sort:{createdAt:-1}});
-  j.forEach(function(job) { count += job.processes.length; });
+  job_job.each('email.exact:"' + email + '" AND createdAt:>' + t,function(job) { count += job.processes.length; });
   var available = max - count + additional;
   return {
     admin: admin,
@@ -378,41 +365,36 @@ API.job.quota = function(uid) {
 API.job.status = function() {
   return {
     processes: {
-      total: job_process.find().count(),
-      running: job_process.find({processing:{$eq:true}}).count()
+      total: job_process.count(),
+      running: job_process.count({processing:true})
     },
     jobs: {
-      total: job_job.find().count(),
-      done: job_job.find({done:{$exists:true}}).count()
+      total: job_job.count(),
+      done: job_job.count({done:true})
     },
-    results: job_result.find().count()
+    results: job_result.count()
   } 
 }
 
 API.job.reset = function() {
   // reset all processing processes
-  var procs = job_process.find({processing:{$eq:true}});
-  var count = 0;
-  procs.forEach(function(proc) {
-    job_process.update(proc._id,{$set:{processing:undefined}});
-    count += 1;
-  });
-  return count;
+  return job_process.update({processing:true},{processing:undefined});
 }
 
 API.job.reload = function(jobid) {
   // reload all jobs with processes that still need running
   var ret = 0;
-  var j = jobid ? job_job.find({'_id':jobid}) : job_job.find({done:{$not:{$eq:true}}});
-  j.forEach(function(job) {
+  var j = jobid ? {_id:jobid} : 'NOT done:true';
+  job_job.each(j,function(job) {
     for ( var l in job.processes) {
       var pid = job.processes[l].process;
-      var proc = job_process.findOne(pid);
+      var proc = job_process.find({_id:pid});
       var res;
-      if (!proc) res = job_result.findOne(pid);
+      if (!proc) res = job_result.find({_id:pid});
       if (pid && !proc && !res) {
         var pr = job.processes[l];
-        job_process.insert(pr.process,pr);
+        pr._id = pr.process;
+        job_process.insert(pr);
         ret += 1;
       }
     }
@@ -430,15 +412,15 @@ var _signature = function(method,args) {
   return '';
 }
 var _findSigned = function(coll,signature,refresh) {
-  var s = {};
+  var s;
   if (refresh !== undefined) {
     var d = new Date();
     var t = refresh === true ? d : d.setDate(d.getDate() - refresh);
-    s.$and = [{signature:signature},{createdAt:{$gte:t}}];
+    s = 'signature.exact:"' + signature + '" AND createdAt:>' + t;
   } else {
-    s.signature = signature;
+    s = {signature:signature}
   }
-  return coll.findOne(s,{sort:{createdAt:-1}});  
+  return coll.find(s,{sort:{createdAt:-1}});  
 }
 job_process.findSigned = function(signature) { return _findSigned(job_process,signature); }
 job_result.findSigned = function(signature,refresh) { return _findSigned(job_result,signature,refresh); }
@@ -464,7 +446,7 @@ API.job.create = function(input,uid,jid) {
   if (job.processes.length === 0) job.done = true; // bit pointless submitting empty jobs, but theoretically possible. Could make impossible...
   job.new = false;
   if (jid !== undefined) {
-    job_job.update(jid,{$set:job});
+    job_job.update(jid,job);
   } else {
     jid = job_job.insert(job);
   }
@@ -489,20 +471,20 @@ API.job.create = function(input,uid,jid) {
 }
 
 API.job.process = function(pid) {
-  var proc = job_process.findOne(pid);
+  var proc = job_process.find({_id:pid});
   if (!proc) return false;
-  job_process.update(proc._id, {$set:{processing:true}});
+  job_process.update(proc._id, {processing:true});
   proc.result = proc.method.apply(this,proc.args);
   job_result.insert(proc);
-  job_process.remove(proc._id);
+  job_process.remove({_id:proc._id});
   return proc;
 }
 API.job.nextProcess = function() {
   // search for processes not already processing, sorted by descending created data
   // add any sort of priority queue checking?
-  var p = job_process.findOne({processing:{$not:{$eq:true}}},{sort:{createdAt:-1}});
+  var p = job_process.find('NOT processing:true',{sort:{createdAt:-1}});
   if (p) {
-    console.log(p._id);
+    API.log(p._id);
     return API.job.process(p._id);
   } else {
     return false;
@@ -510,7 +492,7 @@ API.job.nextProcess = function() {
 }
 
 API.job.progress = function(jobid) {
-  var job = job_job.findOne(jobid);
+  var job = job_job.find({_id:jobid});
   if (job) {
     var p;
     if (job.done) {
@@ -521,12 +503,12 @@ API.job.progress = function(jobid) {
       var total = job.processes.length;
       var count = 0;
       for ( var i in job.processes ) {
-        var found = job_result.findOne(job.processes[i].process);
+        var found = job_result.find({_id:job.processes[i].process});
         if ( found ) count += 1;
       }
       p = count/total * 100;
       if ( p === 100 ) {
-        job_job.update(job._id, {$set:{done:true}});
+        job_job.update(job._id, {done:true});
         var jor = job.name ? job.name : job._id;
         var text = 'Your job ' + jor + ' is complete.\n\n';
         text += 'You can now download the results of your job at \n\n';
@@ -549,14 +531,14 @@ API.job.progress = function(jobid) {
 }
 
 API.job.todo = function(jobid) {
-  var job = job_job.findOne(jobid);
+  var job = job_job.find({_id:jobid});
   if (job) {
     if (job.done) {
       return [];
     } else {
       var todos = [];
       for ( var i in job.processes ) {
-        if ( !job_result.findOne(job.processes[i].process) ) todos.push(job.processes[i]);
+        if ( !job_result.find({_id:job.processes[i].process}) ) todos.push(job.processes[i]);
       }
       return todos;
     }
@@ -566,12 +548,12 @@ API.job.todo = function(jobid) {
 }
 
 API.job.results = function(jobid) {
-  var job = job_job.findOne(jobid);
+  var job = job_job.find({_id:jobid});
   if (job) {
     var results = [];
     for ( var i in job.processes ) {
       var ji = job.processes[i];
-      var found = job_result.findOne(ji.process);
+      var found = job_result.find({_id:ji.process});
       if ( found ) results.push(found.result);
       // should there be formatting here based on user settings and service settings?
     }
@@ -582,9 +564,8 @@ API.job.results = function(jobid) {
 }
 
 API.job.alertdone = function() {
-  var j = job_job.find({done:{$not:{$eq:true}}});
   var ret = 0;
-  j.forEach(function(job) {
+  job_job.each('NOT done:true',function(job) {
     var progress = API.job.progress(job._id);
     if (progress && progress.progress === 100) {
       ret += 1;
@@ -594,16 +575,16 @@ API.job.alertdone = function() {
 }
 
 API.job.alertstuck = function() {
-  var prev = job_meta.findOne('previous_processing_check');
+  var prev = job_meta.find({_id:'previous_processing_check'});
   if (prev === undefined) {
     prev = {_id:'previous_processing_check',list:[],same:false,since:0,howmany:0,change:0};
     job_meta.insert(prev);
   }
   if (prev.howmany === undefined) prev.howmany = 0;
-  var howmany = job_process.find().count();
+  var howmany = job_process.count();
   prev.change = howmany - prev.howmany;
   prev.howmany = howmany;
-  var procs = job_process.find({processing:{$eq:true}}).fetch();
+  var procs = job_process.find({processing:true}).fetch();
   var currents = [];
   var same = true;
   for ( var p in procs ) {
@@ -613,9 +594,8 @@ API.job.alertstuck = function() {
   prev.since = same ? prev.since + 15 : 0;
   prev.same = same;
   prev.list = currents;
-  job_meta.update('previous_processing_check',{$set:prev});
-  console.log("Stuck job processes check")
-  console.log(prev);
+  job_meta.update('previous_processing_check',prev);
+  API.log("Checking for stuck job processes");
   var txt = ''
   if (same && currents.length !== 0 && prev.since >= 30) {
     txt = 'There appear to be ' + currents.length + ' processes stuck on the queue for at least ' + prev.since + ' minutes';
@@ -647,44 +627,6 @@ API.job.alertstuck = function() {
   }
 }
 
-API.job.dropoldresults = function() {
-  // search for results over 180 days old and delete them
-  var d = Meteor.settings.cron.job_dropoldresults;
-  var r = job_result.find({done:{$not:{$eq:true}}});
-  var ret = 0;
-  r.forEach(function(res) {
-    job_result.remove(res._id);
-    ret += 1;
-  });
-  return ret;
-}
-
-API.job.dropoldjobs = function() {
-  // search for results over d days old and delete them
-  var d = Meteor.settings.cron.job_dropoldjobs;
-  var j = job_job.find({done:{$not:{$eq:true}}});
-  var ret = 0;
-  j.forEach(function(job) {
-    job_job.remove(job._id);
-    ret += 1;
-  });
-  return ret;
-}
-
-if ( Meteor.settings.cron && Meteor.settings.cron.job_dropoldjobs ) {
-  SyncedCron.add({
-    name: 'job_dropoldjobs',
-    schedule: function(parser) { return parser.recur().every(24).hour(); },
-    job: API.job.dropoldjobs
-  });
-}
-if ( Meteor.settings.cron && Meteor.settings.cron.job_dropoldresults ) {
-  SyncedCron.add({
-    name: 'job_dropoldresults',
-    schedule: function(parser) { return parser.recur().every(24).hour(); },
-    job: API.job.dropoldresults
-  });
-}
 if ( Meteor.settings.cron && Meteor.settings.cron.job_alertstuck ) {
   SyncedCron.add({
     name: 'job_alertstuck',

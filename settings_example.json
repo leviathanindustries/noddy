@@ -42,16 +42,11 @@
         "domain": ".cottagelabs.com",
         "from": "us@cottagelabs.com",
         "subject": "Please complete your login",
-        "url": undefined,
-        "template": undefined,
         "timeout": 30,
         "secure": true,
         "text": "Your login code is:\r\n\r\n{{LOGINCODE}}\r\n\r\nor use this link:\r\n\r\n{{LOGINURL}}\r\n\r\nnote: this single-use code is only valid for {{TIMEOUT}} minutes.",
-        "html": '<html><body><p>Your login code is:</p><p style="margin-left:2em;"><font size="+1"><b>{{LOGINCODE}}</b></font></p><p>or click on this link</p><p style="margin-left:2em;"><font size="-1"><a href="{{LOGINURL}}">{{LOGINURL}}</a></font></p><p><font size="-1">note: this single-use code is only valid for {{TIMEOUT}} minutes.</font></p></body></html>'
+        "html": "<html><body><p>Your login code is:</p><p><b>{{LOGINCODE}}</b></p><p>or click on this link</p><p><a href=\"{{LOGINURL}}\">{{LOGINURL}}</a></p><p>note: this single-use code is only valid for {{TIMEOUT}} minutes.</p></body></html>"
       }
     }
-  },
-  "external": {
-    
   }
 }
