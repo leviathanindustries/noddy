@@ -271,7 +271,11 @@ API.accounts.login = function(email,token,hash,fingerprint,request) {
     loginCodes.remove({email:email}); // login only gets one chance
     var user = API.accounts.retrieve(email);
     if (!user) {
-      user = API.accounts.create(email,fingerprint);
+      var n = API.accounts.create(email,fingerprint);
+      future = new Future(); // a delay here helps stop spamming of the login mechanisms
+      setTimeout(function() { future.return(); }, 1500);
+      future.wait();
+      user = API.accounts.retrieve(n._id);
     } else if (fingerprint) {
       API.accounts.fingerprint(user,fingerprint);
     }
