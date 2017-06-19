@@ -348,7 +348,7 @@ API.accounts.create = function(email,fingerprint) {
 
 API.accounts.retrieve = function(val) {
   // finds and returns the full user account - NOT what should be returned to a user
-  var u = Users.find('_id.exact:"' + val + '" OR username.exact:"' + val + '" OR emails.address.exact:"' + val + '" OR api.keys.key.exact:"' + val + '"');
+  var u = Users.find('_id:"' + val + '" OR username.exact:"' + val + '" OR emails.address.exact:"' + val + '" OR api.keys.key.exact:"' + val + '"');
   API.log({msg:'Retrieved account for val ' + val, retrieved: u});
   return u;
 }
@@ -512,6 +512,7 @@ API.accounts.auth = function(grl,user,cascade) {
 
 API.accounts.addrole = function(uid,group,role,uacc) {
   if (uacc === undefined) uacc = API.accounts.retrieve(uid);
+  if (uacc === undefined) return false;
   // TODO if using groups, and if user should only get a role on an existing group, need to check group existence first...
   if (!uacc.roles) uacc.roles = {};
   if (!uacc.roles[group]) uacc.roles[group] = [];
@@ -532,6 +533,7 @@ API.accounts.addrole = function(uid,group,role,uacc) {
 
 API.accounts.removerole = function(uid,group,role,uacc) {
   if (uacc === undefined) uacc = API.accounts.retrieve(uid);
+  if (uacc === undefined) return false;
   if (uacc.roles) {
     if (uacc.roles[group]) {
       var pos = uacc.roles[group].indexOf(role);
