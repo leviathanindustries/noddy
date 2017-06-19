@@ -88,11 +88,7 @@ API.log = function(opts) {
     var loglevels = ['all','trace','debug','info','warn','error','fatal','off'];
     var loglevel = API.settings.log && API.settings.log.level ? API.settings.log.level : 'all';
     if (loglevels.indexOf(loglevel) <= loglevels.indexOf(opts.level)) {
-      if (loglevels.indexOf(loglevel) <= loglevels.indexOf('debug')) {
-        console.log(opts.created_date);
-        if (opts.msg) console.log(opts.msg);
-        if (opts.error) console.log(opts.error);
-      }
+      if (loglevels.indexOf(loglevel) <= loglevels.indexOf('debug')) console.log(opts);
       // try to set some opts vars for which server the error is running on...
       try { opts.error = JSON.stringify(opts.error); } catch(err) {}
       try {

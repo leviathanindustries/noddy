@@ -607,7 +607,7 @@ API.accounts.test = function() {
   if (result.logincodeRemoved !== false) { result.passed = false; result.failed.push(9); }
   
   var u = API.accounts.retrieve(temail);
-  result.loggedin = u.security && u.security.resume && result.login && result.login.settings && u.security.resume.token && u.security.resume.token === result.login.settings.resume;
+  result.loggedin = u && u.security && u.security.resume && result.login && result.login.settings && u.security.resume.token && u.security.resume.token === result.login.settings.resume;
   if (result.loggedin !== true) { result.passed = false; result.failed.push(10); }
   
   result.logout = API.accounts.logout(temail);
