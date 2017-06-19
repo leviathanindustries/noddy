@@ -149,63 +149,80 @@ API.collection.prototype.each = function(q,fn) {
 API.collection.test = function() {
   var result = {passed:true};
   var tc = new API.collection({index:API.settings.es.index + '_test',type:'collection'});
-  var recs = [
+  result.recs = [
     {_id:1,hello:'world'},
     {_id:2,goodbye:'world'},
     {goodbye:'world',hello:'sunshine'},
     {goodbye:'marianne',hello:'sunshine'}
   ];
-  result.recs = recs;
-  for ( var r in recs ) tc.insert(recs[r]);
+  
+  for ( var r in result.recs ) tc.insert(result.recs[r]);
   var future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
   result.count = tc.count();
-  result.passed = result.count === recs.length;
+  result.passed = result.passed && result.count === result.recs.length;
+  
   result.search = tc.search();
   result.stringSearch = tc.search(undefined,undefined,'goodbye:"marianne"');
-  result.passed = result.stringSearch.hits.total === 1;
+  result.passed = result.passed && result.stringSearch.hits.total === 1;
+  
   result.objectSearch = tc.search(undefined,undefined,{hello:'sunshine'});
-  result.passed = result.objectSearch.hits.total === 2;
+  result.passed = result.passed && result.objectSearch.hits.total === 2;
+  
   result.idFind = tc.find(1);
-  result.passed = typeof result.idFind === 'object';
+  result.passed = result.passed && typeof result.idFind === 'object';
+  
   result.strFind = tc.find('goodbye:"marianne"');
-  result.passed = typeof result.strFind === 'object';
+  result.passed = result.passed && typeof result.strFind === 'object';
+  
   result.objFind = tc.find({goodbye:'marianne'});
-  result.passed = typeof result.objFind === 'object';
+  result.passed = result.passed && typeof result.objFind === 'object';
+  
   result.objFindMulti = tc.find({goodbye:'world'});
-  result.passed = typeof result.objFindMulti === 'object';
+  result.passed = result.passed && typeof result.objFindMulti === 'object';
+  
   result.each = tc.each('goodbye:"world"',function() { return; });
-  result.passed = result.each === 2;
+  result.passed = result.passed && result.each === 2;
+  
   result.update = tc.update({hello:'world'},{goodbye:'world'});
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
-  result.passed = typeof result.update === 'object' && result.update.goodbye === 'world';
+  result.passed = result.passed && typeof result.update === 'object' && result.update.goodbye === 'world';
+  
   result.retrieveUpdated = tc.find({hello:'world'});
-  result.passed = typeof result.retrieveUpdated === 'object' && result.retrieveUpdated.goodbye === 'world';
+  result.passed = result.passed && typeof result.retrieveUpdated === 'object' && result.retrieveUpdated.goodbye === 'world';
+  
   result.goodbyes = tc.count('goodbye:"world"');
-  result.passed = result.goodbyes === 3;
+  result.passed = result.passed && result.goodbyes === 3;
+  
   result.remove1 = tc.remove(1);
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
-  result.passed = result.remove1 === true;
+  result.passed = result.passed && result.remove1 === true;
+  
   result.helloWorlds = tc.count({hello:'world'});
-  result.passed = result.helloWorlds === 0;
+  result.passed = result.passed && result.helloWorlds === 0;
+  
   result.remove2 = tc.remove({hello:'sunshine'});
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
-  result.passed = result.remove2 === 2;
+  result.passed = result.passed && result.remove2 === 2;
+  
   result.remaining = tc.count();
-  result.passed = result.remaining === 1;
+  result.passed = result.passed && result.remaining === 1;
+  
   result.removeLast = tc.remove(2);
-  result.passed = result.removeLast = true;
+  result.passed = result.passed && result.removeLast = true;
+  
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
-  result.passed = tc.count() === 0;
+  result.passed = result.passed && tc.count() === 0;
+  
   return result;
 }
 

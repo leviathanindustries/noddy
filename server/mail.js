@@ -237,6 +237,7 @@ API.mail.construct = function(tmpl,vars) {
 API.mail.test = function() {
   try {
     var ret = {passed:true};
+    
     ret.send = API.mail.send({
       from: Meteor.settings.mail.from,
       to: Meteor.settings.mail.to,
@@ -245,7 +246,9 @@ API.mail.test = function() {
       html: '<p><b>hello</b></p>'
     });
     ret.passed = ret.send.statusCode === 200 && ret.send.data.message.indexOf('Queued') !== -1;
-    ret.validate = API.mail.validate('mark@cottagelabs.com');
+
+    ret.validate = API.mail.validate( (API.settings.mail.to ? API.settings.mail.to : 'mark@cottagelabs.com') );
+    ret.passed = result.passed && ret.validate.is_valid;
     return ret;
   } catch(err) {
     return {passed: false};
