@@ -196,8 +196,19 @@ API.accounts.xsrf = function(uacc,xsrf) {
   }
 }
 
-API.accounts.token = function(email,url,service,fingerprint) {
-  var opts = API.settings.service[service].accounts;
+API.accounts.token = function(email,url,service,fingerprint,send) {
+  var opts;
+  try {
+    opts = API.settings.service[service].accounts;
+  } catch(err) {
+    var svn;
+    for ( var sv in API.settings.service ) {
+      if (API.settings.service[sv].accounts) {
+        svn = sv;
+        opts = API.settings.service[sv].accounts;
+      }
+    }
+  }
   if (!opts) return {};
   opts.email = email;
   opts._id = email;
@@ -230,15 +241,19 @@ API.accounts.token = function(email,url,service,fingerprint) {
     snd.html = snd.html.replace(ure,opts.url);
   }
   var sent;
-  try { // try / catch on this lets things continue if say on dev the email is disabled
-    snd.service = service;
-    sent = API.mail.send(snd);
-  } catch(err) {}
-
-  var future = new Future(); // a delay here helps stop spamming of the login mechanisms
-  setTimeout(function() { future.return(); }, 333);
-  future.wait();
-  return { known:known, mid: (sent && sent.data && sent.data.id ? sent.data.id : undefined) };
+  if (send === undefined) send = true;
+  if (send) {
+    try { // try / catch on this lets things continue if say on dev the email is disabled
+      snd.service = service;
+      sent = API.mail.send(snd);
+    } catch(err) {}
+    var future = new Future(); // a delay here helps stop spamming of the login mechanisms
+    setTimeout(function() { future.return(); }, 333);
+    future.wait();
+    return { mid: (sent && sent.data && sent.data.id ? sent.data.id : undefined) };
+  } else {
+    return {opts:opts,send:snd,token:token};
+  }
 }
 
 API.accounts.login = function(email,token,hash,fingerprint,request) {
@@ -251,8 +266,11 @@ API.accounts.login = function(email,token,hash,fingerprint,request) {
     if (email === undefined) email = loginCode.email;
     loginCodes.remove({email:email}); // login only gets one chance
     var user = API.accounts.retrieve(email);
-    if (!user) user = API.accounts.create(email);
-    if (fingerprint) API.accounts.fingerprint(user,fingerprint);
+    if (!user) {
+      user = API.accounts.create(email,fingerprint);
+    } else if (fingerprint) {
+      API.accounts.fingerprint(user,fingerprint);
+    }
     if (!API.accounts.auth(loginCode.service+'.user',user)) API.accounts.addrole(user._id,loginCode.service,'user');
     if (request && API.settings.log.root && user.roles && user.roles.__global_roles__ && user.roles.__global_roles__.indexOf('root') !== -1) {
       var sb = 'root user login from ' + request.headers['x-real-ip'];
@@ -297,11 +315,11 @@ API.accounts.logout = function(val) {
   }
 }
 
-API.accounts.create = function(email) {
+API.accounts.create = function(email,fingerprint) {
   if (JSON.stringify(email).indexOf('<script') !== -1 || email.indexOf('@') === -1) return false; // naughty catcher
   var password = Random.hexString(30);
   var apikey = Random.hexString(30);
-  var uacc = Users.insert({
+  var u = {
     email:email,
     password:password,
     profile: {}, // profile data, all of which can be changed by the user
@@ -315,10 +333,12 @@ API.accounts.create = function(email) {
         verified: true
       }
     ]
-  });
+  };
+  if (fingerprint) u.security.fingerprint = fingerprint;
+  if ( Users.count() === 0 ) u.roles = {__global_roles__: ['root']};
+  var uacc = Users.insert(u);
   API.log("Created userId = " + uacc._id);
   // create a group for this user, that they own?
-  if ( Users.count() === 1 ) API.accounts.addrole(uacc._id, '__global_roles__', 'root');
   return {_id:uacc._id,password:password,apikey:apikey};
 }
 
@@ -426,8 +446,8 @@ API.accounts.delete = function(uid,user,service) {
   // does delete actually delete, or just set as disabled?
   // service accounts should never delete, should just remove service section and groups/roles
   if ( API.accounts.auth('root',user) ) {
-    API.log('TODO accounts API should delete user ' + uid);
-    //Users.remove(uid);
+    API.log('Permanently deleting user ' + uid);
+    Users.remove(uid);
     return true;
   } else {
     return false;
@@ -521,9 +541,83 @@ API.accounts.removerole = function(uid,group,role,uacc) {
   return {status: 'success'};
 }
 
-
 API.accounts.hash = function(token) {
   var hash = crypto.createHash('sha256');
   hash.update(token);
   return hash.digest('base64');
 }
+
+
+
+API.accounts.test = function() {
+  var temail = 'a_test_account@noddy.com';
+  var result = {passed:true,failed:[]};
+
+  result.create = API.accounts.create(temail);
+  if (typeof result.create !== 'object' || result.create._id === undefined) { result.passed = false; result.failed.push(1); }
+  
+  var future = new Future();
+  setTimeout(function() { future.return(); }, 999);
+  future.wait();
+
+  result.retrieved = API.accounts.retrieve(temail);
+  if (result.retrieved._id !== result.create._id) { result.passed = false; result.failed.push(2); }
+  
+  result.addrole = API.accounts.addrole(result.retrieved._id,'testgroup','testrole');
+  future = new Future();
+  setTimeout(function() { future.return(); }, 999);
+  future.wait();
+  result.addedrole = API.accounts.retrieve(result.retrieved._id);
+  if (!result.addedrole.roles || !result.addedrole.roles.testgroup || result.addedrole.roles.testgroup.indexOf('testrole') === 01) { result.passed = false; result.failed.push(3); }
+  
+  result.authorised = API.accounts.auth('testgroup.testrole',result.retrieved);
+  if (result.authorised === false) { result.passed = false; result.failed.push(4); }
+
+  result.removerole = API.accounts.removerole(result.retrieved._id,'testgroup','testrole');
+  future = new Future();
+  setTimeout(function() { future.return(); }, 999);
+  future.wait();
+  result.deauthorised = API.accounts.auth('testgroup.testrole',API.accounts.retrieve(result.retrieved._id));
+  if (result.deauthorised !== false) { result.passed = false; result.failed.push(5); }
+  
+  result.token = API.accounts.token(temail,'https://testurl.com',undefined,undefined,false);
+  if (!result.token || !result.token.opts || result.token.opts.email !== temail || !result.token.opts.token || result.token.opts.hash) { result.passed = false; result.failed.push(6); }
+
+  future = new Future();
+  setTimeout(function() { future.return(); }, 999);
+  future.wait();
+  result.logincode = loginCodes.find(temail);
+  if (!result.logincode || result.logincode.token !== API.accounts.hash(result.token.token)) { result.passed = false; result.failed.push(7); }
+  
+  result.login = API.accounts.login(temail,result.token.token);
+  if (!result.login || !result.login.account || result.login.account.email !== temail) { result.passed = false; result.failed.push(8); }
+
+  future = new Future();
+  setTimeout(function() { future.return(); }, 999);
+  future.wait();
+  result.logincodeRemoved = loginCodes.find(temail);
+  if (result.logincodeRemoved !== false) { result.passed = false; result.failed.push(9); }
+  
+  var u = API.accounts.retrieve(temail);
+  result.loggedin = u.security && u.security.resume && result.login && result.login.settings && u.security.resume.token && u.security.resume.token === result.login.settings.resume;
+  if (result.loggedin !== true) { result.passed = false; result.failed.push(10); }
+  
+  result.logout = API.accounts.logout(temail);
+  if (result.logout !== true) { result.passed = false; result.failed.push(11); }
+  
+  future = new Future();
+  setTimeout(function() { future.return(); }, 999);
+  future.wait();
+  var u2 = API.accounts.retrieve(temail);
+  result.logoutVerified = u2 && u2.security && JSON.stringify(u2.security.resume) === '{}';
+  if (result.logoutVerified !== true) { result.passed = false; result.failed.push(12); }
+  
+  // delete is not checked yet, so far it can only be done by a root user and have not decided whether to actually fully remove 
+  // accounts or just mark them as deleted
+  
+  return result;
+}
+
+
+
+

@@ -57,14 +57,17 @@ API.collection.prototype.update = function (qry,obj,refresh) {
     }
     doc.updatedAt = Date.now();
     doc.updated_date = moment(doc.updatedAt,"x").format("YYYY-MM-DD HHmm");
-    API.es.call('POST',rt + doc._id, doc, refresh);
+    API.es.call('POST',rt + doc._id, doc);
     return doc;
   }
+  var ret;
   if (rec) {
-    return update(rec);
+    ret = update(rec);
   } else {
-    return this.each(qry,update);
+    ret = this.each(qry,update);
   }
+  if (refresh) API.es.refresh(this._route);
+  return ret;
 };
 
 API.collection.prototype.remove = function(qry) {

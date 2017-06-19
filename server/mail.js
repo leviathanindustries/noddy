@@ -76,7 +76,7 @@ API.mail.send = function(opts,mail_url) {
   // also takes opts.attachments, but not required. Should be a list of objects as per 
   // https://github.com/nodemailer/mailcomposer/blob/7c0422b2de2dc61a60ba27cfa3353472f662aeb5/README.md#add-attachments
 
-  var ms = opts.service ? API.settings.service[opts.service].mail : API.settings.mail;
+  var ms = opts.service && API.settings.service[opts.service] && API.settings.service[opts.service].mail ? API.settings.service[opts.service].mail : API.settings.mail;
   delete opts.service;
   if (!opts.from) opts.from = ms.from;
   if (!opts.to) opts.to = ms.to;

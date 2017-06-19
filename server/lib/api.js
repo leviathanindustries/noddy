@@ -170,7 +170,11 @@ API.test = function(trigger,verbose) {
     if (tests.mail.passed && !verbose) tests.mail = {passed:true};
     tests.passed = tests.passed && tests.mail.passed;
   }
-  // add an accounts test?
+  if (API.accounts && API.accounts.test) {
+    tests.accounts = API.accounts.test();
+    if (tests.accounts.passed && !verbose) tests.accounts = {passed:true};
+    tests.passed = tests.passed && tests.accounts.passed;
+  }
   // add a job test?
   tests.service = {};
   for ( var s in API.service ) {
