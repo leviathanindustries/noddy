@@ -52,7 +52,10 @@ API.collection.prototype.update = function (qry,obj,refresh) {
       var upd = doc;
       var parts = k.split('.');
       var last = parts.pop();
-      for ( var p in parts ) upd = upd[parts[p]];
+      for ( var p in parts ) {
+        if (upd[parts[p]] === undefined) upd[parts[p]] = {};
+        upd = upd[parts[p]];
+      }
       upd[last] = obj[k];
     }
     doc.updatedAt = Date.now();
