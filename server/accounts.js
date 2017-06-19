@@ -612,8 +612,10 @@ API.accounts.test = function() {
   result.logoutVerified = u2 && u2.security && JSON.stringify(u2.security.resume) === '{}';
   if (result.logoutVerified !== true) { result.passed = false; result.failed.push(12); }
   
-  // delete is not checked yet, so far it can only be done by a root user and have not decided whether to actually fully remove 
+  // API.accounts.delete is not checked yet, so far it can only be done by a root user and have not decided whether to actually fully remove 
   // accounts or just mark them as deleted
+  
+  //Users.remove(u2._id);
   
   return result;
 }
