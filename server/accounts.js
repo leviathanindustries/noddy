@@ -238,11 +238,11 @@ API.accounts.token = function(email,url,service,fingerprint,send) {
   } else {
     snd.subject = opts.subject;
     var re = new RegExp('\{\{LOGINCODE\}\}','g');
-    snd.text = snd.text.replace(re,token);
-    snd.html = snd.html.replace(re,token);
+    if (snd.text) snd.text = snd.text.replace(re,token);
+    if (snd.html) snd.html = snd.html.replace(re,token);
     var ure = new RegExp('\{\{LOGINURL\}\}','g');
-    snd.text = snd.text.replace(ure,opts.url);
-    snd.html = snd.html.replace(ure,opts.url);
+    if (snd.text) snd.text = snd.text.replace(ure,opts.url);
+    if (snd.html) snd.html = snd.html.replace(ure,opts.url);
   }
   var sent;
   if (send === undefined) send = true;
