@@ -122,13 +122,14 @@ API.collection.prototype.count = function(find,qry,qp) {
 API.collection.prototype.find = function(q) {
   if (typeof q === 'number' || ( typeof q === 'string' && q.indexOf(' ') === -1 ) ) {
     var check = API.es.call('GET',this._route + q);
+    API.log({msg:'Did a direct find for ' + q,found:check});
     if ( check.found !== false && check.status !== 'error' && check.statusCode !== 404 && check._source ) return check._source;
   }
   try {
     var res = this.search(undefined,undefined,q).hits.hits[0];
     return res._source ? res._source : res.fields;
   } catch(err) {
-    return false;
+    return undefined;
   }
 }
 
