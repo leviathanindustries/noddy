@@ -63,7 +63,8 @@ API.collection.prototype.update = function (qry,obj,refresh) {
   if (rec) {
     return update(rec);
   } else {
-    return this.each(qry,update);
+    var c = this.each(qry,update);
+    return c !== 1 ? c : this.find(qry);
   }
 };
 
@@ -168,7 +169,7 @@ API.collection.test = function() {
   if (!result.stringSearch.hits || result.stringSearch.hits.total !== 1) { result.passed = false; result.failed.push(2); }
   
   result.objectSearch = tc.search(undefined,undefined,{hello:'sunshine'});
-  if (!result.objectSearch.hits || result.objectSearch.hits.total === 2) { result.passed = false; result.failed.push(3); }
+  if (!result.objectSearch.hits || result.objectSearch.hits.total !== 2) { result.passed = false; result.failed.push(3); }
   
   result.idFind = tc.find(1);
   if (typeof result.idFind !== 'object') { result.passed = false; result.failed.push(4); }
