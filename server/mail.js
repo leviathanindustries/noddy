@@ -236,7 +236,7 @@ API.mail.construct = function(tmpl,vars) {
 
 API.mail.test = function() {
   try {
-    var result = {passed:true};
+    var result = {passed:true,failed:[]};
     
     result.send = API.mail.send({
       from: API.settings.mail.from,
@@ -245,10 +245,12 @@ API.mail.test = function() {
       text: "hello",
       html: '<p><b>hello</b></p>'
     });
-    result.passed = result.send.statusCode === 200 && result.send.data.message.indexOf('Queued') !== -1;
+    if (result.send.statusCode !== 200) { result.passed = false; result.failed.push(1); }
 
     result.validate = API.mail.validate( (API.settings.mail.to ? API.settings.mail.to : 'mark@cottagelabs.com') );
     result.passed = result.passed && result.validate.is_valid;
+    if (result.validate.is_valid !== true) { result.passed = false; result.failed.push(2); }
+
     return result;
   } catch(err) {
     return {passed: false};

@@ -147,7 +147,7 @@ API.collection.prototype.each = function(q,fn) {
 
 
 API.collection.test = function() {
-  var result = {passed:true};
+  var result = {passed:true,failed:[]};
   var tc = new API.collection({index:API.settings.es.index + '_test',type:'collection'});
   result.recs = [
     {_id:1,hello:'world'},
@@ -161,67 +161,67 @@ API.collection.test = function() {
   setTimeout(function() { future.return(); }, 999);
   future.wait();
   result.count = tc.count();
-  result.passed = result.passed && result.count === result.recs.length;
+  if (result.count !== result.recs.length) { result.passed = false; result.failed.push(1); }
   
   result.search = tc.search();
   result.stringSearch = tc.search(undefined,undefined,'goodbye:"marianne"');
-  result.passed = result.passed && result.stringSearch.hits.total === 1;
+  if (!result.stringSearch.hits || result.stringSearch.hits.total !== 1) { result.passed = false; result.failed.push(2); }
   
   result.objectSearch = tc.search(undefined,undefined,{hello:'sunshine'});
-  result.passed = result.passed && result.objectSearch.hits.total === 2;
+  if (!result.objectSearch.hits || result.objectSearch.hits.total === 2) { result.passed = false; result.failed.push(3); }
   
   result.idFind = tc.find(1);
-  result.passed = result.passed && typeof result.idFind === 'object';
+  if (typeof result.idFind !== 'object') { result.passed = false; result.failed.push(4); }
   
   result.strFind = tc.find('goodbye:"marianne"');
-  result.passed = result.passed && typeof result.strFind === 'object';
-  
+  if (typeof result.strFind !== 'object') { result.passed = false; result.failed.push(5); }
+
   result.objFind = tc.find({goodbye:'marianne'});
-  result.passed = result.passed && typeof result.objFind === 'object';
+  if (typeof result.objFind !== 'object') { result.passed = false; result.failed.push(6); }
   
   result.objFindMulti = tc.find({goodbye:'world'});
-  result.passed = result.passed && typeof result.objFindMulti === 'object';
+  if (typeof result.objFindMulti !== 'object') { result.passed = false; result.failed.push(7); }
   
   result.each = tc.each('goodbye:"world"',function() { return; });
-  result.passed = result.passed && result.each === 2;
+  if (result.each !== 2) { result.passed = false; result.failed.push(8); }
   
   result.update = tc.update({hello:'world'},{goodbye:'world'});
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
-  result.passed = result.passed && typeof result.update === 'object' && result.update.goodbye === 'world';
+  if (result.update.goodbye !== 'world') { result.passed = false; result.failed.push(9); }
   
   result.retrieveUpdated = tc.find({hello:'world'});
-  result.passed = result.passed && typeof result.retrieveUpdated === 'object' && result.retrieveUpdated.goodbye === 'world';
+  if (result.retrieveUpdated.goodbye !== 'world') { result.passed = false; result.failed.push(10); }
   
   result.goodbyes = tc.count('goodbye:"world"');
-  result.passed = result.passed && result.goodbyes === 3;
+  if (result.goodbyes !== 3) { result.passed = false; result.failed.push(11); }
   
   result.remove1 = tc.remove(1);
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
-  result.passed = result.passed && result.remove1 === true;
+  if (result.remove1 !== true) { result.passed = false; result.failed.push(12); }
   
   result.helloWorlds = tc.count({hello:'world'});
-  result.passed = result.passed && result.helloWorlds === 0;
+  if (result.helloWorlds !== 0) { result.passed = false; result.failed.push(13); }
   
   result.remove2 = tc.remove({hello:'sunshine'});
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
-  result.passed = result.passed && result.remove2 === 2;
+  if (result.remove2 !== 2) { result.passed = false; result.failed.push(14); }
   
   result.remaining = tc.count();
-  result.passed = result.passed && result.remaining === 1;
+  if (result.remaining !== 1) { result.passed = false; result.failed.push(15); }
   
   result.removeLast = tc.remove(2);
-  result.passed = result.passed && result.removeLast === true;
+  if (result.removeLast !== true) { result.passed = false; result.failed.push(16); }
   
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
-  result.passed = result.passed && tc.count() === 0;
+  if (tc.count() !== 0) { result.passed = false; result.failed.push(17); }
   
   return result;
 }
