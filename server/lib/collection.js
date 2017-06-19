@@ -216,7 +216,7 @@ API.collection.test = function() {
   result.passed = result.passed && result.remaining === 1;
   
   result.removeLast = tc.remove(2);
-  result.passed = result.passed && result.removeLast = true;
+  result.passed = result.passed && result.removeLast === true;
   
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
