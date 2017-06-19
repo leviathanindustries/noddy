@@ -615,7 +615,7 @@ API.accounts.test = function() {
   // API.accounts.delete is not checked yet, so far it can only be done by a root user and have not decided whether to actually fully remove 
   // accounts or just mark them as deleted
   
-  //Users.remove(u2._id);
+  //if (u2._id) Users.remove(u2._id);
   
   return result;
 }
