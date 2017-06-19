@@ -236,20 +236,20 @@ API.mail.construct = function(tmpl,vars) {
 
 API.mail.test = function() {
   try {
-    var ret = {passed:true};
+    var result = {passed:true};
     
-    ret.send = API.mail.send({
-      from: Meteor.settings.mail.from,
-      to: Meteor.settings.mail.to,
+    result.send = API.mail.send({
+      from: API.settings.mail.from,
+      to: API.settings.mail.to,
       subject: 'Test me via default POST',
       text: "hello",
       html: '<p><b>hello</b></p>'
     });
-    ret.passed = ret.send.statusCode === 200 && ret.send.data.message.indexOf('Queued') !== -1;
+    result.passed = result.send.statusCode === 200 && result.send.data.message.indexOf('Queued') !== -1;
 
-    ret.validate = API.mail.validate( (API.settings.mail.to ? API.settings.mail.to : 'mark@cottagelabs.com') );
-    ret.passed = result.passed && ret.validate.is_valid;
-    return ret;
+    result.validate = API.mail.validate( (API.settings.mail.to ? API.settings.mail.to : 'mark@cottagelabs.com') );
+    result.passed = result.passed && result.validate.is_valid;
+    return result;
   } catch(err) {
     return {passed: false};
   }
