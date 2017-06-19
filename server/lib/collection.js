@@ -1,6 +1,4 @@
 
-// this is at the same level as the main api file, so needs things imported itself
-
 import Future from 'fibers/future';
 import moment from 'moment';
 import { Random } from 'meteor/random';

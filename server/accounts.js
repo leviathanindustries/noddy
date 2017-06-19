@@ -1,4 +1,6 @@
 
+import { Random } from 'meteor/random';
+
 Users = new API.collection({type:"users",history:true});
 loginCodes = new API.collection("logincodes");
 
