@@ -63,9 +63,7 @@ API.collection.prototype.update = function (qry,obj,refresh) {
   if (rec) {
     return update(rec);
   } else {
-    var c = this.each(qry,update);
-    API.es.refresh(this._route);
-    return c !== 1 ? c : this.find(qry);
+    return this.each(qry,update);
   }
 };
 
@@ -109,7 +107,7 @@ API.collection.prototype.search = function(qry,qp,find) {
   }
 }
 
-API.collection.prototype.count = function(qry,qp,find) {
+API.collection.prototype.count = function(find,qry,qp) {
   try {
     var res = this.search(qry,qp,find);
     return res.hits.total;
@@ -191,7 +189,7 @@ API.collection.test = function() {
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
-  if (result.update.goodbye !== 'world') { result.passed = false; result.failed.push(9); }
+  if (result.update !== 1) { result.passed = false; result.failed.push(9); }
   
   result.retrieveUpdated = tc.find({hello:'world'});
   if (result.retrieveUpdated.goodbye !== 'world') { result.passed = false; result.failed.push(10); }
