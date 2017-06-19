@@ -117,25 +117,6 @@ API.mail.validate = function(email,apikey) {
   }
 }
 
-API.mail.test = function() {
-  try {
-    var res = API.mail.send({
-      from: Meteor.settings.mail.from,
-      to: Meteor.settings.mail.to,
-      subject: 'Test me via default POST',
-      text: "hello",
-      html: '<p><b>hello</b></p>'
-      /*attachments:[{
-        fileName: 'myfile.txt',
-        filePath: '/home/cloo/att_test.txt'
-      }]*/
-    });
-    return {passed: res.statusCode === 200 && res.data.message.indexOf('Queued') !== -1};
-  } catch(err) {
-    return {passed: false};
-  }
-}
-
 // mailgun progress webhook target
 // https://documentation.mailgun.com/user_manual.html#tracking-deliveries
 // https://documentation.mailgun.com/user_manual.html#tracking-failures
@@ -253,4 +234,21 @@ API.mail.construct = function(tmpl,vars) {
 
 
 
+API.mail.test = function() {
+  try {
+    var ret = {passed:true};
+    ret.send = API.mail.send({
+      from: Meteor.settings.mail.from,
+      to: Meteor.settings.mail.to,
+      subject: 'Test me via default POST',
+      text: "hello",
+      html: '<p><b>hello</b></p>'
+    });
+    ret.passed = ret.send.statusCode === 200 && ret.send.data.message.indexOf('Queued') !== -1;
+    ret.validate = API.mail.validate('mark@cottagelabs.com');
+    return ret;
+  } catch(err) {
+    return {passed: false};
+  }
+}
 
