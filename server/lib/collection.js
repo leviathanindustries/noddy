@@ -64,6 +64,7 @@ API.collection.prototype.update = function (qry,obj,refresh) {
     return update(rec);
   } else {
     var c = this.each(qry,update);
+    API.es.refresh(this._route);
     return c !== 1 ? c : this.find(qry);
   }
 };
