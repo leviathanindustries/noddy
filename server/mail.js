@@ -1,4 +1,6 @@
 
+import marked from 'marked';
+
 // an email forwarder
 mail_template = new API.collection("mailtemplate");
 mail_progress = new API.collection("mailprogress");

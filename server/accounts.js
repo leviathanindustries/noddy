@@ -1,5 +1,7 @@
 
+import Future from 'fibers/future';
 import { Random } from 'meteor/random';
+import crypto from 'crypto';
 
 Users = new API.collection({type:"users",history:true});
 loginCodes = new API.collection("logincodes");

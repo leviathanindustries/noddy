@@ -1,9 +1,7 @@
 
-import crypto from 'crypto';
 import Future from 'fibers/future';
 import moment from 'moment';
 import fs from 'fs';
-import marked from 'marked';
 
 // api login example:
 // curl -X GET "http://api.cottagelabs.com/accounts" -H "x-id: vhi5m4NJbJF7bRXqp" -H "x-apikey: YOURAPIKEYHERE"
