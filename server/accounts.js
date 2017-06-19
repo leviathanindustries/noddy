@@ -348,7 +348,9 @@ API.accounts.create = function(email,fingerprint) {
 
 API.accounts.retrieve = function(val) {
   // finds and returns the full user account - NOT what should be returned to a user
-  return Users.find('_id.exact:"' + val + '" OR username.exact:"' + val + '" OR emails.address.exact:"' + val + '" OR api.keys.key.exact:"' + val + '"');
+  var u = Users.find('_id.exact:"' + val + '" OR username.exact:"' + val + '" OR emails.address.exact:"' + val + '" OR api.keys.key.exact:"' + val + '"');
+  API.log({msg:'Retrieved account for val ' + val, retrieved: u});
+  return u;
 }
 
 API.accounts.details = function(uid,user) {
