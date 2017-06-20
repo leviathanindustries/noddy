@@ -152,55 +152,6 @@ API.addRoute('/', {
   }
 });
 
-API.test = function(trigger,verbose) {
-  var tests = {passed:true,trigger:trigger};
-  // could add an elasticsearch test, but a collection test won't succeed unless ES succeeds anyway
-  if (API.collection && API.collection.test) {
-    tests.collection = API.collection.test();
-    if (tests.collection.passed && !verbose) tests.collection = {passed:true};
-    tests.passed = tests.passed && tests.collection.passed;
-  }
-  if (API.mail && API.mail.test) {
-    tests.mail = API.mail.test();
-    if (tests.mail.passed && !verbose) tests.mail = {passed:true};
-    tests.passed = tests.passed && tests.mail.passed;
-  }
-  if (API.accounts && API.accounts.test) {
-    tests.accounts = API.accounts.test();
-    if (tests.accounts.passed && !verbose) tests.accounts = {passed:true};
-    tests.passed = tests.passed && tests.accounts.passed;
-  }
-  // add a job test?
-  tests.service = {};
-  for ( var s in API.service ) {
-    if (API.service[s].test) {
-      tests.service[s] = API.service[s].test();
-      if (tests.service[s].passed && !verbose) tests.service[s] = {passed:true};
-      tests.passed = tests.passed && tests.service[s].passed;
-    }
-  }
-  tests.use = {};
-  for ( var u in API.use ) {
-    if (API.use[u].test) {
-      tests.use[u] = API.use[u].test();
-      if (tests.use[u].passed && !verbose) tests.use[u] = {passed:true};
-      tests.passed = tests.passed && tests.use[u].passed;
-    }
-  }
-  var notify = tests.passed ? undefined : {msg:JSON.stringify(tests,undefined,2)};
-  API.log({msg:'Completed testing',tests:tests,notify:notify});
-  return tests;
-}
-
-API.addRoute('test', {
-  get: {
-    //roleRequired: 'root',
-    action: function() {
-      return API.test('API',this.queryParams.verbose);
-    }
-  }
-});
-
 if (API.settings.cron && API.settings.cron.enabled) {
   // TODO should rewrite syncedcron as it falls over sometimes and is no longer supported
   // TODO should have a cron job to run API.test() regularly

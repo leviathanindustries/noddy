@@ -1,0 +1,52 @@
+{
+  "name": "noddy",
+  "version": "3.0.0",
+  "log": {
+    "connections": true,
+    "root": true,
+    "level": "debug",
+    "notify": true,
+    "from": "DEFAULT_LOG_FROM_ADDRESS",
+    "to": "DEFAULT_LOG_TO_ADDRESS"
+  },
+  "es": {
+    "url": "http://localhost:9200",
+    "index": "noddy_dev",
+    "version": 1.7,
+    "auth": {}
+  },
+  "mail": {
+    "from": "DEFAULT_MAIL_FROM_ADDRESS",
+    "to": "DEFAULT_MAIL_TO_ADDRESS",
+    "url": "MAIL_SERVICE_URL_ASSUMES_MAILGUN_BUT_OTHERS_MAY_WORK",
+    "domain": "MAIL_DOMAIN",
+    "apikey": "MAIL_SERVICE_APIKEY",
+    "pubkey": "MAIL_SERVICE_PUBLIC_KEY",
+    "error": {}
+  }
+  "cron": {
+    "enabled": false,
+    "config": {
+      "utc":true
+    }
+  },
+  "cookie": {
+    "name": "noddy",
+    "expires": 60,
+    "httponly": false,
+    "secure": true
+  },
+  "service": {
+    "cottagelabs": {
+      "accounts": {
+        "domain": ".cottagelabs.com",
+        "from": "us@cottagelabs.com",
+        "subject": "Please complete your login",
+        "timeout": 30,
+        "secure": true,
+        "text": "Your login code is:\r\n\r\n{{LOGINCODE}}\r\n\r\nor use this link:\r\n\r\n{{LOGINURL}}\r\n\r\nnote: this single-use code is only valid for {{TIMEOUT}} minutes.",
+        "html": "<html><body><p>Your login code is:</p><p><b>{{LOGINCODE}}</b></p><p>or click on this link</p><p><a href=\"{{LOGINURL}}\">{{LOGINURL}}</a></p><p>note: this single-use code is only valid for {{TIMEOUT}} minutes.</p></body></html>"
+      }
+    }
+  }
+}

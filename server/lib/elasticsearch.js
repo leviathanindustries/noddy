@@ -180,12 +180,21 @@ API.es.call = function(action,route,data,refresh,url) {
     if (refresh && action === 'POST' || action === 'PUT' && routeparts.length === 3) API.es.refresh('/' + routeparts[0] + '/' + routeparts[1],url);
   } catch(err) {
     // TODO check for various types of ES error - for some we may want retries, others may want to trigger specific log alerts
-    console.log(err);
-    console.log(action);
-    console.log(url+route);
-    console.log(opts);
+    //console.log(err);
+    //console.log(action);
+    //console.log(url+route);
+    //console.log(opts);
     ret = {status:'error', statusCode: err.response.statusCode, info: 'the call to es returned an error, but that may not necessarily be bad', err:err}
   }
   return ret;
 }
 
+API.es.status = function() {
+  var s = API.es.call('GET','/_status');
+  var status = {cluster:{},shards:{total:s._shards.total,successful:s._shards.successful},indices:{}};
+  for (var i in s.indices) {
+    status.indices[i] = {docs:s.indices[i].docs.num_docs,size:Math.ceil(s.indices[i].index.primary_size_in_bytes/1024/1024)};
+  }
+  status.cluster = API.es.call('GET','/_cluster/health');
+  return status;
+}
