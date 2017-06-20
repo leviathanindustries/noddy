@@ -577,14 +577,14 @@ API.accounts.test = function() {
 
   result.retrieved = API.accounts.retrieve(temail);
   if (result.retrieved._id !== result.create._id) { result.passed = false; result.failed.push(2); }
-  /*
+  
   result.addrole = API.accounts.addrole(result.retrieved._id,'testgroup','testrole');
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
   result.addedrole = API.accounts.retrieve(result.retrieved._id);
   if (!result.addedrole.roles || !result.addedrole.roles.testgroup || result.addedrole.roles.testgroup.indexOf('testrole') === 01) { result.passed = false; result.failed.push(3); }
-  
+  /*
   result.authorised = API.accounts.auth('testgroup.testrole',result.retrieved);
   if (result.authorised === false) { result.passed = false; result.failed.push(4); }
 
