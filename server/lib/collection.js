@@ -163,10 +163,10 @@ API.collection.test = function() {
   var result = {passed:true,failed:[]};
   var tc = new API.collection({index:API.settings.es.index + '_test',type:'collection'});
   result.recs = [
-    {_id:1,hello:'world'},
-    {_id:2,goodbye:'world'},
-    {goodbye:'world',hello:'sunshine'},
-    {goodbye:'marianne',hello:'sunshine'}
+    {_id:1,hello:'world',lt:1},
+    {_id:2,goodbye:'world',lt:2},
+    {goodbye:'world',hello:'sunshine',lt:3},
+    {goodbye:'marianne',hello:'sunshine',lt:4}
   ];
   
   for ( var r in result.recs ) tc.insert(result.recs[r]);
@@ -210,7 +210,7 @@ API.collection.test = function() {
   result.goodbyes = tc.count('goodbye:"world"');
   if (result.goodbyes !== 3) { result.passed = false; result.failed.push(11); }
 
-  result.lessthan3 = tc.search(undefined,undefined,'_id:<3');
+  result.lessthan3 = tc.search(undefined,undefined,'lt:<3');
   if (result.lessthan3.hits.total !== 2) { result.passed = false; result.failed.push(12); }
 
   result.remove1 = tc.remove(1);
