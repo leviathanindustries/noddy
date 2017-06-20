@@ -261,6 +261,7 @@ API.accounts.token = function(email,url,service,fingerprint,send) {
 }
 
 API.accounts.login = function(email,token,hash,fingerprint,request) {
+  API.log({msg:'Logging in user',email:email,token:token,hash:hash,fingerprint:fingerprint});
   loginCodes.remove('timeout<' + (new Date()).valueOf()); // remove old logincodes
   var future = new Future(); // a delay here helps stop spamming of the login mechanisms
   setTimeout(function() { future.return(); }, 333);
@@ -623,6 +624,9 @@ API.accounts.test = function() {
   var u2 = API.accounts.retrieve(temail);
   result.logoutVerified = u2 && u2.security && JSON.stringify(u2.security.resume) === '{}';
   if (result.logoutVerified !== true) { result.passed = false; result.failed.push(12); }
+  
+  result.hash = API.accounts.hash(1234567);
+  if (result.hash !== API.accounts.hash(1234567)) { result.passed = false; result.failed.push(13); }
   
   // API.accounts.delete is not checked yet, so far it can only be done by a root user and have not decided whether to actually fully remove 
   // accounts or just mark them as deleted
