@@ -99,7 +99,7 @@ API.collection.prototype.search = function(qry,qp,find) {
     } else {
       qp = {q:find}
     }
-    API.msg({msg:'Constructed collection search querystring',find:find,q:qp.q});
+    API.log({msg:'Constructed collection search querystring',find:find,q:qp.q});
   }
   if (qp) {
     var rt = this._route + '/_search?';
