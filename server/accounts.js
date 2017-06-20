@@ -584,7 +584,7 @@ API.accounts.test = function() {
   future.wait();
   result.addedrole = API.accounts.retrieve(result.retrieved._id);
   if (!result.addedrole.roles || !result.addedrole.roles.testgroup || result.addedrole.roles.testgroup.indexOf('testrole') === 01) { result.passed = false; result.failed.push(3); }
-  /*
+  
   result.authorised = API.accounts.auth('testgroup.testrole',result.retrieved);
   if (result.authorised === false) { result.passed = false; result.failed.push(4); }
 
@@ -634,7 +634,7 @@ API.accounts.test = function() {
   // accounts or just mark them as deleted
   
   //if (u2._id) Users.remove(u2._id);
-  */
+  
   return result;
 }
 
