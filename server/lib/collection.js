@@ -47,7 +47,7 @@ API.collection.prototype.update = function (qry,obj,refresh) {
   var rec;
   if (typeof qry === 'string' && qry.indexOf(' ') === -1) {
     var check = API.es.call('GET',this._route + qry);
-    if (check.found !== false) rec = check;
+    if (check.found !== false && check._source) rec = check._source;
   }
   delete obj._id; // just in case, can't replace the object ID.
   var rt = this._route;
