@@ -236,7 +236,7 @@ API.collection.test = function() {
   future.wait();
   if (tc.count() !== 0) { result.passed = false; result.failed.push(17); }
   
-  result.lessthan = tc.search('_id:<2');
+  result.lessthan = tc.search(undefined,undefined,'_id:<2');
   if (result.lessthan.hits.total !== 1) { result.passed = false; result.failed.push(18); }
   
   // TODO add tests for searching with > and < and [ TO ]
