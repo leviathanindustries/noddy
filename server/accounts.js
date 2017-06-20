@@ -218,12 +218,10 @@ API.accounts.token = function(email,url,service,fingerprint,send) {
   opts._id = email;
   opts.service = service;
   opts.fingerprint = fingerprint;
-  var token = generate_random_code(7);
-  opts.token = API.accounts.hash(token);
-  var hash = Random.hexString(30);
-  opts.hash = API.accounts.hash(hash);
+  opts.token = generate_random_code(7);
+  opts.hash = Random.hexString(30);
   if (opts.url === undefined) opts.url = url;
-  opts.url += "#" + hash;
+  opts.url += "#" + opts.hash;
   opts.timeout = (new Date()).valueOf() + ( (opts.timeout !== undefined ? opts.timeout : 30) * 60 * 1000 )
   loginCodes.insert(opts);
 
@@ -233,13 +231,13 @@ API.accounts.token = function(email,url,service,fingerprint,send) {
     snd.vars = {
       useremail:email,
       loginurl:opts.url,
-      logincode:token
+      logincode:opts.token
     };
   } else {
     snd.subject = opts.subject;
     var re = new RegExp('\{\{LOGINCODE\}\}','g');
-    if (snd.text) snd.text = snd.text.replace(re,token);
-    if (snd.html) snd.html = snd.html.replace(re,token);
+    if (snd.text) snd.text = snd.text.replace(re,opts.token);
+    if (snd.html) snd.html = snd.html.replace(re,opts.token);
     var ure = new RegExp('\{\{LOGINURL\}\}','g');
     if (snd.text) snd.text = snd.text.replace(ure,opts.url);
     if (snd.html) snd.html = snd.html.replace(ure,opts.url);
@@ -256,7 +254,7 @@ API.accounts.token = function(email,url,service,fingerprint,send) {
     future.wait();
     return { mid: (sent && sent.data && sent.data.id ? sent.data.id : undefined) };
   } else {
-    return {opts:opts,send:snd,token:token};
+    return {opts:opts,send:snd};
   }
 }
 
@@ -266,7 +264,7 @@ API.accounts.login = function(email,token,hash,fingerprint,request) {
   var future = new Future(); // a delay here helps stop spamming of the login mechanisms
   setTimeout(function() { future.return(); }, 333);
   future.wait();
-  var loginCode = hash ? loginCodes.find({hash:API.accounts.hash(hash)}) : loginCodes.find({email:email,token:API.accounts.hash(token)}); // could restrict to same fingerprint device if desired
+  var loginCode = hash ? loginCodes.find({hash:hash}) : loginCodes.find({email:email,token:token}); // could restrict to same fingerprint device if desired
   if (loginCode) {
     if (email === undefined) email = loginCode.email;
     loginCodes.remove({email:email}); // login only gets one chance
@@ -601,9 +599,9 @@ API.accounts.test = function() {
   setTimeout(function() { future.return(); }, 999);
   future.wait();
   result.logincode = loginCodes.find(temail);
-  if (!result.logincode || result.logincode.token !== API.accounts.hash(result.token.token)) { result.passed = false; result.failed.push(7); }
+  if (!result.logincode || result.logincode.token !== API.accounts.hash(result.token.opts.token)) { result.passed = false; result.failed.push(7); }
   
-  result.login = API.accounts.login(temail,result.token.token);
+  result.login = API.accounts.login(temail,result.token.opts.token);
   if (!result.login || !result.login.account || result.login.account.email !== temail) { result.passed = false; result.failed.push(8); }
 
   future = new Future();
