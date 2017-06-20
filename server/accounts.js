@@ -599,7 +599,7 @@ API.accounts.test = function() {
   setTimeout(function() { future.return(); }, 999);
   future.wait();
   result.logincode = loginCodes.find(temail);
-  if (!result.logincode || result.logincode.token !== API.accounts.hash(result.token.opts.token)) { result.passed = false; result.failed.push(7); }
+  if (!result.logincode || result.logincode.token !== result.token.opts.token) { result.passed = false; result.failed.push(7); }
   
   result.login = API.accounts.login(temail,result.token.opts.token);
   if (!result.login || !result.login.account || result.login.account.email !== temail) { result.passed = false; result.failed.push(8); }
