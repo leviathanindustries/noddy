@@ -261,7 +261,7 @@ API.accounts.token = function(email,url,service,fingerprint,send) {
 }
 
 API.accounts.login = function(email,token,hash,fingerprint,request) {
-  loginCodes.remove('timeout.exact:"<' + (new Date()).valueOf() + '"'); // remove old logincodes
+  loginCodes.remove('timeout<' + (new Date()).valueOf()); // remove old logincodes
   var future = new Future(); // a delay here helps stop spamming of the login mechanisms
   setTimeout(function() { future.return(); }, 333);
   future.wait();
@@ -593,7 +593,7 @@ API.accounts.test = function() {
   if (result.deauthorised !== false) { result.passed = false; result.failed.push(5); }
   
   result.token = API.accounts.token(temail,'https://testurl.com',undefined,undefined,false);
-  if (!result.token || !result.token.opts || result.token.opts.email !== temail || !result.token.opts.token || result.token.opts.hash) { result.passed = false; result.failed.push(6); }
+  if (!result.token || !result.token.opts || result.token.opts.email !== temail || !result.token.opts.token || !result.token.opts.hash) { result.passed = false; result.failed.push(6); }
 
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
