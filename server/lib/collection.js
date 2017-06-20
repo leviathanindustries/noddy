@@ -209,36 +209,36 @@ API.collection.test = function() {
   
   result.goodbyes = tc.count('goodbye:"world"');
   if (result.goodbyes !== 3) { result.passed = false; result.failed.push(11); }
-  
+
+  result.lessthan3 = tc.search(undefined,undefined,'_id:<3');
+  if (result.lessthan3.hits.total !== 2) { result.passed = false; result.failed.push(12); }
+
   result.remove1 = tc.remove(1);
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
-  if (result.remove1 !== true) { result.passed = false; result.failed.push(12); }
+  if (result.remove1 !== true) { result.passed = false; result.failed.push(13); }
   
   result.helloWorlds = tc.count({hello:'world'});
-  if (result.helloWorlds !== 0) { result.passed = false; result.failed.push(13); }
+  if (result.helloWorlds !== 0) { result.passed = false; result.failed.push(14); }
   
   result.remove2 = tc.remove({hello:'sunshine'});
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
-  if (result.remove2 !== 2) { result.passed = false; result.failed.push(14); }
+  if (result.remove2 !== 2) { result.passed = false; result.failed.push(15); }
   
   result.remaining = tc.count();
-  if (result.remaining !== 1) { result.passed = false; result.failed.push(15); }
+  if (result.remaining !== 1) { result.passed = false; result.failed.push(16); }
   
   result.removeLast = tc.remove(2);
-  if (result.removeLast !== true) { result.passed = false; result.failed.push(16); }
+  if (result.removeLast !== true) { result.passed = false; result.failed.push(17); }
   
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
-  if (tc.count() !== 0) { result.passed = false; result.failed.push(17); }
-  
-  result.lessthan = tc.search(undefined,undefined,'_id:<2');
-  if (result.lessthan.hits.total !== 1) { result.passed = false; result.failed.push(18); }
-  
+  if (tc.count() !== 0) { result.passed = false; result.failed.push(18); }
+    
   // TODO add tests for searching with > and < and [ TO ]
   // also test for updating with dot.notation and updating things to false or undefined
   // and updating things within objects that do not yet exist, or updating things in lists with numbered dot notation

@@ -568,68 +568,68 @@ API.accounts.test = function() {
   var temail = 'a_test_account@noddy.com';
   var result = {passed:true,failed:[]};
 
+  result.hash = API.accounts.hash(1234567);
+  if (result.hash !== API.accounts.hash(1234567)) { result.passed = false; result.failed.push(1); }
+
   result.create = API.accounts.create(temail);
-  if (typeof result.create !== 'object' || result.create._id === undefined) { result.passed = false; result.failed.push(1); }
+  if (typeof result.create !== 'object' || result.create._id === undefined) { result.passed = false; result.failed.push(2); }
   
   var future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
 
   result.retrieved = API.accounts.retrieve(temail);
-  if (result.retrieved._id !== result.create._id) { result.passed = false; result.failed.push(2); }
+  if (result.retrieved._id !== result.create._id) { result.passed = false; result.failed.push(3); }
   
   result.addrole = API.accounts.addrole(result.retrieved._id,'testgroup','testrole');
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
   result.addedrole = API.accounts.retrieve(result.retrieved._id);
-  if (!result.addedrole.roles || !result.addedrole.roles.testgroup || result.addedrole.roles.testgroup.indexOf('testrole') === 01) { result.passed = false; result.failed.push(3); }
+  if (!result.addedrole.roles || !result.addedrole.roles.testgroup || result.addedrole.roles.testgroup.indexOf('testrole') === 01) { result.passed = false; result.failed.push(4); }
   
   result.authorised = API.accounts.auth('testgroup.testrole',result.retrieved);
-  if (result.authorised === false) { result.passed = false; result.failed.push(4); }
+  if (result.authorised === false) { result.passed = false; result.failed.push(5); }
 
   result.removerole = API.accounts.removerole(result.retrieved._id,'testgroup','testrole');
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
-  result.deauthorised = API.accounts.auth('testgroup.testrole',API.accounts.retrieve(result.retrieved._id));
-  if (result.deauthorised !== false) { result.passed = false; result.failed.push(5); }
+  result.deauthorised = API.accounts.retrieve(result.retrieved._id);
+  if (result.deauthorised.roles.testgroup.length > 0) { result.passed = false; result.failed.push(6); }
   
   result.token = API.accounts.token(temail,'https://testurl.com',undefined,undefined,false);
-  if (!result.token || !result.token.opts || result.token.opts.email !== temail || !result.token.opts.token || !result.token.opts.hash) { result.passed = false; result.failed.push(6); }
+  if (!result.token || !result.token.opts || result.token.opts.email !== temail || !result.token.opts.token || !result.token.opts.hash) { result.passed = false; result.failed.push(7); }
 
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
   result.logincode = loginCodes.find(temail);
-  if (!result.logincode || result.logincode.token !== result.token.opts.token) { result.passed = false; result.failed.push(7); }
+  if (!result.logincode || result.logincode.token !== result.token.opts.token) { result.passed = false; result.failed.push(8); }
   
   result.login = API.accounts.login(temail,result.token.opts.token);
-  if (!result.login || !result.login.account || result.login.account.email !== temail) { result.passed = false; result.failed.push(8); }
+  if (!result.login || !result.login.account || result.login.account.email !== temail) { result.passed = false; result.failed.push(9); }
 
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
   result.logincodeRemoved = loginCodes.find(temail);
-  if (result.logincodeRemoved !== false) { result.passed = false; result.failed.push(9); }
+  if (result.logincodeRemoved !== undefined) { result.passed = false; result.failed.push(10); }
   
   var u = API.accounts.retrieve(temail);
   result.loggedin = u && u.security && u.security.resume && result.login && result.login.settings && u.security.resume.token && u.security.resume.token === result.login.settings.resume;
-  if (result.loggedin !== true) { result.passed = false; result.failed.push(10); }
+  if (result.loggedin !== true) { result.passed = false; result.failed.push(11); }
   
   result.logout = API.accounts.logout(temail);
-  if (result.logout !== true) { result.passed = false; result.failed.push(11); }
+  if (result.logout !== true) { result.passed = false; result.failed.push(12); }
   
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
   future.wait();
   var u2 = API.accounts.retrieve(temail);
   result.logoutVerified = u2 && u2.security && JSON.stringify(u2.security.resume) === '{}';
-  if (result.logoutVerified !== true) { result.passed = false; result.failed.push(12); }
-  
-  result.hash = API.accounts.hash(1234567);
-  if (result.hash !== API.accounts.hash(1234567)) { result.passed = false; result.failed.push(13); }
-  
+  if (result.logoutVerified !== true) { result.passed = false; result.failed.push(13); }
+    
   // API.accounts.delete is not checked yet, so far it can only be done by a root user and have not decided whether to actually fully remove 
   // accounts or just mark them as deleted
   
