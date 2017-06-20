@@ -60,6 +60,7 @@ API.collection.prototype.update = function (qry,obj,refresh) {
     }
     doc.updatedAt = Date.now();
     doc.updated_date = moment(doc.updatedAt,"x").format("YYYY-MM-DD HHmm");
+    API.log({msg:'Updating ' + rt + '/' + doc._id,qry:qry,updateset:obj,refresh:refresh});
     API.es.call('POST',rt + doc._id, doc);
     return doc;
   }

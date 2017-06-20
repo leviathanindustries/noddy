@@ -69,10 +69,10 @@ API = new Restivus({
 
 API.settings = Meteor.settings;
 
-API.log = function(opts) {
+API.log = function(opts,lvl) {
   try {
     // opts must contain msg and should contain level and error, and anything else should be stored as delivered
-    if (typeof opts === 'string') opts = {msg: opts};
+    if (typeof opts === 'string') opts = {msg: opts, level:lvl};
     if (!opts.level) opts.level = 'debug';
     opts.createdAt = Date.now();
     opts.created_date = moment(opts.createdAt,"x").format("YYYY-MM-DD HHmm");
