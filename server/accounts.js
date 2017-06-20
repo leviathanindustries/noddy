@@ -24,6 +24,9 @@ API.addRoute('accounts', {
     }
   }
 });
+API.addRoute('accounts/test', {
+  get: { /*roleRequired: 'root',*/ action: function() { return API.accounts.test(); } }
+});
 API.addRoute('accounts/xsrf', {
   post: { authRequired: true, action: function() { return API.accounts.xsrf(this.user); } }
 });

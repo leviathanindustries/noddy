@@ -5,6 +5,10 @@ import marked from 'marked';
 mail_template = new API.collection("mailtemplate");
 mail_progress = new API.collection("mailprogress");
 
+API.addRoute('mail/test', {
+  get: { /*roleRequired: 'root',*/ action: function() { return API.mail.test(); } }
+});
+
 API.addRoute('mail/validate', {
   get: {
     action: function() {
