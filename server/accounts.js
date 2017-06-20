@@ -263,7 +263,7 @@ API.accounts.token = function(email,url,service,fingerprint,send) {
 
 API.accounts.login = function(email,token,hash,fingerprint,request) {
   API.log({msg:'Logging in user',email:email,token:token,hash:hash,fingerprint:fingerprint});
-  loginCodes.remove('timeout<' + (new Date()).valueOf()); // remove old logincodes
+  loginCodes.remove('timeout:<' + (new Date()).valueOf()); // remove old logincodes
   var future = new Future(); // a delay here helps stop spamming of the login mechanisms
   setTimeout(function() { future.return(); }, 333);
   future.wait();
