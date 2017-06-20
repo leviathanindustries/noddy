@@ -52,15 +52,6 @@ API.addRoute('mail/progress', {
   }
 });
 
-API.addRoute('mail/test', {
-  get: {
-    action: function() {
-      return API.mail.test();
-      //return {status: 'success', data: {} };
-    }
-  }
-});
-
 
 
 API.mail = {}
