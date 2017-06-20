@@ -574,7 +574,7 @@ API.accounts.test = function() {
 
   result.retrieved = API.accounts.retrieve(temail);
   if (result.retrieved._id !== result.create._id) { result.passed = false; result.failed.push(2); }
-  
+  /*
   result.addrole = API.accounts.addrole(result.retrieved._id,'testgroup','testrole');
   future = new Future();
   setTimeout(function() { future.return(); }, 999);
@@ -631,7 +631,7 @@ API.accounts.test = function() {
   // accounts or just mark them as deleted
   
   //if (u2._id) Users.remove(u2._id);
-  
+  */
   return result;
 }
 
