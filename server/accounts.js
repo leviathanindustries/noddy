@@ -555,6 +555,7 @@ API.accounts.removerole = function(uid,group,role,uacc) {
 }
 
 API.accounts.hash = function(token) {
+  if (typeof token === 'number') token = token.toString();
   var hash = crypto.createHash('sha256');
   hash.update(token);
   return hash.digest('base64');
