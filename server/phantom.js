@@ -1,6 +1,5 @@
 
 import phantom from 'phantom';
-import fs from 'fs';
 
 API.addRoute('phantom', {
   get: {
@@ -37,9 +36,7 @@ var _phantom = function(url,delay,callback) {
   if (delay === undefined) delay = 5000;
   var phi,sp;
   API.log('starting phantom retrieval of ' + url);
-  var ppath = '/usr/bin/phantomjs';
   var redirector;
-  if (!fs.existsSync(ppath)) ppath = '/usr/local/bin/phantomjs';
   phantom.create(['--ignore-ssl-errors=yes','--load-images=no','--cookies-file=./cookies.txt'])
     .then(function(ph) {
       phi = ph;
@@ -109,7 +106,7 @@ API.phantom.test = function(url,find) {
   if (find === undefined) find = 'cottage labs';
   var result = {passed:true,failed:[]}
   
-  var pg = API.phantom.get(url,2000);
+  var pg = API.phantom.get(url,5000);
   if (pg.toLowerCase().indexOf(find) === -1) { result.passed = false; result.failed.push(1); }
   
   return result;
