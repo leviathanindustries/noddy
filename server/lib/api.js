@@ -68,6 +68,8 @@ API = new Restivus({
 
 API.settings = Meteor.settings;
 
+API.mail = {}; // try to define this early to let ES connection error notifications get sent out.
+
 API.log = function(opts,lvl) {
   try {
     // opts must contain msg and should contain level and error, and anything else should be stored as delivered
