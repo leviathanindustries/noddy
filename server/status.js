@@ -22,7 +22,7 @@ API.addRoute('status/test', {
   get: {
     //roleRequired: 'root',
     action: function() {
-      return API.test('API',this.queryParams.verbose);
+      return API.test(this.queryParams.verbose);
     }
   }
 });
@@ -60,19 +60,20 @@ API.status = function() {
     }
   } catch(err) { ret.up.cluster = false; }
   // TODO if cluster is up could read the mup file then try getting each cluster machine too, and counting them
-  try { ret.lantern = API.service.lantern.status(); } catch(err) { ret.lantern = false; }
   try { ret.job = API.job.status(); } catch(err) { ret.job = false; }
   try { ret.limit = API.limit.status(); } catch(err) { ret.limit = false; }
-  try { ret.openaccessbutton = API.service.oab.status(); } catch(err) { ret.openaccessbutton = false; }
   try { ret.index = API.es.status(); } catch(err) { ret.index = false; }
+  try { ret.lantern = API.service.lantern.status(); } catch(err) { ret.lantern = false; }
+  try { ret.openaccessbutton = API.service.oab.status(); } catch(err) { ret.openaccessbutton = false; }
   return ret;
 };
 
 
 
-API.test = function(trigger,verbose) {
-  var tests = {passed:true,trigger:trigger};
+API.test = function(verbose,trigger) {
+  var tests = {passed:true,trigger:trigger}; // trigger can just be some useful string say to indicate which cron job triggered a test
   // could add an elasticsearch test, but a collection test won't succeed unless ES succeeds anyway
+  /*
   if (API.collection && API.collection.test) {
     tests.collection = API.collection.test();
     if (tests.collection.passed && !verbose) tests.collection = {passed:true};
@@ -88,7 +89,19 @@ API.test = function(trigger,verbose) {
     if (tests.accounts.passed && !verbose) tests.accounts = {passed:true};
     tests.passed = tests.passed && tests.accounts.passed;
   }
-  // add a job test?
+  if (API.convert && API.convert.test) {
+    tests.convert = API.convert.test();
+    if (tests.convert.passed && !verbose) tests.convert = {passed:true};
+    tests.passed = tests.passed && tests.convert.passed;
+  }
+  // add a job, limit, and phantom test?*/
+  for ( var e in API ) {
+    if (API[e].test) {
+      tests[e] = API[e].test();
+      if (tests[e].passed && !verbose) tests[e] = {passed:true};
+      tests.passed = tests.passed && tests[e].passed;
+    }    
+  }
   tests.service = {};
   for ( var s in API.service ) {
     if (API.service[s].test) {

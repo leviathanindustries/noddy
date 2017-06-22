@@ -1,7 +1,7 @@
 
 // elasticsearch API
 
-// because the logger uses ES to log logs, ES does not use the logger
+// because the logger uses ES to log logs, ES uses console.log at some points where other things should use API.log
 
 // NOTE: if an index/type can be public, just make it public and have nginx route to it directly, saving app load.
 
@@ -46,9 +46,7 @@ if (!API.settings.es) {
   try {
     var s = HTTP.call('GET',API.settings.es.url);
   } catch(err) {
-    console.log('ELASTICSEARCH INSTANCE AT ' + API.settings.es.url + ' APPEARS TO BE UNREACHABLE. SHUTTING DOWN.');
-    console.log(err);
-    process.exit(-1);
+    API.log({msg:'ELASTICSEARCH INSTANCE AT ' + API.settings.es.url + ' APPEARS TO BE UNREACHABLE.',error:err,notify:true});
   }
 }
 
