@@ -36,7 +36,7 @@ var _phantom = function(url,delay,callback) {
   var ppath = '/usr/bin/phantomjs';
   var redirector;
   if (!fs.existsSync(ppath)) ppath = '/usr/local/bin/phantomjs';
-  phantom.create(['--ignore-ssl-errors=yes','--load-images=no','--cookies-file=./cookies.txt'],{phantomPath:ppath})
+  phantom.create(['--ignore-ssl-errors=yes','--load-images=no','--cookies-file=./cookies.txt'])
     .then(function(ph) {
       phi = ph;
       API.log('creating page');
