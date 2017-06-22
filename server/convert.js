@@ -68,7 +68,7 @@ API.convert.run = function(url,from,to,content,opts) {
     }
   } else if ( from === 'csv' ) {
     if ( to.indexOf('json') !== -1 ) {
-      output = API.convert.csv2json(url,content);
+      output = API.convert.csv2json(url,content,opts);
     } else if ( to.indexOf('txt') !== -1 ) {
       from = 'file';
     }
@@ -113,15 +113,16 @@ API.convert.run = function(url,from,to,content,opts) {
     } else if ( to.indexOf('json') !== -1 ) {
       output = API.convert.xml2json(url,content);
     }
-  } else if ( from === 'file' ) {
-    if ( to.indexOf('txt') !== -1 ) {
-      output = API.convert.file2txt(url,content,opts);
-    }    
   } else if ( from === 'pdf' ) {
     if ( to.indexOf('txt') !== -1 ) {
       output = API.convert.pdf2txt(url,content,opts);
     } else if ( to.indexOf('json') !== -1 ) {
       output = API.convert.pdf2json(url,content,opts);
+    }
+  }
+  if ( from === 'file' ) { // some of the above switch to this, so separate loop
+    if ( to.indexOf('txt') !== -1 ) {
+      output = API.convert.file2txt(url,content,opts);
     }
   }
   if ( output === undefined ) {
@@ -131,7 +132,7 @@ API.convert.run = function(url,from,to,content,opts) {
   }
 }
 
-var _csv2json = function(url,content,callback) {
+var _csv2json = function(url,content,opts,callback) {
   var converter;
   if ( content === undefined ) {
     converter = new Converter({constructResult:false});
