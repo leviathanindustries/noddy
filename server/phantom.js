@@ -25,6 +25,10 @@ API.addRoute('phantom/get', {
   }
 });
 
+API.addRoute('phantom/test', { get: { /*roleRequired: 'root',*/ action: function() { return API.phantom.test(this.queryParams.url,this.queryParams.find); } } });
+
+
+
 API.phantom = {};
 
 // return the content of the page at the redirected URL, after js has run
@@ -100,11 +104,13 @@ API.phantom.get = Meteor.wrapAsync(_phantom);
 
 
 
-API.phantom.test = function() {
+API.phantom.test = function(url,find) {
+  if (url === undefined) url = 'https://cottagelabs.com';
+  if (find === undefined) find = 'cottage labs';
   var result = {passed:true,failed:[]}
   
-  var pg = API.phantom.get('https://cottagelabs.com');
-  if (pg.toLowerCase().indexOf('cottage labs') === -1) { result.passed = false; result.failed.push(1); }
+  var pg = API.phantom.get(url);
+  if (pg.toLowerCase().indexOf(find) === -1) { result.passed = false; result.failed.push(1); }
   
   return result;
 }
