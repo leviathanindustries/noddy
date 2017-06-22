@@ -139,7 +139,6 @@ API.log = function(opts,lvl) {
   } catch (err) {
     console.log('LOGGER IS ERRORING OUT!!!');
     console.log(err);
-    console.log('LOGGER IS ERRORING OUT!!!');
   }
 }
 

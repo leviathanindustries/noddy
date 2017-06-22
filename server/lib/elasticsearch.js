@@ -46,7 +46,14 @@ if (!API.settings.es) {
   try {
     var s = HTTP.call('GET',API.settings.es.url);
   } catch(err) {
-    API.log({msg:'ELASTICSEARCH INSTANCE AT ' + API.settings.es.url + ' APPEARS TO BE UNREACHABLE.',error:err,notify:true});
+    console.log('ELASTICSEARCH INSTANCE AT ' + API.settings.es.url + ' APPEARS TO BE UNREACHABLE.');
+    console.log(err);
+    API.mail.send({
+      from: API.settings.log.from,
+      to: API.settings.log.to,
+      subject: (Meteor.settings.name ? Meteor.settings.name : 'API') + ' cannot find ES instance at startup',
+      text: 'You better take a look...\n\n' + JSON.stringify(err,undefined,2)
+    })
   }
 }
 
