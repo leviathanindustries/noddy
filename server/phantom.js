@@ -19,7 +19,7 @@ API.addRoute('phantom/get', {
         headers: {
           'Content-Type': 'text/' + format
         },
-        body: API.phantom.get(this.queryParams.url,this.queryParams.delay)
+        body: API.phantom.get(this.queryParams.url,(this.queryParams.delay ? this.queryParams.delay : 5000))
       };
     }
   }
@@ -109,7 +109,7 @@ API.phantom.test = function(url,find) {
   if (find === undefined) find = 'cottage labs';
   var result = {passed:true,failed:[]}
   
-  var pg = API.phantom.get(url);
+  var pg = API.phantom.get(url,2000);
   if (pg.toLowerCase().indexOf(find) === -1) { result.passed = false; result.failed.push(1); }
   
   return result;
