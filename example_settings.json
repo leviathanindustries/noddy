@@ -48,7 +48,7 @@
         "html": "<html><body><p>Your login code is:</p><p><b>{{LOGINCODE}}</b></p><p>or click on this link</p><p><a href=\"{{LOGINURL}}\">{{LOGINURL}}</a></p><p>note: this single-use code is only valid for {{TIMEOUT}} minutes.</p></body></html>"
       }
     }
-  }
+  },
   "use": {
   
   }
