@@ -20,7 +20,7 @@
   "appName": "noddy",
   "app": ".",
   "env": {
-    "ROOT_URL": "http://api.leviathanindustries.com",
+    "ROOT_URL": "https://api.leviathanindustries.com",
     "PORT": 3000,
     "MONGO_URL": "http://nowhere"
   },

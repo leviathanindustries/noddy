@@ -66,6 +66,17 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
+    
+    location /store {
+        # DO NOT add the usual origin * header to the api and dev api routes, it is already set by the software in a default way, and setting it twice results in errors
+        add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
+        add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type';
+        proxy_pass http://clapilocal/api/store/;
+        proxy_redirect off;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
 }
 
 # LIVE API CONNECTED DIRECTLY RATHER THAN THROUGH CLUSTER
@@ -173,22 +184,11 @@ server {
 
 
 server {
-        listen 443 ssl;
         server_name static.cottagelabs.com;
-        root /home/cloo/static;
-        ssl on;
+        listen 80;
+        listen 443 ssl;
         ssl_certificate /etc/letsencrypt/live/static.cottagelabs.com/fullchain.pem;
         ssl_certificate_key /etc/letsencrypt/live/static.cottagelabs.com/privkey.pem;
-        location / {
-            expires           0;
-            add_header        Cache-Control private;
-            add_header Access-Control-Allow-Origin *;
-            autoindex on;
-        }
-}
-server {
-        listen 80;
-        server_name static.cottagelabs.com;
         root /home/cloo/static;
         location / {
             expires           0;
@@ -197,7 +197,5 @@ server {
             autoindex on;
         }
 }
-
-
 
 

@@ -1,6 +1,8 @@
 {
   "name": "noddy",
   "version": "3.0.0",
+  "dev": "true/false, if true appends _dev to every index title, and can be used to control logic throughout the app, particularly useful for testing",
+  "proxy": "URL to proxy to, for any outgoing connections that have to appear to come from a registered IP (include auth in this if necessary)",
   "log": {
     "connections": true,
     "root": true,
@@ -12,31 +14,45 @@
   "es": {
     "url": "http://localhost:9200",
     "index": "noddy_dev",
-    "version": 1.7,
+    "mappings": "OPTIONAL OBJECT WITH NAME KEYS OF INDEXES CONTAINING TYPE OR JUST TYPES AS TOP LEVEL KEYS, POINTING TO MAPPING OBJECTS FOR THAT TYPE OR INDEXTYPE".
+    "mapping": "OPTIONAL A MAPPING OBJECT TO BE USED GENERALLY FOR ALL TYPES, OR A STRING URL TO REMOTE MAPPING LOCATION, OR STRING LOCAL FILE LOCATION - ONLY CHECKED IF MAPPINGS IS NOT PRESENT. IF NEITHER ARE PRESENT, A DEFAULT MAPPING FROM THE PUBLIC FOLDER WILL BE USED, EITHER NAMED mapping.json FOR ES < 5 OR mapping5.json FOR ES >= 5. IF THAT IS ALSO NOT PRESENT, AN ATTEMPT TO GET SUCH DEFAULT MAPPINGS FROM https://static.cottagelabs.com WILL OCCUR",
     "auth": {}
   },
+  "accounts": {
+    "xsrf": "true/false if true any POST to change user account data has to first request and receive an xsrf token, which it then provides in the POST"
+    "xid": "if true, API login requires provision of x-id header or id param in addition to apikey",
+    "email": "if true, API login requries provision of email param in addition to apikey (if xid and email both set to true, provision of either one satisfies login requirement)",
+    "cookie": {
+      "name": "noddy",
+      "expires": 60,
+      "httponly": false,
+      "secure": true
+    }
+  },
   "mail": {
+    "disabled": "if true, no mail gets sent and a log is recorded that it WOULD get sent",
     "from": "DEFAULT_MAIL_FROM_ADDRESS",
     "to": "DEFAULT_MAIL_TO_ADDRESS",
     "url": "MAIL_SERVICE_URL_ASSUMES_MAILGUN_BUT_OTHERS_MAY_WORK",
     "domain": "MAIL_DOMAIN",
     "apikey": "MAIL_SERVICE_APIKEY",
     "pubkey": "MAIL_SERVICE_PUBLIC_KEY",
-    "error": {}
-  }
-  "cron": {
-    "enabled": false,
-    "config": {
-      "utc":true
-    }
+    "feedback": {}
   },
-  "cookie": {
-    "name": "noddy",
-    "expires": 60,
-    "httponly": false,
-    "secure": true
+  "job": {
+    "startup": "true/false, if true the job runner is started on system startup",
+    "interval": "Optional number of milliseconds to wait between checking for new job processes to start (if not set, 1000 is used)",
+    "concurrency": "Optional max number of job processes to allow processing at the same time, across all machines"
+  },
+  "store": {
+    "api": "The API URL that will definitely go to the store route on the machine with the storage on it (nginx can configure it to always do that, but local code may still call the store code, so may still need to know this to forward it on)",
+    "folder": "A folder on local disk where files can be read directly, by requests to the URL that serves the folder - the code does NOT create this, it must be manually created only on the server that should manage storage, all other cluster machines will query it where necessary",
+    "url": "A public url pointing to the public file storage, where files can just be downloaded from (API can redirect requests to it)",
+    "secure": "A folder on local disk that files that must be kept secure access to can be put",
+    "local": "A local network address to the machine holding the secure folder, which cluster machines can access it on, to save time. Defaults to the api value above"
   },
   "service": {
+    "EXAMPLE": "a service can have various settings listed for it here. Also a service can overwrite accounts and mail settings by providing its own block here",
     "cottagelabs": {
       "accounts": {
         "domain": ".cottagelabs.com",
@@ -50,6 +66,9 @@
     }
   },
   "use": {
-  
+    "EXAMPLE": "a use endpoint can have various settings listed for it here, in a key-named object",
+    "google": {
+      "serverkey": "YOUR-SERVER-KEY (note this means you are likely to have very secret info in here, do not share it)"
+    }
   }
 }
