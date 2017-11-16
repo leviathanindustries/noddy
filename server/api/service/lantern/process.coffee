@@ -69,7 +69,8 @@ API.service.lantern.process = (proc) ->
     publisher_copy_self_archiving: 'unknown'
     authors: [] # eupmc author list if available (could look on other sources too?)
     in_core: 'unknown'
-    repositories: [] # where CORE says it is. Should be list of objects
+    in_base: 'unknown'
+    repositories: [] # where CORE or BASE says it is. Should be list of objects
     grants:[] # a list of grants, probably from eupmc for now
     confidence: 0 # 1 if matched on ID, 0.9 if title to 1 result, 0.7 if title to multiple results, 0 if unknown article
     score: 0
@@ -196,67 +197,90 @@ API.service.lantern.process = (proc) ->
 
   if result.doi
     crossref = API.use.crossref.works.doi result.doi
-    if crossref.status is 'success'
-      c = crossref.data;
+    if crossref?
       result.confidence = 1 if not result.confidence
-      result.publisher = c.publisher
+      result.publisher = crossref.publisher
       result.provenance.push 'Added publisher name from Crossref'
-      if not result.issn and c.ISSN and c.ISSN.length > 0
-        result.issn = c.ISSN[0]
+      if not result.issn and crossref.ISSN and crossref.ISSN.length > 0
+        result.issn = crossref.ISSN[0]
         result.provenance.push 'Added ISSN from Crossref'
-      if not result.journal_title and c['container-title'] and c['container-title'].length > 0
-        result.journal_title = c['container-title'][0]
+      if not result.journal_title and crossref['container-title'] and crossref['container-title'].length > 0
+        result.journal_title = crossref['container-title'][0]
         result.provenance.push 'Added journal title from Crossref'
-      if not result.authors and c.author
-        result.authors = c.author
+      if not result.authors and crossref.author
+        result.authors = crossref.author
         result.provenance.push 'Added author list from Crossref'
-      if not result.title and c.title and c.title.length > 0
-        result.title = c.title[0]
+      if not result.title and crossref.title and crossref.title.length > 0
+        result.title = crossref.title[0]
         result.provenance.push 'Added article title from Crossref'
     else
       result.provenance.push 'Unable to obtain information about this article from Crossref.'
 
-    # should this use base / dissemin / oab resolve instead?
-    if result.doi
-      core = API.use.core.articles.doi result.doi
-      if core.data?.id
-        result.in_core = true
-        result.provenance.push 'Found DOI in CORE'
-        cc = core.data
-        if not result.authors and cc.authors
-          result.authors = cc.author
-          result.provenance.push 'Added authors from CORE'
-        if cc.repositories?.length > 0
-          for rep in cc.repositories
-            rc = {name:rep.name}
-            rc.oai = rep.oai if rep.oai?
-            if rep.uri
-              rc.url = rep.uri
-            else
-              try
-                repo = API.use.opendoar.search rep.name
-                if repo.status is 'success' and repo.total is 1 and repo.data[0].url
-                  rc.url = repo.data[0].url
-                  result.provenance.push 'Added repo base URL from OpenDOAR'
-                else
-                  result.provenance.push 'Searched OpenDOAR but could not find repo and/or URL'
-              catch
-                result.provenance.push 'Tried but failed to search OpenDOAR for repo base URL'
-            rc.fulltexts = []
-            if cc.fulltextUrls
-              for fu in cc.fulltextUrls
-                if fu.indexOf('core.ac.uk') is -1 and rep.fulltexts.indexOf(fu) is -1 and (not rep.url or ( rep.url and fu.indexOf(rep.url.replace('http://','').replace('https://','').split('/')[0]) isnt -1 ) )
-                  rc.fulltexts.push resolved
-            result.repositories.push rc
-          result.provenance.push 'Added repositories that CORE claims article is available from'
-        if not result.title and cc.title
-          result.title = cc.title
-          result.provenance.push 'Added title from CORE'
-      else
-        result.in_core = false
-        result.provenance.push 'Could not find DOI in CORE'
+    core = API.use.core.doi result.doi
+    if core?.id
+      result.in_core = true
+      result.provenance.push 'Found DOI in CORE'
+      if not result.authors and core.authors
+        result.authors = core.author
+        result.provenance.push 'Added authors from CORE'
+      if core.repositories?.length > 0
+        for rep in core.repositories
+          rc = {name:rep.name}
+          rc.oai = rep.oai if rep.oai?
+          if rep.uri
+            rc.url = rep.uri
+          else
+            try
+              repo = API.use.opendoar.search rep.name
+              if repo.status is 'success' and repo.total is 1 and repo.data[0].url
+                rc.url = repo.data[0].url
+                result.provenance.push 'Added repo base URL from OpenDOAR'
+              else
+                result.provenance.push 'Searched OpenDOAR but could not find repo and/or URL'
+            catch
+              result.provenance.push 'Tried but failed to search OpenDOAR for repo base URL'
+          rc.fulltexts = []
+          if core.fulltextUrls
+            for fu in core.fulltextUrls
+              if fu.indexOf('core.ac.uk') is -1 and rep.fulltexts.indexOf(fu) is -1 and (not rep.url or ( rep.url and fu.indexOf(rep.url.replace('http://','').replace('https://','').split('/')[0]) isnt -1 ) )
+                rc.fulltexts.push fu
+          result.repositories.push rc
+        result.provenance.push 'Added repositories that CORE claims article is available from'
+      if not result.title and core.title
+        result.title = core.title
+        result.provenance.push 'Added title from CORE'
+    else
+      result.in_core = false
+      result.provenance.push 'Could not find DOI in CORE'
+
+    base = API.use.base.doi result.doi
+    if base?.dclink?
+      result.in_base = true
+      result.provenance.push 'Found DOI in BASE'
+      try
+        domain = base.dclink.split('://')[1].split('/')[0]
+        repo = API.use.opendoar.search domain
+        if repo.status is 'success' and repo.total is 1 and repo.data[0].url and repo.data[0].url.indexOf(domain) isnt -1
+          result.repositories.push({
+            fulltexts:[base.dclink],
+            url: repo.data[0].url,
+            name: repo.data[0].name,
+            oai: repo.data[0].oai
+          })
+          result.provenance.push 'Added repo base URL from OpenDOAR'
+        else
+          result.provenance.push 'Searched OpenDOAR but could not find repo and/or URL'
+      catch
+        result.provenance.push 'Tried but failed to search OpenDOAR for repo base URL'
+      if not result.title and base.dctitle
+        result.title = base.dctitle
+        result.provenance.push 'Added title from BASE'
+    else
+      result.in_base = false
+      result.provenance.push 'Could not find DOI in BASE'
+
   else
-    result.provenance.push 'Not attempting Crossref or CORE lookups - do not have DOI for article.'
+    result.provenance.push 'Not attempting Crossref / CORE / BASE lookups - do not have DOI for article.'
 
   if result.grants.length > 0
     for g of result.grants

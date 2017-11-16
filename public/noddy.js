@@ -394,6 +394,14 @@ noddy.nologin = function() {
 }
 noddy.login = function(e) {
   if (e) e.preventDefault();
+  try {
+    // a reloader for use in dev - if the noddy build.js script is being used, and knows to update the API reloader
+    if (noddy.debug && typeof noddy.reload === 'function' && noddy.service && _reloadpid === undefined) {
+      console.log('Starting reloader');
+      _reloadpid = setInterval(noddy.reload, 2000);
+    }
+  } catch(err) {}
+
   // init calls login, and if login fails (e.g. user does not already have an auth cookie that works), bind the login buttons so they can be used
   $('#noddyLogin').unbind('click').bind('click',noddy.token);
   $('#noddyEmail').unbind('keyup').bind('keyup',function(e) { if (e.keyCode === 13) { $('#noddyLogin').trigger('click'); } });

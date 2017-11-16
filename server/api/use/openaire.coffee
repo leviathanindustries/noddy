@@ -9,14 +9,26 @@ API.add 'use/openaire/search', get: () -> return API.use.openaire.search this.qu
 API.add 'use/openaire/doi/:doipre/:doipost', get: () -> return API.use.openaire.doi this.urlParams.doipre + '/' + this.urlParams.doipost,this.queryParams.open
 
 
-API.use.openaire.doi = (doi,open) ->
-  res = API.use.openaire.search {doi:doi}
-  if typeof res.data isnt 'string' and res.data?.length > 0
-    rec = if not open or ( open and API.use.openaire.open(res.data[0]) ) then res.data[0] else undefined
-    return {data: rec}
-  else
-    return {}
+API.use.openaire.doi = (doi) ->
+  return API.use.openaire.get {doi:doi}
 
+API.use.openaire.title = (title) ->
+  res = API.use.openaire.get {title:meta.title}
+
+API.use.openaire.get = (params) ->
+  res = API.cache.get params, 'openaire_get'
+  if not res?
+    res = API.use.openaire.search params
+    rec = if typeof res.data isnt 'string' and res.data?.length > 0 then res.data[0] else undefined
+    if rec?
+      op = API.use.openaire.open rec, true
+      rec.open = op.open
+      rec.blacklist = op.blacklist
+      API.cache.save params, 'openaire_get', rec
+    return rec
+  else
+    return res
+    
 # openaire has a datasets endpoint too, but there appears to be no way to
 # search it for datasets related to an article. Sometimes the users put
 # the article title partially or completely in the description along with
@@ -47,14 +59,21 @@ API.use.openaire.search = (params) ->
   catch err
     return { status: 'error', data: 'openaire API error', error: err}
 
-API.use.openaire.open = (rec) ->
-  if rec.metadata?['oaf:result']?.bestlicense?['@classid'] is 'OPEN' and rec.metadata['oaf:result'].children?.instance?.length > 0
-    for o of rec.metadata['oaf:result'].children.instance
-      i = rec.metadata['oaf:result'].children.instance[o]
+API.use.openaire.open = (record,blacklist) ->
+  res = {}
+  if record.metadata?['oaf:result']?.bestlicense?['@classid'] is 'OPEN' and record.metadata['oaf:result'].children?.instance?.length > 0
+    for i in record.metadata['oaf:result'].children.instance
       if i.licence?['@classid'] is 'OPEN' and i.webresource?.url?.$
-        if bl = API.service.oab.blacklist(i.webresource.url.$) isnt true
-          return if bl isnt false then bl else i.webresource.url.$
-  return false
+        res.open = i.webresource.url.$
+        if res.open?
+          try
+            resolves = HTTP.call 'HEAD', res.open
+          catch
+            res.open = undefined
+        res.blacklist = API.service.oab?.blacklist(res.open) if blacklist and res.open
+        break if res.open and not res.blacklist
+  return if blacklist then res else (if res.open then res.open else false)
+
 
 ###
 

@@ -42,13 +42,13 @@
   this._object = obj
   this._debug = opts.debug ?= noddy?.debug
   this._element = opts.element ?= 'body' # if this is called on an element in the jquery way, can we get the element that way? (without bothering making this a whole jquery thing too)
-  this._api = opts.api ?= noddy?.api
+  this._api = opts.api ?= if noddy? then noddy.api + '/accounts' else window.location.href.split('?')[0].split('#')[0]
   this._apikey = opts.apikey ?= noddy?.apikey
   this._original = JSON.parse(JSON.stringify(obj))
   this._changes = if opts.changes ?= true then {} else false
   this._auto = opts.auto ?= true
   this._keys = opts.keys
-  this._poll = opts.poll ?= true
+  this._poll = opts.poll ?= false
   # TODO should have an option of defaults that controls starting values and what can be chosen values for keys where the value should be controlled
   # TODO should also have a way of getting suggestions for fields that require them
   if typeof this._object is 'string'
@@ -64,8 +64,7 @@
     console.log 'Nobject is configured', obj, opts
   return
 
-try
-  noddy.nobject = nobject
+try noddy.nobject = nobject
 
 nobject.prototype.update = (dotkey,val) ->
   console.log('Nobject updating ', dotkey, val) if this._debug
@@ -131,7 +130,10 @@ nobject.prototype.populate = (keys,val) ->
   for k in keys
     val ?= dot this._object, k
     console.log('Nobject populating loop', k, val) if this._debug
-    $('[nobject="' + k + '"]').html(val).val(val) # TODO has to depend on the type of value to be displayed, and into what type of element
+    # TODO has to depend on the type of value to be displayed, and into what type of element
+    # and what if no vals? Does that mean it should be blank, or that it should not be changed from whatever it is???
+    # what about mandatory vals?
+    $('[nobject="' + k + '"]').html(val).val(val) if val?
     val = undefined # just a handy way to pass in one val to populate then throw it away after the first loop
 
 nobject.prototype.display = (obj,keys,element) ->
@@ -149,7 +151,6 @@ nobject.prototype.display = (obj,keys,element) ->
     $(this._element).html display
     if not this._auto
       $(this._element).append('<p><a class="nobjectSave btn btn-primary" href="#">Save changes</a></p>')
-      $(this._element).on 'click', '.nobjectSave', this.save
 
 nobject.prototype._changing
 nobject.prototype.watch = () ->
@@ -177,6 +178,7 @@ nobject.prototype.watch = () ->
       ), 900
   $(this._element).on 'change', '.nobject', change
   $(this._element).on 'click', '.nobjectEdit', (() -> $(this._element).show()) # is this going to be necessary?
+  $(this._element).on 'click', '.nobjectSave', this.save
 
 nobject.prototype.validate = () ->
   console.log('Nobject validating') if this._debug

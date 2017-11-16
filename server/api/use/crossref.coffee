@@ -53,27 +53,40 @@ API.use.crossref.reverse = (citations,score=80) ->
       return { status: 'error', data: res }
   catch err
     return { status: 'error', error: err.toString() }
-    
+
 API.use.crossref.resolve = (doi) ->
-  url = false
-  try
-    # TODO NOTE that the URL given by crossref doi resolver may NOT be the final resolved URL. The publisher may still redirect to a different one
-    resp = HTTP.call 'GET', 'http://doi.org/api/handles/' + doi.replace('http://','').replace('https://','').replace('dx.doi.org/','')
-    for r in resp.data?.values
-      if r.type.toLowerCase() is 'url'
-        url = r.data.value
-        # like these weird chinese ones, which end up throwing 404 anyway, but, just in case - http://doi.org/api/handles/10.7688/j.issn.1000-1646.2014.05.20
-        url = new Buffer(url,'base64').toString('utf-8') if r.data.format is 'base64'
-  return url
+  cached = API.cache.get doi, 'crossref_resolve'
+  if cached
+    return cached
+  else
+    url = false
+    try
+      # TODO NOTE that the URL given by crossref doi resolver may NOT be the final resolved URL. The publisher may still redirect to a different one
+      resp = HTTP.call 'GET', 'http://doi.org/api/handles/' + doi.replace('http://','').replace('https://','').replace('dx.doi.org/','')
+      for r in resp.data?.values
+        if r.type.toLowerCase() is 'url'
+          url = r.data.value
+          # like these weird chinese ones, which end up throwing 404 anyway, but, just in case - http://doi.org/api/handles/10.7688/j.issn.1000-1646.2014.05.20
+          url = new Buffer(url,'base64').toString('utf-8') if r.data.format is 'base64'
+          API.cache.save doi, 'crossref_resolve', url
+    return url
 
 API.use.crossref.works.doi = (doi) ->
   url = 'http://api.crossref.org/works/' + doi
   API.log 'Using crossref for ' + url
-  try
-    res = HTTP.call 'GET', url
-    return if res.statusCode is 200 then { data: res.data.message} else { status: 'error', data: res}
-  catch
-    return 404
+  cached = API.cache.get doi, 'crossref_works_doi'
+  if cached
+    return cached
+  else
+    try
+      res = HTTP.call 'GET', url
+      if res.statusCode is 200
+        API.cache.save doi, 'crossref_works_doi', res.data.message
+        return res.data.message
+      else
+        return undefined
+    catch
+      return undefined
 
 API.use.crossref.works.search = (qrystr,from,size,filter) ->
   url = 'http://api.crossref.org/works?';

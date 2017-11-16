@@ -1,5 +1,6 @@
 
 import fs from 'fs'
+
 # http://zenodo.org/dev
 # https://zenodo.org/api/deposit/depositions
 # api key required: http://zenodo.org/dev#restapi-auth
@@ -29,7 +30,7 @@ API.use.zenodo.deposition.create = (metadata,up,token) ->
   # necessary metadata is title and description and a creators list with at least one object containing name in format Surname, name(s)
   # useful metadata is access_right, license, doi
   # https://zenodo.org/dev#restapi-rep-meta
-  token ?= API.settings.zenodo?.token
+  token ?= API.settings.use?.zenodo?.token
   return false if not token? or not metadata? or not metadata.title? or not metadata.description?
   url = 'https://zenodo.org/api/deposit/depositions' + '?access_token=' + token
   data = {metadata: metadata}
@@ -51,21 +52,23 @@ API.use.zenodo.deposition.create = (metadata,up,token) ->
     return {status: 'error', data: err, error: err}
 
 API.use.zenodo.deposition.upload = (id,content,file,name,url,token) ->
-  token ?= API.settings.zenodo?.token
+  token ?= API.settings.use?.zenodo?.token
   return false if not token? or not id?
   uploadurl = 'https://zenodo.org/api/deposit/depositions/' + id + '/files' + '?access_token=' + token
   try
     # returns back a deposition file, which has an id. Presumably from this we can calculate the URL of the file
-    # TODO for now we are only expecting content from the file attribute, but 
-    # how to get it if given content directly or url? need to pass that instead
-    p = HTTP.call('POST',uploadurl,{npmRequestOptions:{body:null,formData:{file:fs.createReadStream(file),name:name}},headers:{'Content-Type':'multipart/form-data'}})
+    if content?
+      fl = content # request form-data appears to handle buffers being passed straight to it... if not, just use stream passthrough
+    else
+      fl = fs.createReadStream file
+    p = HTTP.call('POST',uploadurl,{npmRequestOptions:{body:null,formData:{file:fl,name:name}},headers:{'Content-Type':'multipart/form-data'}})
     return p.data
   catch err
     return {status: 'error', error: err}
 
 API.use.zenodo.deposition.publish = (id,token) ->
   # NOTE published things cannot be deteted
-  token ?= API.settings.zenodo?.token
+  token ?= API.settings.use?.zenodo?.token
   return false if not token? or not id?
   url = 'https://zenodo.org/api/deposit/depositions/' + id + '/actions/publish' + '?access_token=' + token
   try
@@ -74,7 +77,7 @@ API.use.zenodo.deposition.publish = (id,token) ->
     return {status: 'error', error: err}
 
 API.use.zenodo.deposition.delete = (id,token) ->
-  token ?= API.settings.zenodo?.token
+  token ?= API.settings.use?.zenodo?.token
   return false if not token? or not id?
   url = 'https://zenodo.org/api/deposit/depositions/' + id + '?access_token=' + token
   try

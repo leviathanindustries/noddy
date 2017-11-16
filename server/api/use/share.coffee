@@ -12,13 +12,25 @@ API.add 'use/share/doi/:doipre/:doipost',
   get: () -> return API.use.share.doi this.urlParams.doipre + '/' + this.urlParams.doipost,this.queryParams.open
 
 
-API.use.share.doi = (doi,open) ->
-  res = API.use.share.search {q:'identifiers:"' + doi.replace('/','\/') + '"'}
-  if res.total > 0
-    rec = if not open or ( open and API.use.share.open(res.data[0]) ) then res.data[0] else undefined
-    return {data: rec}
+API.use.share.doi = (doi) ->
+  return API.use.share.get {q:'identifiers:"' + doi.replace('/','\/') + '"'}
+
+API.use.share.title = (title) ->
+  return API.use.share.get {q:title}
+
+API.use.share.get = (params) ->
+  res = API.cache.get params, 'share_get'
+  if not res?
+    res = API.use.share.search params
+    res = if res.total then res.data[0] else undefined
+    if res?
+      op = API.use.share.open res, true
+      res.open = op.open
+      res.blacklist = op.blacklist
+      API.cache.save params, 'share_get', res
+    return res
   else
-    return {}
+    return res
 
 API.use.share.search = (params) ->
   url = 'https://share.osf.io/api/v2/search/creativeworks/_search?'
@@ -35,22 +47,25 @@ API.use.share.search = (params) ->
   catch err
     return { status: 'error', data: 'SHARE API error', error: err}
 
-API.use.share.open = (record) ->
-  sheet = API.use.google.sheets.feed API.settings.openaccessbutton.share_sources_sheetid
+API.use.share.open = (record,blacklist) ->
+  res = {}
   sources = []
-  sources.push(i.name.toLowerCase()) for i in sheet
+  if API.settings.service?.openaccessbutton?.share_sources_sheetid?
+    sources.push(i.name.toLowerCase()) for i in API.use.google.sheets.feed(API.settings.service.openaccessbutton.share_sources_sheetid)
   for s in record.sources
-    if s not in sources
-      d
+    if s in sources or sources.length is 0
       for id in record.identifiers
         if id.indexOf('http') is 0
-          if id.indexOf('doi.org') is -1
-            if bl = API.service.oab.blacklist(i.webresource.url.$) isnt true
-              return if bl then bl else id
-          else if not d?
-            d = id
-      return d if d?
-  return false
+          if id.indexOf('doi.org') is -1 or not res.open?
+            res.open = id
+            if res.open?
+              try
+                resolves = HTTP.call 'HEAD', res.open
+              catch
+                res.open = undefined
+            res.blacklist = API.service.oab?.blacklist(res.open) if res.open and blacklist
+            break if res.blacklist isnt true and id.indexOf('doi.org') is -1
+  return if blacklist then res else (if res.open then res.open else false)
 
 
 

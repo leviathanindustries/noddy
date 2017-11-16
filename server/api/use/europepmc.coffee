@@ -66,16 +66,26 @@ API.add 'use/europepmc/indexed/:startdate/:enddate',
   get: () -> return API.use.europepmc.published this.urlParams.startdate, this.urlParams.enddate, this.queryParams.from, this.queryParams.size
 
 API.use.europepmc.doi = (doi) ->
-  res = API.use.europepmc.search 'DOI:' + doi
-  return if res.total > 0 then res.data[0] else res
+  return API.use.europepmc.get 'DOI:' + doi
 
 API.use.europepmc.pmid = (ident) ->
-  res = API.use.europepmc.search 'EXT_ID:' + ident + ' AND SRC:MED'
-  return if res.total > 0 then res.data[0] else res
+  return API.use.europepmc.get 'EXT_ID:' + ident + ' AND SRC:MED'
 
 API.use.europepmc.pmc = (ident) ->
-  res = API.use.europepmc.search 'PMCID:PMC' + ident.toLowerCase().replace('pmc','')
-  return if res.total > 0 then res.data[0] else res
+  res = API.use.europepmc.get 'PMCID:PMC' + ident.toLowerCase().replace('pmc','')
+
+API.use.europepmc.title = (title) ->
+  return API.use.europepmc.get 'title:"' + title + '"'
+
+API.use.europepmc.get = (qrystr) ->
+  res = API.cache.get qrystr, 'epmc_get'
+  if not res?
+    res = API.use.europepmc.search(qrystr)
+    res = if res.total then res.data[0] else undefined
+    if res?
+      res.open = API.use.europepmc.open(res)
+      API.cache.save qrystr, 'epmc_get', res
+  return res
 
 API.use.europepmc.search = (qrystr,from,size) ->
   # TODO epmc changed to using a cursormark for pagination, so change how we pass paging to them
@@ -84,7 +94,6 @@ API.use.europepmc.search = (qrystr,from,size) ->
   url += '&pageSize=' + size if size?
   url += '&page=' + (Math.floor(from/size)+1) if from?
   API.log 'Using eupmc for ' + url
-  res
   try
     res = HTTP.call 'GET',url
   ret = {}
@@ -96,18 +105,14 @@ API.use.europepmc.search = (qrystr,from,size) ->
     ret.total = 0
   return ret
 
-API.use.europepmc.open = (res) ->
-  if typeof res isnt 'object'
-    if res.indexOf('10.') is 0
-      res = API.use.europepmc.doi res
-    else
-      res = API.use.europepmc.search res
-      res.data = res.data?[0]
-  if res?.fullTextUrlList?.fullTextUrl?
-    for oi in res.fullTextUrlList.fullTextUrl
+API.use.europepmc.open = (record) ->
+  if record?.fullTextUrlList?.fullTextUrl?
+    for oi in record.fullTextUrlList.fullTextUrl
       # we only accepted oa and html previously - TODO find out why, and if we have to be so strict for a reason
       if oi.availabilityCode.toLowerCase() in ['oa','f'] and oi.documentStyle.toLowerCase() in ['pdf','html']
-        return oi.url
+        try
+          resolves = HTTP.call 'HEAD', oi.url
+          return oi.url
   return false
 
 # http://dev.api.cottagelabs.com/use/europepmc/search/has_doi:n%20AND%20FIRST_PDATE:[2016-03-22%20TO%202016-03-22]
@@ -184,37 +189,50 @@ API.use.europepmc.authorManuscript = (pmcid,rec,fulltext,noui) ->
     #rec = API.use.europepmc.search('PMC' + pmcid.toLowerCase().replace('pmc',''))?.data?[0] if pmcid and not rec
     pmcid ?= rec?.pmcid
     if pmcid
-      fulltext = API.use.europepmc.fulltextXML pmcid
-      if typeof fulltext is 'string' and fulltext.indexOf('pub-id-type=\'manuscript\'') isnt -1 and fulltext.indexOf('pub-id-type="manuscript"') isnt -1
-        return {aam:true,info:'fulltext'}
-      else if not noui
-        url = 'http://europepmc.org/articles/PMC' + pmcid.toLowerCase().replace('pmc','')
-        try
-          pg = API.job.limit(10000,'HTTP.call',['GET',url],"EPMCUI")
-          if pg?.statusCode is 200
-            page = pg.content
-            s1 = 'Author Manuscript; Accepted for publication in peer reviewed journal'
-            s2 = 'Author manuscript; available in PMC'
-            s3 = 'logo-nihpa.gif'
-            s4 = 'logo-wtpa2.gif'
-            if page.indexOf(s1) isnt -1 or page.indexOf(s2) isnt -1 or page.indexOf(s3) isnt -1 or page.indexOf(s4) isnt -1
-              return {aam:true,info:'splashpage'}
-        catch err
-          if err.response?.statusCode is 404
-            return {aam:false,info:'not in EPMC (404)'}
-          else if err.response?.statusCode is 403 and err.response?.content?.indexOf('block access') is 0
-            API.log 'EPMC blocking us'
-            return {info: 'EPMC blocking access, AAM status unknown'}
-          else
-            return {info:'Unknown error accessing EPMC', error: err.toString(), code: err.response?.statusCode}
+      cached = API.cache.get pmcid, 'epmc_aam'
+      if cached
+        return cached
+      else
+        fulltext = API.use.europepmc.fulltextXML pmcid
+        if typeof fulltext is 'string' and fulltext.indexOf('pub-id-type=\'manuscript\'') isnt -1 and fulltext.indexOf('pub-id-type="manuscript"') isnt -1
+          return {aam:true,info:'fulltext'}
+        else if not noui
+          url = 'http://europepmc.org/articles/PMC' + pmcid.toLowerCase().replace('pmc','')
+          try
+            pg = API.job.limit 10000, 'HTTP.call', ['GET',url], "EPMCUI"
+            if pg?.statusCode is 200
+              page = pg.content if not page?
+              s1 = 'Author Manuscript; Accepted for publication in peer reviewed journal'
+              s2 = 'Author manuscript; available in PMC'
+              s3 = 'logo-nihpa.gif'
+              s4 = 'logo-wtpa2.gif'
+              if page.indexOf(s1) isnt -1 or page.indexOf(s2) isnt -1 or page.indexOf(s3) isnt -1 or page.indexOf(s4) isnt -1
+                API.cache.save pmcid, 'epmc_aam', {aam:true,info:'splashpage'}
+                return {aam:true,info:'splashpage'}
+          catch err
+            if err.response?.statusCode is 404
+              return {aam:false,info:'not in EPMC (404)'}
+            else if err.response?.statusCode is 403 and err.response?.content?.indexOf('block access') is 0
+              API.log 'EPMC blocking us on author manuscript lookup', pmcid: pmcid
+              return {info: 'EPMC blocking access, AAM status unknown'}
+            else
+              return {info:'Unknown error accessing EPMC', error: err.toString(), code: err.response?.statusCode}
   return {aam:false}
 
 API.use.europepmc.fulltextXML = (pmcid) ->
   pmcid = pmcid.toLowerCase().replace('pmc','') if pmcid
-  url = 'http://www.ebi.ac.uk/europepmc/webservices/rest/PMC' + pmcid + '/fullTextXML'
-  try
-    r = HTTP.call 'GET', url
-    return if r.statusCode is 200 then r.content else undefined
-  catch err
-    return if err.response?.statusCode is 404 then err.response.statusCode else err.toString()
+  cached = API.cache.get pmcid, 'epmc_xml'
+  if cached
+    return cached
+  else
+    url = 'http://www.ebi.ac.uk/europepmc/webservices/rest/PMC' + pmcid + '/fullTextXML'
+    try
+      r = HTTP.call 'GET', url
+      if r.statusCode is 200
+        API.cache.save pmcid, 'epmc_xml', r.content
+        return r.content
+      else
+        return undefined
+    catch err
+      return if err.response?.statusCode is 404 then err.response.statusCode else err.toString()
 

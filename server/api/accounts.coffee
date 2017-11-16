@@ -121,7 +121,7 @@ API.accounts.oauth = (creds,service,fingerprint) ->
   sets = {}
   if creds.service is 'google'
     validate = HTTP.call 'POST', 'https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=' + creds.access_token
-    cid = API.settings[service]?.GOOGLE_OAUTH_CLIENT_ID ? API.settings.GOOGLE_OAUTH_CLIENT_ID
+    cid = API.settings.service[service]?.GOOGLE_OAUTH_CLIENT_ID ? API.settings.GOOGLE_OAUTH_CLIENT_ID
     if validate.data?.aud is cid
       ret = HTTP.call 'GET', 'https://www.googleapis.com/oauth2/v2/userinfo?access_token=' + creds.access_token
       user = API.accounts.retrieve ret.data.email
@@ -132,8 +132,8 @@ API.accounts.oauth = (creds,service,fingerprint) ->
       sets['profile.lastname'] = info.family_name if not user.profile.lastname and info.family_name
       sets['profile.avatar'] = info.picture if not user.profile.avatar and info.picture
   else if creds.service is 'facebook'
-    fappid = API.settings[service]?.FACEBOOK_APP_ID ? API.settings.FACEBOOK_APP_ID
-    fappsec = API.settings[service]?.FACEBOOK_APP_SECRET ? API.settings.FACEBOOK_APP_SECRET
+    fappid = API.settings.service[service]?.FACEBOOK_APP_ID ? API.settings.FACEBOOK_APP_ID
+    fappsec = API.settings.service[service]?.FACEBOOK_APP_SECRET ? API.settings.FACEBOOK_APP_SECRET
     adr = 'https://graph.facebook.com/debug_token?input_token=' + creds.access_token + '&access_token=' + fappid + '|' + fappsec
     validate = HTTP.call 'GET', adr
     if validate.data?.data?.app_id is fappid

@@ -76,7 +76,7 @@ class share.Route
           try
             responseData = self._callEndpoint endpointContext, endpoint
             if (responseData is null or responseData is undefined) and not responseInitiated
-              throw new Error "Cannot return null or undefined from an endpoint: #{method} #{fullPath}"
+              responseData = 404
             if res.headersSent and not responseInitiated
               throw new Error "Must call this.done() after handling endpoint response manually: #{method} #{fullPath}"
           catch error
@@ -163,15 +163,16 @@ class share.Route
   _callEndpoint: (endpointContext, endpoint) ->
     # Call the endpoint if authentication doesn't fail
     if API.settings.log.connections and endpointContext.request.method isnt 'OPTIONS'
-      if endpointContext.request.url.split('?')[0].split('#')[0].indexOf('_log') is -1
+      tu = endpointContext.request.url.split('?')[0].split('#')[0]
+      if tu.indexOf('_log') is -1 and tu.indexOf('/reload/') is -1
         API.log
           url: endpointContext.request.url.split('apikey=')[0], # TODO prob want to keep full URL with opts, or no opts, and remove apikey properly
           method: endpointContext.request.method,
           originalUrl: endpointContext.request.originalUrl, # TODO as above
           headers: endpointContext.request.headers, # TODO don't keep x-apikey if present
           query: endpointContext.request.query
-      else if API.settings.log?.level is 'debug'
-        console.log 'Not creating log for query on a log URL, but logging to console because debug'
+      else if API.settings.log?.level is 'all'
+        console.log 'Not creating log for query on a log URL, but logging to console because log level is all'
         console.log endpointContext.request.url, endpointContext.request.method, endpointContext.request.query, endpointContext.request.originalUrl
 
     if @_authAccepted endpointContext, endpoint

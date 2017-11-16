@@ -40,8 +40,11 @@ API.use.pubmed.pmid = (pmid) ->
 
 API.use.pubmed.aheadofprint = (pmid) ->
   pubmed_xml_url = 'http://www.ncbi.nlm.nih.gov/pubmed/' + pmid + '?report=xml'
-  res = HTTP.call 'GET', pubmed_xml_url
-  return res.content?.indexOf('PublicationStatus&gt;aheadofprint&lt;/PublicationStatus') isnt -1
+  try
+    res = HTTP.call 'GET', pubmed_xml_url
+    return res.content?.indexOf('PublicationStatus&gt;aheadofprint&lt;/PublicationStatus') isnt -1
+  catch
+    return false
 
 
 
