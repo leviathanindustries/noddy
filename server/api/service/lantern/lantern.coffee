@@ -35,7 +35,7 @@ API.service.lantern.job = (job) ->
     if job.wellcome
       text += if API.settings.dev then 'http://wellcome.test.cottagelabs.com#' else 'https://compliance.cottagelabs.com#'
     else if API.settings.dev
-      text += 'http://lantern.test.cottagelabs.com#'
+      text += 'https://lantern.test.cottagelabs.com#'
     else
       text += 'https://lantern.cottagelabs.com#'
     text += job._id
@@ -59,7 +59,7 @@ API.service.lantern.complete = (job) ->
     if job.wellcome
       text += if API.settings.dev then 'http://wellcome.test.cottagelabs.com#' else 'https://compliance.cottagelabs.com#'
     else if API.settings.dev
-      text += 'http://lantern.test.cottagelabs.com#'
+      text += 'https://lantern.test.cottagelabs.com#'
     else
       text += 'https://lantern.cottagelabs.com#'
     text += job._id

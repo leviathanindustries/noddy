@@ -281,12 +281,13 @@ noddy.token = function(e) {
   if (opts.type === 'POST') {
     opts.data = {
       email: noddy.user.email,
-      url: url
+      url: url,
+      service: service
     };
     opts.dataType = 'JSON';
     opts.contentType = 'application/json';
   } else {
-    opts.url += '?email='+encodeURIComponent(noddy.user.email)+'&url='+url;
+    opts.url += '?email='+encodeURIComponent(noddy.user.email)+'&url='+url+'&service='+noddy.service;
   }
   if (noddy.fingerprint) {
     try {

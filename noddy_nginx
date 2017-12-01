@@ -43,16 +43,16 @@ upstream clapi {
     server 10.131.11.72:3001 max_fails=1 fail_timeout=60;
 }
 
+#REDIRECT PORT 80 TO PORT 443 FOR ANYTHING THAT SHOULD ONLY SERVE ON 443
 server {
     listen      80;
-    server_name api.cottagelabs.com;
+    server_name api.cottagelabs.com dev.api.cottagelabs.com cluster.api.cottagelabs.com local.api.cottagelabs.com cottagelabs.com test.cottagelabs.com accounts.cottagelabs.com;
     return 301 https://$host$request_uri;
 }
+
 server {
     listen          443 ssl spdy;
     server_name     api.cottagelabs.com;
-
-    ssl on;
     ssl_certificate /etc/letsencrypt/live/api.cottagelabs.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/api.cottagelabs.com/privkey.pem;
   
@@ -81,17 +81,10 @@ server {
 
 # LIVE API CONNECTED DIRECTLY RATHER THAN THROUGH CLUSTER
 server {
-    listen      80;
-    server_name lapi.cottagelabs.com;
-    return 301 https://$host$request_uri;
-}
-server {
     listen          443 ssl spdy;
-    server_name     lapi.cottagelabs.com;
-
-    ssl on;
-    ssl_certificate /etc/letsencrypt/live/lapi.cottagelabs.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/lapi.cottagelabs.com/privkey.pem;
+    server_name     local.api.cottagelabs.com;
+    ssl_certificate /etc/letsencrypt/live/local.api.cottagelabs.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/local.api.cottagelabs.com/privkey.pem;
 
     location / {
         add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
@@ -110,17 +103,10 @@ server {
 
 # LIVE API USING ONLY THE CLUSTER
 server {
-    listen      80;
-    server_name capi.cottagelabs.com;
-    return 301 https://$host$request_uri;
-}
-server {
     listen          443 ssl spdy;
-    server_name     capi.cottagelabs.com;
-
-    ssl on;
-    ssl_certificate /etc/letsencrypt/live/capi.cottagelabs.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/capi.cottagelabs.com/privkey.pem;
+    server_name     cluster.api.cottagelabs.com;
+    ssl_certificate /etc/letsencrypt/live/cluster.api.cottagelabs.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cluster.api.cottagelabs.com/privkey.pem;
 
     location / {
         add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
@@ -139,37 +125,13 @@ server {
 
 # DEVELOPMENT API AND METEOR TEST SITE
 server {
-    listen          80;
-    server_name     dev.api.cottagelabs.com;
-
-    location / {
-        add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
-        add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type';
-        proxy_pass http://clapidev/api/;
-        proxy_redirect off;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Authorization "";
-        # proxy_buffering off;
-    }
-}
-server {
     listen          443 ssl;
     server_name     dev.api.cottagelabs.com;
-
-    ssl on;
     ssl_certificate /etc/letsencrypt/live/dev.api.cottagelabs.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/dev.api.cottagelabs.com/privkey.pem;
 
-    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-    ssl_ciphers "HIGH:!aNULL:!MD5 or HIGH:!aNULL:!MD5:!3DES";
-    ssl_prefer_server_ciphers on;
-
-    ssl_stapling on;
-    add_header Strict-Transport-Security "max-age=31536000;";
-
     location / {
+        add_header Strict-Transport-Security "max-age=31536000;";
         add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
         add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type';
         proxy_pass http://clapidev/api/;
