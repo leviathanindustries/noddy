@@ -282,7 +282,7 @@ noddy.token = function(e) {
     opts.data = {
       email: noddy.user.email,
       url: url,
-      service: service
+      service: noddy.service
     };
     opts.dataType = 'JSON';
     opts.contentType = 'application/json';
