@@ -98,6 +98,8 @@ API.accounts.token = (tok, send=true) ->
       snd.vars = useremail: tok.email, loginurl: tok.url, logincode: tok.token
     else
       snd.subject = settings.subject
+      snd.text ?= settings.text
+      snd.html ?= settings.html
       re = new RegExp '\{\{LOGINCODE\}\}', 'g'
       ure = new RegExp '\{\{LOGINURL\}\}', 'g'
       tre = new RegExp '\{\{TIMEOUT\}\}', 'g'
