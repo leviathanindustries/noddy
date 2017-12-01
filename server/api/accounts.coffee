@@ -100,8 +100,9 @@ API.accounts.token = (tok, send=true) ->
       snd.subject = settings.subject
       re = new RegExp '\{\{LOGINCODE\}\}', 'g'
       ure = new RegExp '\{\{LOGINURL\}\}', 'g'
-      snd.text = snd.text.replace(re, tok.token).replace(ure,tok.url) if snd.text
-      snd.html = snd.html.replace(re, tok.token).replace(ure,tok.url) if snd.text
+      tre = new RegExp '\{\{TIMEOUT\}\}', 'g'
+      snd.text = snd.text.replace(re, tok.token).replace(ure,tok.url).replace(tre,(tok.timeout ? settings.timeout ? 30)) if snd.text
+      snd.html = snd.html.replace(re, tok.token).replace(ure,tok.url).replace(tre,(tok.timeout ? settings.timeout ? 30)) if snd.html
     try
       # allows things to continue if e.g. on dev and email not configured
       sent = API.mail.send snd
