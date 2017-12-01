@@ -79,6 +79,7 @@ API.add 'accounts/:id/roles/:grouprole',
 API.accounts.token = (tok, send=true) ->
   settings = API.settings.service?[tok.service]?.accounts ? API.settings.accounts
   settings.cookie ?= API.settings.accounts?.cookie
+  settings.timeout ?= 30
   _token = Random.hexString 7
   console.log _token if API.settings.log?.level is 'debug'
   tok.token = API.accounts.hash _token
@@ -86,7 +87,7 @@ API.accounts.token = (tok, send=true) ->
   tok.hash = API.accounts.hash _hash
   tok.url ?= settings.url # TODO is it worth checking validity of incoming urls?
   tok.url += '#' + tok.hash if tok.url?
-  tok.timeout = Date.now() + (tok.timeout ? settings.timeout ? 30) * 60 * 1000 # convert to ms from now
+  tok.timeout = Date.now() + (tok.timeout ? settings.timeout) * 60 * 1000 # convert to ms from now
   Tokens.insert tok
   tok.hash = _hash
   tok.token = _token
@@ -103,8 +104,13 @@ API.accounts.token = (tok, send=true) ->
       re = new RegExp '\{\{LOGINCODE\}\}', 'g'
       ure = new RegExp '\{\{LOGINURL\}\}', 'g'
       tre = new RegExp '\{\{TIMEOUT\}\}', 'g'
-      snd.text = snd.text.replace(re, tok.token).replace(ure,tok.url).replace(tre,(tok.timeout ? settings.timeout ? 30)) if snd.text
-      snd.html = snd.html.replace(re, tok.token).replace(ure,tok.url).replace(tre,(tok.timeout ? settings.timeout ? 30)) if snd.html
+      snd.text = snd.text.replace(re, tok.token).replace(ure,tok.url).replace(tre,settings.timeout) if snd.text
+      snd.html = snd.html.replace(re, tok.token).replace(ure,tok.url).replace(tre,settings.timeout) if snd.html
+      if settings.timeout >= 60 and snd.text and snd.text.indexOf(settings.timeout + ' minutes') isnt -1
+        rp = settings.timeout / 60
+        rp += if rp > 1 then ' hours' else ' hour'
+        snd.text = snd.text.replace(settings.timeout + ' minutes',rp)
+        snd.html = snd.html.replace(settings.timeout + ' minutes',rp) if snd.html
     try
       # allows things to continue if e.g. on dev and email not configured
       sent = API.mail.send snd
