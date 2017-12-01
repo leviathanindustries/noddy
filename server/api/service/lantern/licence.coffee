@@ -30,16 +30,20 @@ API.service.lantern.licences = () ->
       return []
 
 API.service.lantern.licence = (url,resolve=false,content,start,end) ->
-  API.log msg: 'Lantern finding licence for ' + url, url: url, resolve: resolve, content: content?, start: start, end: end
+  API.log msg: 'Lantern finding licence', url: url, resolve: resolve, content: content?, start: start, end: end
   url = url.replace(/(^\s*)|(\s*$)/g,'') if url?
   resolved = url
-  if resolve and url and API.service.oab?
-    tr = API.service.oab.resolve url
-    resolved = tr.open if tr.open isnt false
-  content ?= API.phantom.get resolved
+  if resolve and url
+    if API.service.oab?
+      tr = API.service.oab.resolve url
+      resolved = if typeof tr.redirect is 'string' then tr.redirect else (if tr.url then tr.url else url)
+    else
+      resolved = API.http.resolve url
+  content ?= API.http.phantom resolved
 
   lic = {}
   lic.url = url if url?
+  lic.resolved = resolved if resolve and resolved?
   if content?
     licences = API.service.lantern.licences()
     content = content.split(start)[1] if start? and content.indexOf(start) isnt -1

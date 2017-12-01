@@ -156,17 +156,23 @@ API.job.create = (job) ->
     # collisions, they will actually be stringified and saved under the result.string key, so look there if looking them up.
     # However the returned (or callbacked) result object will still have the JSON version as normal.
     proc.callback ?= job.callback # optional callback name string per job or process, will call when process completes. Processes do return too, so either way is good
-    proc.signature = proc.function + '_' + proc.args # combines with refresh to decide if need to run process or just pick up result from a same recent process
+    proc.signature = encodeURIComponent proc.function + '_' + proc.args # combines with refresh to decide if need to run process or just pick up result from a same recent process
     proc.save ?= job.save ? true # option can set one or all processes to not bother saving to job_result
 
-    if not job.refresh? or job.refresh is true or proc.callback? or proc.repeat?
+    if job.refresh is true or proc.callback? or proc.repeat?
       proc.process = job_process.insert proc
-    else if job.refresh?
-      try job.refresh = parseInt(job.refresh) if typeof job.refresh is 'string'
-      d = new Date()
-      rs = job_result.find('signature.exact:"' + proc.signature + '" AND NOT exists:result.error AND createdAt:>' + d.setDate(d.getDate() - job.refresh), {sort:{createdAt:'desc'}})
-      rs = job_processing.find {'signature.exact':proc.signature,save:true}, {sort:{createdAt:'desc'}} if not rs?
-      rs = job_process.find {'signature.exact':proc.signature, save:true, limit:proc.limit}, {sort:{createdAt:'desc'}} if not rs? # TODO check undefined limit does not show up as search term
+    else
+      fnd = 'signature.exact:"' + proc.signature + '" AND NOT exists:"result.error"'
+      try
+        job.refresh = parseInt(job.refresh) if typeof job.refresh is 'string'
+        if typeof job.refresh is 'number' and job.refresh isnt 0
+          d = new Date()
+          fnd += ' AND createdAt:>' + d.setDate(d.getDate() - job.refresh)
+      rs = job_result.find fnd, true
+      ofnd = {'signature.exact':proc.signature,save:true}
+      rs = job_processing.find(ofnd, true) if not rs?
+      ofnd.limit = proc.limit if proc.limit?
+      rs = job_process.find(ofnd, true) if not rs? # TODO check undefined limit does not show up as search term
       proc.process = if rs then rs._id else job_process.insert proc
 
     job.processes[i] = proc
@@ -184,7 +190,7 @@ API.job.create = (job) ->
 API.job.limit = (limitms,fname,args,group,save=false) -> # a handy way to directly create a sync throttled process
   job_processing.remove 'timeout:<' + Date.now() # get rid of old processing that were just there to limit the next start if necessary
   group = fname if not group?
-  waitfor = job_processing.find {'group.exact':group}, {sort:{timeout:'desc'}}
+  waitfor = job_processing.find {'group.exact':group}, {sort:{timeout:{order:'desc'}}}
   if waitfor?.timeout?
     future = new Future()
     setTimeout (() -> future.return()), waitfor.timeout - Date.now()
@@ -195,7 +201,7 @@ API.job.process = (proc) ->
   proc = job_process.get(proc) if typeof proc isnt 'object'
   return false if typeof proc isnt 'object'
   proc.timeout = Date.now() + proc.limit if proc.limit?
-  proc.args = JSON.stringify proc.args if proc.args? and typeof proc.args isnt 'string' # in case a process is passed directly with non-string args
+  proc.args = JSON.stringify proc.args if proc.args? and typeof proc.args is 'object' # in case a process is passed directly with non-string args
   proc._id = job_processing.insert(proc,undefined,undefined,proc.limit?) # in case was passed a process directly - need to catch the ID
   job_process.remove proc._id
   API.log {msg:'Processing ' + proc._id,process:proc,level:'debug',function:'API.job.process'}
@@ -203,14 +209,27 @@ API.job.process = (proc) ->
   fn = fn[p] for p in proc.function.replace('API.','').split('.')
   try
     proc.result = {}
-    args = if proc.args? then JSON.parse(proc.args) else proc
-    if typeof args is 'object' and proc.args? and proc.args.indexOf('[') is 0
+    args = proc # default just send the whole process as the arg
+    if proc.args?
+      if typeof proc.args is 'string'
+        try
+          args = JSON.parse proc.args
+        catch
+          args = proc.args
+      else
+        args = proc.args
+    if typeof args is 'object' and typeof proc.args is 'string' and proc.args.indexOf('[') is 0
       # save results keyed by function, so assuming functions produce results of same shape, they fit in index
       proc.result[proc.function] = fn.apply this, args
     else
       proc.result[proc.function] = fn args
   catch err
     proc.result = {error: err.toString()}
+    API.log msg: 'Job process error', error: err, string: err.toString(), process: proc, level: 'debug'
+    if API.settings.log.level in ['debug','all']
+      console.log JSON.stringify err
+      console.log err.toString()
+      console.log proc
   if proc.save isnt false # direct limit processes don't need to save their results, maybe others won't bother either
     try
       job_result.insert proc # if this fails, we stringify and save that way
@@ -232,7 +251,7 @@ API.job.process = (proc) ->
     job_process.insert pn
   else if proc.order
     job_process.update {job: proc.job, order: proc.order+1}, {available:true}
-  Meteor.setTimeout (() -> job_job.each('job.processes.process:'+proc._id, ((job) -> API.job.progress job ))), 5000
+  Meteor.setTimeout (() -> job_job.each('job.processes.process:'+proc._id, ((job) -> API.job.progress(job) if job._id isnt proc._id ))), 5000
   if proc.callback
     cb = API
     cb = cb[c] for c in proc.callback.replace('API.','').split('.')
@@ -253,10 +272,10 @@ API.job.next = (ignore=[]) ->
     API.job.reload()
     # TODO is it worth doing job progress checks here? If so, for all not done jobs?
   else if not job_processing.get('STOP') and API.settings.job?.concurrency ?= 1000000000 > job_processing.count()
-    API.log {msg:'Checking for jobs to run',ignore:ignore,function:'API.job.next',level:'debug'}
+    API.log {msg:'Checking for jobs to run',ignore:ignore,function:'API.job.next',level:'all'}
     match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
     match.must_not.push term: 'group.exact':g for g in ignore
-    p = job_process.find match, {sort:{priority:'desc'}, random:true} # TODO check if random sorted wil work - may have to be more complex
+    p = job_process.find match, {sort:{priority:{order:'desc'}}, random:true} # TODO check if random sorted wil work - may have to be more complex
     if p and not job_processing.get(p._id)
       if p.group and job_processing.count({'group.exact': p.group}) >= (p.concurrency ?= (if p.limit then 1 else 1000000000))
         ignore.push p.group
@@ -267,11 +286,12 @@ API.job.next = (ignore=[]) ->
 
 API.job._iid
 API.job.start = (interval=API.settings.job?.interval ? 1000) ->
+  API.log 'Starting job runner with interval ' + interval
   # create a repeating limited stuck check process with an id like 'STUCK' so that it can check for stuck jobs
   # multiple clusters trying to create it wont matter because they will just overwrite each other, eventually only one process will run
-  job_process.remove {function:'API.job.stuck'}
-  job_processing.remove {function:'API.job.stuck'}
-  job_result.remove {function:'API.job.stuck'}
+  job_process.remove [{function:'API.job.stuck'},{group:'PROGRESS'}]
+  job_processing.remove [{function:'API.job.stuck'},{group:'PROGRESS'}]
+  job_result.remove [{function:'API.job.stuck'},{group:'PROGRESS'}]
   job_process.insert _id: 'STUCK', repeat: true, function: 'API.job.stuck', priority: 1, group: 'API.job.stuck', limit: 900000
   API.job._iid ?= Meteor.setInterval API.job.next,interval
   job_processing.remove 'STOP'
@@ -299,28 +319,28 @@ API.job.status = (filter='*') ->
     running: API.job.running()
     processes:
       count: job_process.count(filter)
-      oldest: {_id: jpo._id, createdAt: jpo.createdAt, created_date: jpo.created_date} if jpo = job_process.find(filter, {sort:{createdAt:'asc'}})
-      newest: {_id: jpn._id, createdAt: jpn.createdAt, created_date: jpn.created_date} if jpn = job_process.find(filter, {sort:{createdAt:'desc'}})
+      oldest: {_id: jpo._id, createdAt: jpo.createdAt, created_date: jpo.created_date} if jpo = job_process.find(filter, {sort:{createdAt:{order:'asc'}}})
+      newest: {_id: jpn._id, createdAt: jpn.createdAt, created_date: jpn.created_date} if jpn = job_process.find(filter, true)
     processing:
       count: job_processing.count(filter)
-      oldest: {_id: jpro._id, createdAt: jpro.createdAt, created_date: jpro.created_date} if jpro = job_processing.find(filter, {sort:{createdAt:'asc'}})
-      newest: {_id: jprn._id, createdAt: jprn.createdAt, created_date: jprn.created_date} if jprn = job_processing.find(filter, {sort:{createdAt:'desc'}})
+      oldest: {_id: jpro._id, createdAt: jpro.createdAt, created_date: jpro.created_date} if jpro = job_processing.find(filter, {sort:{createdAt:{order:'asc'}}})
+      newest: {_id: jprn._id, createdAt: jprn.createdAt, created_date: jprn.created_date} if jprn = job_processing.find(filter, true)
     jobs:
       count: job_job.count(filter)
-      oldest: {_id: jjo._id, createdAt: jjo.createdAt, created_date: jjo.created_date} if jjo = job_job.find(filter, {sort:{createdAt:'asc'}})
-      newest: {_id: jjn._id, createdAt: jjn.createdAt, created_date: jjn.created_date} if jjn = job_job.find(filter, {sort:{createdAt:'desc'}})
+      oldest: {_id: jjo._id, createdAt: jjo.createdAt, created_date: jjo.created_date} if jjo = job_job.find(filter, {sort:{createdAt:{order:'asc'}}})
+      newest: {_id: jjn._id, createdAt: jjn.createdAt, created_date: jjn.created_date} if jjn = job_job.find(filter, true)
       done: job_job.count done:true # TODO if allowing a filter in, this will have to take account of possible types of filter query
     results:
       count: job_result.count(filter)
-      oldest: {_id: jro._id, createdAt: jro.createdAt, created_date: jro.created_date} if jro = job_result.find(filter, {sort:{createdAt:'asc'}})
-      newest: {_id: jrn._id, createdAt: jrn.createdAt, created_date: jrn.created_date} if jrn = job_result.find(filter, {sort:{createdAt:'desc'}})
+      oldest: {_id: jro._id, createdAt: jro.createdAt, created_date: jro.created_date} if jro = job_result.find(filter, {sort:{createdAt:{order:'asc'}}})
+      newest: {_id: jrn._id, createdAt: jrn.createdAt, created_date: jrn.created_date} if jrn = job_result.find(filter, true)
   groups = API.es.terms API.settings.es.index + (if API.settings.dev then '_dev'), 'job_process,job_processing,job_result', 'group', 1000, true, filter
   res.limits = {}
   for g in groups
     res.limits[g.term] =
       count: g.count
       waiting: job_process.count({'group.exact':g.term}) # TODO this would have to take account of a provided filter
-      timeout: moment(lt.timeout, "x").format("YYYY-MM-DD HHmm") if lt = job_processing.find({'group.exact':g.term}, {sort:{createdAt:'desc'}})
+      timeout: moment(lt.timeout, "x").format("YYYY-MM-DD HHmm") if lt = job_processing.find({'group.exact':g.term}, true)
   return res
 
 API.job.reload = (jobid) ->
@@ -335,37 +355,40 @@ API.job.reload = (jobid) ->
   )
   return ret
 
+API.job._checking = (jobid) ->
+  job = if typeof jobid is 'object' then jobid else job_job.get jobid
+  job_result.remove job._id
+  total = job.processes.length
+  count = 0
+  for i in job.processes
+    count += 1 if job_result.get(i.process)?
+  p = count/total * 100
+  if p is 100
+    job_job.update job._id, {done:true}
+    try
+      fn = if job.complete.indexOf('API.') is 0 then API else global
+      fn = fn[f] for f in job.complete.replace('API.','').split('.')
+      fn job
+    catch
+      text = 'Job ' + (if job.name then job.name else job._id) + ' is complete.'
+      email = job.email ? job.user and API.accounts.retrieve(job.user)?.emails[0].address
+      API.mail.send to:email, subject:text, text:text
+  return {createdAt:job.createdAt, progress:p, name:job.name, email:job.email, _id:job._id, new:job.new}
+
 API.job.progress = (jobid) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
-  if job and not job.checking
-    job_job.update jobid, checking:true
-    p
-    if job.done
-      p = 100
-    else if job.new is true
-      p = 0
-    else
-      total = job.processes.length
-      count = 0
-      for i in job.processes
-        count += 1 if job_result.get(i.process)?
-      p = count/total * 100
-      if p is 100
-        job = job_job.get job._id # in case another process finished and progress hit 100 in the mean time
-        if not job.done
-          job_job.update job._id, {done:true,checking:false}
-          try
-            fn = if proc.function.indexOf('API.') is 0 then API else global
-            fn = fn[p] for p in job.complete.replace('API.','').split('.')
-            fn job
-          catch
-            text = 'Job ' + (if job.name then job.name else job._id) + ' is complete.'
-            email = job.email ? job.user and API.accounts.retrieve(job.user)?.emails[0].address
-            API.mail.send to:email, subject:text, text:text
-    job_job.update(jobid,{checking:false}) if p isnt 100
-    return {progress:p,name:job.name,email:job.email,_id:job._id,new:job.new}
+  if job.new or job.done
+    return {createdAt:job.createdAt, progress:(if job.done then 100 else 0), name:job.name, email:job.email, _id:job._id, new:job.new}
+  else if checking = job_processing.get job._id
+    while checking
+      future = new Future()
+      setTimeout (() -> future.return()), 1000
+      future.wait()
+      checking = job_processing.get job._id
+    checked = job_result.get job._id
+    return checked.result['API.job._checking']
   else
-    return false
+    return API.job.process({_id: job._id, group: 'PROGRESS', function: 'API.job._checking', args: job._id}).result['API.job._checking']
 
 API.job.rerun = (jobid,uid) ->
   job = job_job.get jobid

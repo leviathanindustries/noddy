@@ -54,14 +54,12 @@ API.collection.prototype.history = (action, doc, uid) ->
       uid: uid
     change.created_date = moment(change.createdAt, "x").format "YYYY-MM-DD HHmm"
     change[action] = doc
-    try
-      API.es.call 'POST', this._route + '_history', change
-    catch err
-      try
-        change.string = JSON.stringify change[action]
-        delete change[action]
-        API.es.call 'POST', this._route + '_history', change
-      catch err
+    ret = API.es.call 'POST', this._route + '_history', change
+    if not ret?
+      change.string = JSON.stringify change[action]
+      delete change[action]
+      ret = API.es.call 'POST', this._route + '_history', change
+      if not ret?
         API.log msg:'History logging failing',error:err,action:action,doc:doc,uid:uid
 
 API.collection.prototype.get = (rid) ->
@@ -91,7 +89,7 @@ API.collection.prototype.update = (q, obj, uid, refresh) ->
     API.collection._dot(rec,k,obj[k]) for k of obj
     rec.updatedAt = Date.now()
     rec.updated_date = moment(rec.updatedAt, "x").format "YYYY-MM-DD HHmm"
-    API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, rec: rec, updateset: obj }) if this._route.indexOf('_log') is -1
+    API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, rec: rec, updateset: obj, level: 'debug' }) if this._route.indexOf('_log') is -1
     API.es.call 'POST', this._route + '/' + rec._id, rec, refresh # TODO this should catch failures due to versions, and try merges and retries (or ES layer should do this)
     if this._history
       obj._id = rec._id # put actual ID back in for history info
@@ -138,9 +136,12 @@ API.collection.prototype.find = (q, opts) ->
       API.log({ msg: 'Collection find threw error', q: q, level: 'error', error: err }) if this._route.indexOf('_log') is -1
       return undefined
 
-API.collection.prototype.each = (q, fn) ->
+API.collection.prototype.each = (q, opts, fn) ->
+  if fn is undefined and typeof opts is 'function'
+    fn = opts
+    opts = undefined
   # TODO could use es.scroll here...
-  res = this.search q
+  res = this.search q, opts
   return 0 if res is undefined
   count = res.hits.total
   counter = 0
@@ -149,7 +150,7 @@ API.collection.prototype.each = (q, fn) ->
       fn = fn.bind this
       fn h._source ? h.fields
     counter += res.hits.hits.length
-    res = this.search(q) if counter < count # TODO how to pass params like size and from?
+    res = this.search(q, opts) if counter < count # TODO how to pass params like size and from?
   return counter
 
 API.collection.prototype.count = (q) ->
@@ -266,8 +267,9 @@ API.collection.prototype.mount = (opts={}) ->
     If options is string 'random' it will convert the query to be a random order
     Otherwise options should be an object (and the above can be provided as keys, "newest", "random")
     If "random" key is provided, "seed" can be provided too if desired, for seeded random queries
+    If "restrict" is provided, should point to list of ES queries to add to the and part of the query filter
     Any other keys in the options object should be directly attributable to an ES query object
-    TODO can add more conveniences for passing options in here, such as simplified terms, etc
+    TODO can add more conveniences for passing options in here, such as simplified terms, etc.
 ###
 API.collection._translate = (q, opts) ->
   console.log('Translating query',q,opts) if API.settings.log?.level is 'all'
@@ -287,19 +289,19 @@ API.collection._translate = (q, opts) ->
     if JSON.stringify(q).indexOf('[') is 0
       qry.query.filtered.filter.bool.should = []
       for m in q
-        if typeof q[m] is 'object'
-          for k of q[m]
-            if typeof q[m][k] is 'string'
+        if typeof m is 'object' and m?
+          for k of m
+            if typeof m[k] is 'string'
               tobj = term:{}
-              tobj.term[k.replace('.exact','')+'.exact'] = q[m][k] # TODO is it worth checking mapping to see if .exact is used by it...
+              tobj.term[k.replace('.exact','')+'.exact'] = m[k] # TODO is it worth checking mapping to see if .exact is used by it...
               qry.query.filtered.filter.bool.should.push tobj
-            else if typeof q[m][k] in ['number','boolean']
-              qry.query.filtered.query.bool.should.push {query_string:{query:k + ':' + q[m][k]}}
-            else
-              qry.query.filtered.filter.bool.should.push q[m][k]
-        else if typeof q[m] is 'string'
+            else if typeof m[k] in ['number','boolean']
+              qry.query.filtered.query.bool.should.push {query_string:{query:k + ':' + m[k]}}
+            else if m[k]?
+              qry.query.filtered.filter.bool.should.push m[k]
+        else if typeof m is 'string'
           qry.query.filtered.query.bool.should ?= []
-          qry.query.filtered.query.bool.should.push query_string: query: q[m]
+          qry.query.filtered.query.bool.should.push query_string: query: m
     else if q.query?
       qry = q # assume already a query
     else if q.source?
@@ -321,7 +323,7 @@ API.collection._translate = (q, opts) ->
           qry.query.filtered.filter.bool.must.push tobj
         else if typeof q[y] in ['number','boolean']
           qry.query.filtered.query.bool.must.push {query_string:{query:y + ':' + q[y]}}
-        else
+        else if q[y]?
           qry.query.filtered.filter.bool.must.push q[y]
   else if typeof q is 'string'
     if q.indexOf('?') is 0
@@ -333,7 +335,7 @@ API.collection._translate = (q, opts) ->
     opts = {newest: true} if opts is true
     if opts.newest is true
       delete opts.newest
-      opts = {sort: 'createdAt:desc'}
+      opts = {sort: {createdAt:{order:'desc'}}}
     opts = {random:true} if opts is 'random'
     if opts.random
       if typeof qry is 'string'
@@ -350,6 +352,9 @@ API.collection._translate = (q, opts) ->
           qry.query = fq
       delete opts.random
       delete opts.seed
+    if opts.and?
+      qry.query.filtered.filter.bool.must.push a for a in opts.and
+      delete opts.and
     qry[k] = v for k, v of opts
   qry.query.filtered.query = { match_all: {} } if typeof qry is 'object' and qry.query?.filtered?.query? and _.isEmpty(qry.query.filtered.query)
   console.log('Returning translated query',JSON.stringify(qry)) if API.settings.log?.level is 'all'

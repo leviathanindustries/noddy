@@ -1,10 +1,14 @@
 
+test_results = new API.collection 'tests'
+
 API.add 'test',
   get:
     roleRequired: if API.settings.dev then undefined else 'root'
     action: () -> return API.test this.queryParams.verbose
 
 API.test = (verbose) ->
+  #d = new Date() # uncomment this to remove old test results, if that becomes useful
+  #test_results.remove 'createdAt:<' + d.setDate(d.getDate() - 30)
   tests = passed: true
   test = (obj=API,tsts=tests) ->
     for k of obj
@@ -19,5 +23,6 @@ API.test = (verbose) ->
           test obj[k], tsts[k]
   test()
 
+  try test_results.insert tests
   API.log msg: 'Completed testing', tests: tests, notify: {msg:JSON.stringify(tests,undefined,2)}
   return tests

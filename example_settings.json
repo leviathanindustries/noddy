@@ -2,6 +2,7 @@
   "name": "noddy",
   "version": "3.0.0",
   "dev": "true/false, if true appends _dev to every index title, and can be used to control logic throughout the app, particularly useful for testing",
+  "cache": "there is a cache that anything making an outgoing http request can use, unless this is false in which case cache is not used",
   "proxy": "URL to proxy to, for any outgoing connections that have to appear to come from a registered IP (include auth in this if necessary)",
   "log": {
     "connections": true,
@@ -13,7 +14,7 @@
   },
   "es": {
     "url": "http://localhost:9200",
-    "index": "noddy_dev",
+    "index": "noddy - this will default to settings.name if not provided",
     "mappings": "OPTIONAL OBJECT WITH NAME KEYS OF INDEXES CONTAINING TYPE OR JUST TYPES AS TOP LEVEL KEYS, POINTING TO MAPPING OBJECTS FOR THAT TYPE OR INDEXTYPE".
     "mapping": "OPTIONAL A MAPPING OBJECT TO BE USED GENERALLY FOR ALL TYPES, OR A STRING URL TO REMOTE MAPPING LOCATION, OR STRING LOCAL FILE LOCATION - ONLY CHECKED IF MAPPINGS IS NOT PRESENT. IF NEITHER ARE PRESENT, A DEFAULT MAPPING FROM THE PUBLIC FOLDER WILL BE USED, EITHER NAMED mapping.json FOR ES < 5 OR mapping5.json FOR ES >= 5. IF THAT IS ALSO NOT PRESENT, AN ATTEMPT TO GET SUCH DEFAULT MAPPINGS FROM https://static.cottagelabs.com WILL OCCUR",
     "auth": {}

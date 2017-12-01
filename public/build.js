@@ -71,7 +71,7 @@ try {
     }
   }
 } catch (err) {}
-var bundle;
+var bundle, sass, coffee, jshash, csshash, request;
 try { bundle = vars.bundle; } catch (err) {}
 if (vars && vars.build && vars.build.args) {
   console.log('Updating args from vars');
@@ -158,85 +158,121 @@ fs.readdirSync('./serve/').forEach(function(n, index) {
 if (!fs.existsSync('./serve/static')) fs.mkdirSync('./serve/static');
 if (!fs.existsSync('./serve/retrieved')) fs.mkdirSync('./serve/retrieved');
 
-var sass, coffee, jshash, csshash;
+var retrieved = {}
+var dereference = function(bundlefile) {
+  var content = fs.readFileSync(bundlefile).toString();
+  if (content.indexOf('url(') !== -1) {
+    var ncontent = '';
+    var refparts = content.split('url(');
+    for (var c in refparts) {
+      if (c === '0') {
+        ncontent += refparts[c];
+      } else {
+        var quote = refparts[c].indexOf('"') === 0 ? '"' : (refparts[c].indexOf("'") === 0 ? "'" : '');
+        var refurl = refparts[c].replace(quote, '').split(quote + ')')[0].split('?')[0].split('#')[0];
+        var remainder = refparts[c].split(refurl)[1];
+        var filename = refurl.split('/').pop();
+        if (refurl.indexOf('http') !== 0) {
+          var pieces = refurl.split('/');
+          // it came from a remote URL, need to get what it refers from there
+          var sourceparts = retrieved[bundlefile] !== undefined ? retrieved[bundlefile].split('/') : bundlefile.replace('./serve/static','').replace('./static','').split('/');
+          sourceparts.pop();
+          var tgt = '';
+          for (var cp in pieces) {
+            if (pieces[cp].length) {
+              if (pieces[cp] !== '.' && pieces[cp] !== '..') tgt += '/' + pieces[cp];
+              if (pieces[cp] === '..') sourceparts.pop();
+            }
+          }
+          if (retrieved[bundlefile] !== undefined) {
+            refurl = sourceparts.join('/') + tgt;
+            if (request === undefined) request = require('sync-request');
+            fs.writeFileSync('./serve/static/' + filename, request('GET', refurl).getBody());
+          } else {
+            filename = sourceparts.join('/') + tgt;
+          }
+          ncontent += 'url(' + quote + ('/static/' + filename).replace('//','/') + remainder;
+        } else {
+          fs.writeFileSync('./serve/static/' + refurl.split('/').pop(), request('GET', refurl).getBody());
+          ncontent += 'url(' + quote + '/static/' + refurl.split('/').pop() + remainder;
+          //ncontent += 'url(' + quote + refurl + remainder;
+        }
+      }
+    }
+    fs.writeFileSync(bundlefile.replace('./static','./serve/static'),ncontent);
+    return true;
+  } else {
+    return false;
+  }
+}
+
+var render = function(err,results) {
+  // process any sass or coffee files
+  for (var sr in results) {
+    var newcontent = undefined;
+    if (results[sr].indexOf('.scss') !== -1 && args.sass) {
+      console.log('Sass compiling ' + results[sr]);
+      if (sass === undefined) sass = require('node-sass');
+      newcontent = sass.renderSync({ file: results[sr] }).css;
+    } else if (results[sr].indexOf('.coffee') !== -1 && args.coffee) {
+      console.log('Coffee compiling ' + results[sr]);
+      if (coffee === undefined) coffee = require('coffeescript');
+      newcontent = coffee.compile(fs.readFileSync(results[sr]).toString());
+    }
+    if (newcontent !== undefined) {
+      var fl = results[sr].replace('./static', './serve/static').replace('.coffee', '.js').replace('.scss', '.css');
+      var dcp = fl.replace('./serve/static/', '').split('/');
+      var dc = './serve/static';
+      for (var i = 0; i < dcp.length - 1; i++) {
+        dc += '/' + dcp[i];
+        if (!fs.existsSync(dc)) fs.mkdirSync(dc);
+      }
+      fs.writeFileSync(fl, newcontent);
+    }
+  }
+}
+
+// get any remote files
 console.log(bundle);
-if (!args.dev && args.bundle && bundle && typeof bundle === 'object') {
-  var request, uglyjs, uglycss;
+if (args.bundle && typeof bundle === 'object') {
+  var uglyjs, uglycss;
   var crypto = require('crypto');
   var js = [];
   var css = [];
-  for (var b in bundle) {
-    if (bundle[b].indexOf('http') === 0 && args.retrieve) {
-      var url = bundle[b];
-      bundle[b] = './serve/retrieved/' + bundle[b].split('/').pop();
-      if (request === undefined) request = require('sync-request');
-      var res = request('GET', url);
-      var cb = res.getBody().toString();
-      if (cb.indexOf('url(') !== -1) {
-        var ncb = '';
-        var cbpts = cb.split('url(');
-        for (var c in cbpts) {
-          if (c === '0') {
-            ncb += cbpts[c];
-          } else {
-            var qtp = cbpts[c].indexOf('"') === 0 ? '"' : (cbpts[c].indexOf("'") === 0 ? "'" : '');
-            var orurl = cbpts[c].replace(qtp, '').split(qtp + ')')[0].split('?')[0].split('#')[0];
-            var csurl = orurl;
-            var csfn = csurl.split('/').pop();
-            if (csurl.indexOf('http') !== 0) {
-              var pieces = csurl.split('/');
-              var sourceparts = url.split('/');
-              var tgt = '';
-              for (var cp in pieces) {
-                if (pieces[cp] !== '.' && pieces[cp] !== '..' && pieces[cp].length) {
-                  tgt += '/' + pieces[cp];
-                  sourceparts.pop();
-                }
-              }
-              csurl = sourceparts.join('/') + tgt;
-            }
-            if (!fs.existsSync('./serve/static/' + csfn)) {
-              console.log('Getting ' + csurl + ' as ' + csfn + ' for ' + url);
-              var csres = request('GET', csurl);
-              fs.writeFileSync('./serve/static/' + csfn, csres.getBody());
-            }
-            ncb += 'url(' + qtp + './' + csfn + cbpts[c].split(orurl)[1];
-          }
-        }
-        cb = ncb;
+  for (var br in bundle) {
+    if (bundle[br].indexOf('http') === 0) {
+      if (args.retrieve) {
+        var url = bundle[br];
+        bundle[br] = './serve/retrieved/' + bundle[br].split('/').pop();
+        retrieved[bundle[br]] = url;
+        if (request === undefined) request = require('sync-request');
+        var res = request('GET', url);
+        var cb = res.getBody().toString();
+        fs.writeFileSync(bundle[br], cb);
+      } else if (fs.existsSync('./static/'+bundle[br].split('/').pop())) {
+        bundle[br] = './static/'+bundle[br].split('/').pop();
+      } else if (fs.existsSync('./serve/retrieved/'+bundle[br].split('/').pop())) {
+        bundle[br] = './serve/retrieved/'+bundle[br].split('/').pop();
+      } else {
+        console.log('COULD NOT FIND FOR REMOTE ' + bundle[br]);
+        bundle[br] = undefined;
       }
-      if (bundle[b].indexOf('.scss') !== -1 && args.sass) {
-        console.log('Sass rendering retrieved ' + bundle[b] + ' for bundle');
-        if (sass === undefined) sass = require('node-sass');
-        cb = sass.renderSync({ data: cb }).css;
-        bundle[b] = bundle[b].replace('.scss', '.css');
-      }
-      if (bundle[b].indexOf('.coffee') !== -1 && args.coffee) {
-        console.log('Coffee compiling ' + bundle[b] + ' for bundle');
-        if (coffee === undefined) coffee = require('coffeescript');
-        cb = coffee.compile(cb);
-        bundle[b] = bundle[b].replace('.coffee', '.js');
-      }
-      fs.writeFileSync(bundle[b].replace('.coffee','.js'), cb);
-    } else if (bundle[b].indexOf('http') === 0 && fs.existsSync('./serve/retrieved/' + bundle[b].split('/').pop())) {
-      bundle[b] = './serve/retrieved/' + bundle[b].split('/').pop();
     }
-    if ((bundle[b].indexOf('.css') !== -1 || bundle[b].indexOf('.scss') !== -1) && args.sass && fs.existsSync(bundle[b].replace('.css', '.scss'))) {
-      console.log('Sass rendering ' + bundle[b] + ' for bundle');
-      if (sass === undefined) sass = require('node-sass');
-      var csres = sass.renderSync({ file: bundle[b].replace('.css', '.scss') }).css;
-      fs.writeFileSync(bundle[b].replace('./static', './serve/static').replace('.scss', '.css'), csres);
-      css.push(bundle[b].replace('./static', './serve/static').replace('.scss', '.css'));
-    } else if ((bundle[b].indexOf('.js') !== -1 || bundle[b].indexOf('.coffee') !== -1) && args.coffee && fs.existsSync(bundle[b].replace('.js', '.coffee'))) {
-      console.log('Coffee rendering ' + bundle[b] + ' for bundle');
-      if (coffee === undefined) coffee = require('coffeescript');
-      var cores = coffee.compile(fs.readFileSync(bundle[b].replace('.js', '.coffee')).toString());
-      fs.writeFileSync(bundle[b].replace('./static', './serve/static').replace('.coffee','.js'), cores);
-      js.push(bundle[b].replace('./static', './serve/static').replace('.coffee','.js'));
-    } else if (fs.existsSync(bundle[b])) {
-      bundle[b].indexOf('.js') !== -1 ? js.push(bundle[b]) : css.push(bundle[b].replace('.scss', 'css'));
-    } else {
-      console.log('COULD NOT RETRIEVE ' + bundle[b]);
+    if (bundle[br] && (bundle[br].indexOf('.scss') !== -1 || bundle[br].indexOf('.coffee') !== -1)) {
+      render(null,[bundle[br]]);
+      bundle[br] = bundle[br].replace('.scss','.css').replace('.coffee','.js').replace('static/','serve/static/');
+      if (!fs.existsSync(bundle[br])) {
+        console.log('COULD NOT FIND FOR LOCAL ' + bundle[br]);
+        bundle[br] = undefined;
+      }
+    }
+    if (bundle[br]) {
+      if (bundle[br].indexOf('.js') !== -1) {
+        js.push(bundle[br]);
+      } else {
+        if (dereference(bundle[br])) bundle[br] = bundle[br].replace('./static','./serve/static');
+        css.push(bundle[br]);
+      }
     }
   }
   if (js.length) {
@@ -246,13 +282,14 @@ if (!args.dev && args.bundle && bundle && typeof bundle === 'object') {
     fs.writeFileSync('./serve/static/' + jshash + '.min.js', uglyjs.code);
   }
   if (css.length) {
+    // for every css file, if retrieved, get anything it interally refers
+    // if not retrieved, change what it refers because it will be called from /static/bundle.css instead of where it did exist
     var uglifycss = require('uglifycss');
     uglycss = uglifycss.processFiles(css);
     csshash = crypto.createHash('md5').update(uglycss).digest("hex");
     fs.writeFileSync('./serve/static/' + csshash + '.min.css', uglycss);
   }
 }
-
 if (!args.dev && !args.bundle && jshash === undefined && csshash === undefined) {
   fs.readdirSync('./serve/static/').forEach(function(file, index) {
     if (file.indexOf('.min.js') !== -1 && jshash === undefined) jshash = file.replace('.min.js', '');
@@ -260,31 +297,7 @@ if (!args.dev && !args.bundle && jshash === undefined && csshash === undefined) 
   });
 }
 
-// TODO this and above walk through bundle need to start taking account of folders inside static, not just top level files
-if (args.sass || args.coffee) {
-  // render anything in static that was not already done for bundle
-  walk('./static', function(err, results) {
-    for (var sr in results) {
-      if (results[sr].indexOf('.scss') !== -1 || results[sr].indexOf('.coffee') !== -1) {
-        if (bundle && typeof bundle === 'object') {
-          if (bundle.indexOf(results[sr]) === -1 && bundle.indexOf(results[sr].replace('.scss', '.css').replace('.coffee', '.js')) === -1) {
-            if (results[sr].indexOf('.scss') !== -1 && args.sass) {
-              console.log('Sass compiling ' + results[sr]);
-              if (sass === undefined) sass = require('node-sass');
-              var sassres = sass.renderSync({ file: results[sr] }).css;
-              fs.writeFileSync(results[sr].replace('./static', './serve/static').replace('.scss', '.css'), sassres);
-            } else if (args.coffee) {
-              console.log('Coffee compiling ' + results[sr]);
-              if (coffee === undefined) coffee = require('coffeescript');
-              var coffeeres = coffee.compile(fs.readFileSync(results[sr]).toString());
-              fs.writeFileSync(results[sr].replace('./static', './serve/static').replace('.coffee', '.js'), coffeeres);
-            }
-          }
-        }
-      }
-    }
-  });
-}
+walk('./static', render); // render anything that is still scss or coffee
 
 var handlebars = require('handlebars');
 var templates = [];
@@ -342,28 +355,6 @@ walk('./content', function(err, results) {
           content = '<head>\n<meta charset="utf-8">\n<meta name="viewport" content="width=device-width, initial-scale=1.0"></head>\n\n' + content;
         }
       }
-      //template = handlebars.compile(content);
-      //content = template(vars);
-
-      /*      var marked;
-            if ( fl.indexOf('.md') !== -1) {
-              marked = require('marked');
-              content = marked(content);
-            } else if ( content.indexOf('<markdown>') !== -1 ) {
-              marked = require('marked');
-              var nc = '';
-              var cp = content.split('<markdown>');
-              for ( var a in cp ) {
-                if (a === 0) {
-                  nc += cp[a];
-                } else {
-                  var ms = cp[a].split('</markdown>');
-                  nc += marked(ms[0]) + ms[1];
-                }
-              }
-              content = nc;
-            }
-      */
       if (extrahead) content = content.replace('</head>', extrahead + '\n</head>');
 
       var open, close;
@@ -453,13 +444,13 @@ walk('./content', function(err, results) {
 
   console.log("Files");
   console.log(results);
-  
+
   // if we know the service and the api, try updating the reloader unless that option is disabled
   if (vars !== undefined && vars.service && vars.api) {
     try {
       if (request === undefined) request = require('sync-request');
       request('POST', vars.api + '/reload/' + vars.service);
-      console.log('POSTing a reload trigger to the API'); 
+      console.log('POSTing a reload trigger to the API');
     } catch(err) {}
   }
 });

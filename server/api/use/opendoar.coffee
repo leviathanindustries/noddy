@@ -1,8 +1,8 @@
 
-# docs: 
+# docs:
 # http://opendoar.org/tools/api.html
 # http://opendoar.org/tools/api13manual.html
-# example: 
+# example:
 # http://opendoar.org/api13.php?fields=rname&kwd=Aberdeen%20University%20Research%20Archive
 
 API.use ?= {}
@@ -51,7 +51,7 @@ API.use.opendoar.parse = (rec) ->
     for c in rec.classes[0].class
       cl = {}
       cl.code = c.clCode?[0]
-      cl.title = c.clTitle?[0]   
+      cl.title = c.clTitle?[0]
       ret.classes.push cl
   if rec.languages?[0]?.language?
     ret.languages = []
@@ -71,8 +71,8 @@ API.use.opendoar.parse = (rec) ->
     ret.policies = []
     for p in rec.policies[0].policy
       po = {}
-      po.type = p.policyType?[0]?._ 
-      po.grade = p.policyGrade?[0]?._ 
+      po.type = p.policyType?[0]?._
+      po.grade = p.policyGrade?[0]?._
       if p.poStandard?[0]?.item?
         std = []
         std.push(st) if typeof st is "string" for st in p.poStandard[0].item
@@ -96,15 +96,12 @@ API.use.opendoar.search = (qrystr,show='basic',raw) ->
     if res.statusCode is 200
       js = API.convert.xml2json undefined,res.content
       data = []
-      if raw
-        data.push(rr) for rr in js.OpenDOAR.repositories[0].repository
-      else
-        data.push(API.use.opendoar.parse(r)) for r in js.OpenDOAR.repositories[0].repository
+      data.push(if raw then r else API.use.opendoar.parse(r)) for r in js.OpenDOAR.repositories[0].repository
       return { total: js.OpenDOAR.repositories[0].repository.length, data: data}
     else
       return { status: 'error', data: res}
   catch err
-    return { status: 'error', error: err}    
+    return { status: 'error', error: err}
 
 API.use.opendoar.download = (show='max') ->
   url = 'http://opendoar.org/api13.php?all=y&show=' + show

@@ -66,15 +66,15 @@
 
 try noddy.nobject = nobject
 
-nobject.prototype.update = (dotkey,val) ->
+nobject.prototype.update = (dotkey,val,populate) ->
   console.log('Nobject updating ', dotkey, val) if this._debug
   this._changes[dotkey] = val if this._changes isnt false
   dot this._object, dotkey, val
-  this.populate dotkey, val
+  this.populate(dotkey, val) if populate isnt false
   if this._auto
-    this.save()
     $(this._element + ' [nobject="' + dotkey + '"]').addClass('has-success')
-    #setTimeout (() -> $('[nobject="' + dotkey + '"]').removeClass('has-success') ), 900
+    setTimeout (() -> $('[nobject="' + dotkey + '"]').removeClass('has-success') ), 200
+    this.save()
 
 nobject.prototype.retrieve = (display,populate,poll) ->
   console.log('Nobject retrieving') if this._debug
@@ -133,7 +133,11 @@ nobject.prototype.populate = (keys,val) ->
     # TODO has to depend on the type of value to be displayed, and into what type of element
     # and what if no vals? Does that mean it should be blank, or that it should not be changed from whatever it is???
     # what about mandatory vals?
-    $('[nobject="' + k + '"]').html(val).val(val) if val?
+    if val?
+      if $(this._element + ' [nobject="' + k + '"]').is('select')
+        $(this._element + ' [nobject="' + k + '"]').val(val)
+      else
+        $(this._element + ' [nobject="' + k + '"]').html(val).val(val)
     val = undefined # just a handy way to pass in one val to populate then throw it away after the first loop
 
 nobject.prototype.display = (obj,keys,element) ->
@@ -173,12 +177,12 @@ nobject.prototype.watch = () ->
             val = ths.val()
         else
           val = ths.val()
-        ts.update ths.attr('nobject'), val
+        ts.update ths.attr('nobject'), val, false
         ts._changing = false
       ), 900
   $(this._element).on 'change', '.nobject', change
   $(this._element).on 'click', '.nobjectEdit', (() -> $(this._element).show()) # is this going to be necessary?
-  $(this._element).on 'click', '.nobjectSave', this.save
+  $(this._element).on 'click', '.nobjectSave', (() -> ts.save())
 
 nobject.prototype.validate = () ->
   console.log('Nobject validating') if this._debug
@@ -188,13 +192,12 @@ nobject.prototype.validate = () ->
 nobject.prototype._saving
 nobject.prototype.save = (content,url,apikey) ->
   console.log('Nobject saving (if timeout permits)') if this._debug
-  try
-    content.preventDefault()
+  try content.preventDefault()
   if not this._saving
     this._saving = true
     ths = this
     setTimeout (() ->
-      if not typeof ths?.validate? is 'function' or ths.validate()
+      if typeof ths?.validate isnt 'function' or ths.validate()
         clearTimeout ths._pid if ths._pid?
         chng = JSON.parse(JSON.stringify(ths._changes)) if ths._changes isnt false
         ths._changes = {} if ths._changes isnt false

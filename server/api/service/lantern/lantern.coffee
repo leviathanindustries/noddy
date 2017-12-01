@@ -97,7 +97,7 @@ API.service.lantern.csv = (jobid,ignorefields=[]) ->
     result = {}
     if ignorefields.indexOf('originals') is -1
       for lf of res
-        if ignorefields.indexOf(lf) is -1 and lf not in ['process','createdAt','_id']
+        if lf not in ignorefields and lf not in ['grants','provenance','process','createdAt','_id'] and lf not in fields
           result[lf] = res[lf]
           fieldconfig.push(lf) if lf not in fieldconfig
     for fname in fields
@@ -107,21 +107,22 @@ API.service.lantern.csv = (jobid,ignorefields=[]) ->
         if fname is 'authors'
           result[printname] = ''
           for r of res.authors
-            result[printname] += if r is '0' then '' else ', '
+            result[printname] += if r is '0' then '' else '\r\n'
             result[printname] += res.authors[r].fullName if res.authors[r].fullName
         else if fname in ['repositories','repository_urls','repository_fulltext_urls','repository_oai_ids']
           result[printname] = ''
-          for rr in res.repositories
-            if rr.name
-              result[printname] += '\r\n' if result[printname]
-              if fname is 'repositories'
-                result[printname] += rr.name
-              else if fname is 'repository_urls'
-                result[printname] += rr.url
-              else if fname is 'repository_fulltext_urls'
-                result[printname] += rr.fulltexts.join()
-              else if fname is 'repository_oai_ids'
-                result[printname] += rr.oai
+          if res.repositories?
+            for rr in res.repositories
+              if rr.name
+                result[printname] += '\r\n' if result[printname]
+                if fname is 'repositories'
+                  result[printname] += rr.name
+                else if fname is 'repository_urls'
+                  result[printname] += rr.url
+                else if fname is 'repository_fulltext_urls'
+                  result[printname] += rr.fulltexts.join()
+                else if fname is 'repository_oai_ids'
+                  result[printname] += rr.oai
         else if fname is 'pmcid' and res.pmcid
           res.pmcid = 'PMC' + res.pmcid if res.pmcid.toLowerCase().indexOf('pmc') isnt 0
           result[printname] = res.pmcid
@@ -134,23 +135,22 @@ API.service.lantern.csv = (jobid,ignorefields=[]) ->
         else
           result[printname] = res[fname]
     if 'grant' not in ignorefields or 'agency' not in ignorefields or 'pi' not in ignorefields
-      grants = []
-      for g in res.grants
-        if g.agency and g.agency.toLowerCase().indexOf('wellcome') isnt -1 then grants.unshift(g) else grants.push(g)
-      for grnt in grants
-        grantcount += 1
-        if 'grant' not in ignorefields
-          result[(fieldnames.grant?.short_name ? 'grant').split(' ')[0] + ' ' + grantcount] = grnt.grantId
-        if 'agency' not in ignorefields
-          result[(fieldnames.agency?.short_name ? 'agency').split(' ')[0] + ' ' + grantcount] = grnt.agency
-        if 'pi' not in ignorefields
-          result[(fieldnames.pi?.short_name ? 'pi').split(' ')[0] + ' ' + grantcount] = grnt.PI ? 'unknown'
+      if res.grants?
+        for grnt in res.grants
+          grantcount += 1
+          if 'grant' not in ignorefields
+            result[(fieldnames.grant?.short_name ? 'grant').split(' ')[0] + ' ' + grantcount] = grnt.grantId
+          if 'agency' not in ignorefields
+            result[(fieldnames.agency?.short_name ? 'agency').split(' ')[0] + ' ' + grantcount] = grnt.agency
+          if 'pi' not in ignorefields
+            result[(fieldnames.pi?.short_name ? 'pi').split(' ')[0] + ' ' + grantcount] = grnt.PI ? 'Unknown'
     if 'provenance' not in ignorefields
       tpn = fieldnames['provenance']?.short_name ? 'provenance'
       result[tpn] = ''
-      for pr of res.provenance
-        result[tpn] += if pr is '0' then '' else '\r\n'
-        result[tpn] += res.provenance[pr]
+      if res.provenance?
+        for pr of res.provenance
+          result[tpn] += if pr is '0' then '' else '\r\n'
+          result[tpn] += res.provenance[pr]
     results.push result
   gc = 1
   while gc < grantcount+1
@@ -162,7 +162,7 @@ API.service.lantern.csv = (jobid,ignorefields=[]) ->
       fieldconfig.push (fieldnames.pi?.short_name ? 'pi').split(' ')[0] + ' ' + gc
     gc++
   fieldconfig.push(fieldnames.provenance?.short_name ? 'provenance') if 'provenance' not in ignorefields
-  return API.convert.json2csv {fields:fieldconfig, defaultValue:'unknown'}, undefined, results
+  return API.convert.json2csv {fields:fieldconfig, defaultValue:'Unknown'}, undefined, results
 
 
 

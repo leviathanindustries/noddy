@@ -3,7 +3,7 @@ import marked from 'marked'
 
 API.mail = {}
 
-mail_template = new API.collection "mailtemplate"
+@mail_template = new API.collection "mailtemplate"
 mail_progress = new API.collection "mailprogress"
 
 API.add 'mail/validate', get: () -> return API.mail.validate this.queryParams.email
@@ -18,17 +18,17 @@ API.add 'mail/send',
 API.add 'mail/feedback/:token',
   get: () ->
     try
-      from = this.queryParams.from ? API.settings.mail?.feedback>[this.urlParams.token]?.from ? "sysadmin@cottagelabs.com"
+      from = this.queryParams.from ? API.settings.mail?.feedback?[this.urlParams.token]?.from ? "sysadmin@cottagelabs.com"
       to = API.settings.mail?.feedback?[this.urlParams.token]?.to
-      mail_url = API.settings.mail?.feedback?[this.urlParams.token]?.mail_url ? API.settings.mail.url
+      service = API.settings.mail?.feedback?[this.urlParams.token]?.service
       subject = API.settings.mail?.feedback?[this.urlParams.token]?.subject ? "Feedback"
     if to?
-      API.mail.send {
+      API.mail.send
+        service: service
         from: from
         to: to
         subject: subject
         text: this.queryParams.content
-      }, mail_url
     return {}
 
 API.add 'mail/progress',

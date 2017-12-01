@@ -145,26 +145,25 @@ API.service.lantern.process = (proc) ->
       result.electronic_publication_date = _formatepmcdate eupmc.electronicPublicationDate
       result.provenance.push 'Added electronic publication date from EUPMC'
 
-    ft = API.use.europepmc.fulltextXML(result.pmcid) if result.pmcid and result.open_access and result.in_epmc
-    if ft is 404
+    xml = API.use.europepmc.xml(result.pmcid) if result.pmcid and result.open_access and result.in_epmc
+    if xml is 404
       result.provenance.push 'Not found in EUPMC when trying to fetch full text XML.'
-    else if typeof ft isnt 'string' or ft.indexOf('<') isnt 0
-      result.provenance.push 'Encountered an error while retrieving the EUPMC full text XML. One possible reason is EUPMC being temporarily unavailable.'
-    else
+    else if typeof xml is 'string' and xml.indexOf('<') is 0
       result.epmc_xml = true
       result.provenance.push 'Confirmed fulltext XML is available from EUPMC'
+    else if xml?
+      result.provenance.push 'Encountered an error while retrieving the EUPMC full text XML. One possible reason is EUPMC being temporarily unavailable.'
 
-    lic = API.use.europepmc.licence result.pmcid, eupmc, ft, (not proc.wellcome and API.settings.service.lantern.epmc_ui_only_wellcome)
+    lic = API.use.europepmc.licence result.pmcid, eupmc, xml, (not proc.wellcome and API.settings.service.lantern.epmc_ui_only_wellcome)
     if lic isnt false
       result.licence = lic.licence
       result.epmc_licence = lic.licence
       result.licence_source = lic.source
       result.epmc_licence_source = lic.source
       extrainfo = ''
-      extrainfo += ' The bit that let us determine the licence was: ' + lic.matched + ' .' if lic.matched
       if lic.match
         extrainfo += ' If licence statements contain URLs we will try to find those in addition to '
-        extrainfo += 'searching for the statement\'s text. Here the entire licence statement was: ' + lic.match + ' .'
+        extrainfo += 'searching for the statement\'s text. The match in this case was: \'' + lic.match.replace(/<.*?>/gi,'') + '\' .'
       result.provenance.push 'Added EPMC licence (' + result.epmc_licence + ') from ' + lic.source + '.' + extrainfo
 
     if eupmc.authorList?.author
@@ -232,7 +231,7 @@ API.service.lantern.process = (proc) ->
           else
             try
               repo = API.use.opendoar.search rep.name
-              if repo.status is 'success' and repo.total is 1 and repo.data[0].url
+              if repo.total is 1 and repo.data[0].url
                 rc.url = repo.data[0].url
                 result.provenance.push 'Added repo base URL from OpenDOAR'
               else
@@ -240,10 +239,19 @@ API.service.lantern.process = (proc) ->
             catch
               result.provenance.push 'Tried but failed to search OpenDOAR for repo base URL'
           rc.fulltexts = []
+          lastresort = undefined
           if core.fulltextUrls
             for fu in core.fulltextUrls
-              if fu.indexOf('core.ac.uk') is -1 and rep.fulltexts.indexOf(fu) is -1 and (not rep.url or ( rep.url and fu.indexOf(rep.url.replace('http://','').replace('https://','').split('/')[0]) isnt -1 ) )
-                rc.fulltexts.push fu
+              if fu.indexOf('core.ac.uk') is -1
+                resolved = API.http.resolve fu
+                if resolved and rc.fulltexts.indexOf(resolved) is -1
+                  if rc.url and resolved.indexOf(rc.url.replace('http://','').replace('https://','').split('/')[0]) isnt -1
+                    rc.fulltexts.unshift resolved
+                  else
+                    rc.fulltexts.push resolved
+              else if not lastresort?
+                lastresort = fu
+          rc.fulltexts.push(lastresort) if rc.fulltexts.length is 0 and lastresort?
           result.repositories.push rc
         result.provenance.push 'Added repositories that CORE claims article is available from'
       if not result.title and core.title
@@ -260,7 +268,7 @@ API.service.lantern.process = (proc) ->
       try
         domain = base.dclink.split('://')[1].split('/')[0]
         repo = API.use.opendoar.search domain
-        if repo.status is 'success' and repo.total is 1 and repo.data[0].url and repo.data[0].url.indexOf(domain) isnt -1
+        if repo.total is 1 and repo.data[0].url and repo.data[0].url.indexOf(domain) isnt -1
           result.repositories.push({
             fulltexts:[base.dclink],
             url: repo.data[0].url,
@@ -283,11 +291,11 @@ API.service.lantern.process = (proc) ->
     result.provenance.push 'Not attempting Crossref / CORE / BASE lookups - do not have DOI for article.'
 
   if result.grants.length > 0
-    for g of result.grants
-      gr = result.grants[g]
+    grants = []
+    for gr in result.grants
       if gr.grantId
         grid = gr.grantId
-        grid = grid.split('/')[0] if gr.agency?.toLowerCase().indexOf('wellcome') isnt -1
+        grid = grid.split('/')[0] if gr.agency and gr.agency.toLowerCase().indexOf('wellcome') isnt -1
         gres = API.use.grist.grant_id grid
         if gres.total and gres.total > 0 and gres.data.Person
           ps = gres.data.Person
@@ -296,10 +304,14 @@ API.service.lantern.process = (proc) ->
           pid += ps.GivenName + ' ' if ps.GivenName
           pid += ps.Initials + ' ' if not ps.GivenName and ps.Initials
           pid += ps.FamilyName if ps.FamilyName
-          result.grants[g].PI = pid
+          gr.PI = pid
           result.provenance.push 'Found Grant PI for ' + grid + ' via Grist API'
+        else
+          result.provenance.push 'Tried but failed to find Grant PI via Grist API'
       else
-        result.provenance.push 'Tried but failed to find Grant PI via Grist API'
+        gr.grantId = 'unknown'
+      if gr.agency and gr.agency.toLowerCase().indexOf('wellcome') isnt -1 then grants.unshift(gr) else grants.push(gr)
+    result.grants = grants
   else
     result.provenance.push 'Not attempting Grist API grant lookups since no grants data was obtained from EUPMC.'
 
@@ -317,7 +329,7 @@ API.service.lantern.process = (proc) ->
 
   if result.issn
     doaj = API.use.doaj.journals.issn result.issn
-    if doaj.status is 'success'
+    if doaj.status isnt 'error'
       result.pure_oa = true
       result.provenance.push 'Confirmed journal is listed in DOAJ'
       result.publisher ?= doaj.data.bibjson.publisher
@@ -326,11 +338,11 @@ API.service.lantern.process = (proc) ->
       result.provenance.push 'Could not find journal in DOAJ'
 
     romeo = API.use.sherpa.romeo.search {issn:result.issn}
-    if romeo.status is 'success'
+    if not romeo.status?
       journal
       publisher
-      try journal = romeo.data.journals[0].journal[0]
-      try publisher = romeo.data.publishers[0].publisher[0]
+      try journal = romeo.journals[0].journal[0]
+      try publisher = romeo.publishers[0].publisher[0]
       if not result.journal_title
         if journal?.jtitle and journal.jtitle.length > 0
           result.journal_title = journal.jtitle[0]
@@ -361,24 +373,23 @@ API.service.lantern.process = (proc) ->
     result.provenance.push 'Not attempting to add any data from Sherpa Romeo - don\'t have a journal ISSN to use for lookup.'
 
   publisher_licence_check_ran = false
-  if not result.licence or result.licence is 'unknown' or result.licence not in ['cc-by','cc-zero']
+  if not result.licence or result.licence not in ['cc-by','cc-zero']
     publisher_licence_check_ran = true
-    url = API.use.crossref.resolve(result.doi) if result.doi
-    if url and (not result.pmcid or url.indexOf('europepmc') is -1) #if we had a pmcid we already looked at the europepmc page for licence
+    url = API.http.resolve('https://doi.org/'+result.doi) if result.doi
+    if url and url.indexOf('europepmc') is -1 # if it resolves to eupmc then it would already have been checked above
       lic = API.service.lantern.licence url
       if lic.licence and lic.licence isnt 'unknown'
         result.licence = lic.licence
         result.licence_source = 'publisher_splash_page'
         result.publisher_licence = lic.licence
         extrainfo = ''
-        extrainfo += ' The bit that let us determine the licence was: ' + lic.matched + ' .' if lic.matched
         if lic.match
           extrainfo += ' If licence statements contain URLs we will try to find those in addition to ' +
-          'searching for the statement\'s text. Here the entire licence statement was: ' + lic.match + ' .'
-        result.provenance.push 'Added licence (' + result.publisher_licence + ') via article publisher splash page lookup to ' + lic.resolved + ' (used to be OAG).' + extrainfo
+          'searching for the statement\'s text. The match in this case was: \'' + lic.match.replace(/<.*?>/gi,'') + '\' .'
+        result.provenance.push 'Added licence (' + result.publisher_licence + ') via article publisher splash page lookup to ' + url + '.' + extrainfo
       else
         result.publisher_licence = 'unknown'
-        result.provenance.push 'Unable to retrieve licence data via article publisher splash page lookup (used to be OAG).'
+        result.provenance.push 'Unable to retrieve licence data via article publisher splash page lookup to ' + url + '.'
         result.provenance.push 'Retrieved content was very long, so was contracted to 500,000 chars from start and end to process' if lic.large
     else
       result.provenance.push 'Unable to retrieve licence data via article publisher splash page - cannot obtain a suitable URL to run the licence detection on.'

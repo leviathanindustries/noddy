@@ -47,6 +47,11 @@ API.add 'tdm/extract',
     params.end ?= this.queryParams.end
     return API.tdm.extract params
 
+API.add 'tdm/difference/:str',
+	get: () ->
+		return API.tdm.difference this.urlParams.str.split(',')[0], this.urlParams.str.split(',')[1]
+
+
 
 # http://stackoverflow.com/questions/4009756/how-to-count-string-occurrence-in-string
 API.tdm.occurrence = (content, sub, overlap) ->
@@ -156,7 +161,7 @@ API.tdm.keywords = (content,opts) ->
 
 API.tdm.extract = (opts) ->
 	# opts expects url,content,matchers (a list, or singular "match" string),start,end,convert,format,lowercase,ascii
-	opts.content = API.phantom.get(opts.url) if opts.url and not opts.content
+	opts.content = API.http.phantom(opts.url) if opts.url and not opts.content
 
 	text
 	try

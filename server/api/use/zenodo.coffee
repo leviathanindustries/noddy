@@ -81,7 +81,7 @@ API.use.zenodo.deposition.delete = (id,token) ->
   return false if not token? or not id?
   url = 'https://zenodo.org/api/deposit/depositions/' + id + '?access_token=' + token
   try
-    HTTP.call('DELETE',url)
-    return {}
+    HTTP.call 'DELETE', url
+    return true
   catch err
     return {status: 'error', error: err}

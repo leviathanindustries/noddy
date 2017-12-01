@@ -16,19 +16,14 @@ API.use.openaire.title = (title) ->
   res = API.use.openaire.get {title:meta.title}
 
 API.use.openaire.get = (params) ->
-  res = API.cache.get params, 'openaire_get'
-  if not res?
-    res = API.use.openaire.search params
-    rec = if typeof res.data isnt 'string' and res.data?.length > 0 then res.data[0] else undefined
-    if rec?
-      op = API.use.openaire.open rec, true
-      rec.open = op.open
-      rec.blacklist = op.blacklist
-      API.cache.save params, 'openaire_get', rec
-    return rec
-  else
-    return res
-    
+  res = API.use.openaire.search params
+  rec = if typeof res.data isnt 'string' and res.data?.length > 0 then res.data[0] else undefined
+  if rec?
+    op = API.use.openaire.redirect rec
+    rec.url = op.url
+    rec.redirect = op.redirect
+  return rec
+
 # openaire has a datasets endpoint too, but there appears to be no way to
 # search it for datasets related to an article. Sometimes the users put
 # the article title partially or completely in the description along with
@@ -59,20 +54,19 @@ API.use.openaire.search = (params) ->
   catch err
     return { status: 'error', data: 'openaire API error', error: err}
 
-API.use.openaire.open = (record,blacklist) ->
+API.use.openaire.redirect = (record) ->
   res = {}
   if record.metadata?['oaf:result']?.bestlicense?['@classid'] is 'OPEN' and record.metadata['oaf:result'].children?.instance?.length > 0
     for i in record.metadata['oaf:result'].children.instance
       if i.licence?['@classid'] is 'OPEN' and i.webresource?.url?.$
-        res.open = i.webresource.url.$
-        if res.open?
-          try
-            resolves = HTTP.call 'HEAD', res.open
-          catch
-            res.open = undefined
-        res.blacklist = API.service.oab?.blacklist(res.open) if blacklist and res.open
-        break if res.open and not res.blacklist
-  return if blacklist then res else (if res.open then res.open else false)
+        res.url = API.http.resolve i.webresource.url.$
+        try
+          resolves = HTTP.call 'HEAD', res.url
+        catch
+          res.url = undefined
+        res.redirect = API.service.oab.redirect(res.url) if res.url? and API.service.oab?
+        break if res.url and res.redirect isnt false
+  return res
 
 
 ###

@@ -135,14 +135,11 @@ API.use.google.places.search = (params) ->
     return {status:'error', error: err}
 
 API.use.google.sheets.feed = (sheetid,stale=3600000) ->
+  return [] if not sheetid?
   # expects a google sheet ID or a URL to a google sheets feed in json format
-  # NOTE the sheed must be published for this to work, should have the data in sheet 1, and should have columns of data with key names in row 1
-  url
-  if sheetid.indexOf('http') isnt 0
-    url = 'https://spreadsheets.google.com/feeds/list/' + sheetid + '/od6/public/values?alt=json'
-  else
-    url = sheetid
-    sheetid = sheetid.replace('https://','').replace('http://','').replace('spreadsheets.google.com/feeds/list/','').split('/')[0]
+  # NOTE the sheet must be published for this to work, should have the data in sheet 1, and should have columns of data with key names in row 1
+  url = if sheetid.indexOf('http') isnt 0 then 'https://spreadsheets.google.com/feeds/list/' + sheetid + '/od6/public/values?alt=json' else sheetid
+  sheetid = sheetid.replace('https://','').replace('http://','').replace('spreadsheets.google.com/feeds/list/','').split('/')[0]
   localcopy = '.googlelocalcopy' + sheetid + '.json'
   values = []
   if fs.existsSync(localcopy) and ((new Date()) - fs.statSync(localcopy).mtime) < stale

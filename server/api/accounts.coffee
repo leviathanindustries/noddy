@@ -399,16 +399,21 @@ API.accounts.removerole = (user, grl, uacc) ->
     return true
 
 API.accounts.remove = (user, service, uacc) ->
-  user = user._id if typeof user is 'object'
+  user = API.accounts.retrieve(user) if typeof user is 'string'
   uacc = API.accounts.retrieve(uacc) if typeof uacc is 'string'
-  if not uacc? or user is uacc._id or API.accounts.auth 'root', uacc
+  if not uacc? or user._id is uacc._id or API.accounts.auth 'root', uacc
     if service
-      Users.update uid, 'service.'+service+ '.removed': true
+      Users.update user._id, 'service.'+service+ '.removed': true
     else
-      Users.remove user
+      Users.remove user._id
     return true
   else if uacc? and service and API.accounts.auth service+'.service', uacc
-    Users.update uid, 'service.'+service+ '.removed': true
+    if _.keys(user.service).length is 1 and user.service[service]?
+      Users.remove user._id
+    else
+      upd = {}
+      upd['service.'+service] = {removed:true}
+      Users.update user._id, upd
     return true
   else
     return false

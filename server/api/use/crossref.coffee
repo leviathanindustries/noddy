@@ -22,10 +22,13 @@ API.add 'use/crossref/reverse',
   get: () -> return API.use.crossref.reverse [this.queryParams.q], this.queryParams.score
   post: () -> return API.use.crossref.reverse this.request.body
 
+API.add 'use/crossref/resolve/:doipre/:doipost', get: () -> return API.use.crossref.resolve this.urlParams.doipre + '/' + this.urlParams.doipost
+API.add 'use/crossref/resolve', get: () -> return API.use.crossref.resolve this.queryParams.doi
+
 
 API.use.crossref.reverse = (citations,score=80) ->
   citations = [citations] if typeof citations is 'string'
-  url = 'http://api.crossref.org/reverse'
+  url = 'https://api.crossref.org/reverse'
   try
     res = HTTP.call 'POST', url, {data:citations}
     if res.statusCode is 200
@@ -55,33 +58,34 @@ API.use.crossref.reverse = (citations,score=80) ->
     return { status: 'error', error: err.toString() }
 
 API.use.crossref.resolve = (doi) ->
-  cached = API.cache.get doi, 'crossref_resolve'
+  doi = doi.replace('http://','').replace('https://','').replace('dx.doi.org/','').replace('doi.org/','')
+  cached = API.http.cache doi, 'crossref_resolve'
   if cached
     return cached
   else
     url = false
     try
       # TODO NOTE that the URL given by crossref doi resolver may NOT be the final resolved URL. The publisher may still redirect to a different one
-      resp = HTTP.call 'GET', 'http://doi.org/api/handles/' + doi.replace('http://','').replace('https://','').replace('dx.doi.org/','')
+      resp = HTTP.call 'GET', 'https://doi.org/api/handles/' + doi
       for r in resp.data?.values
         if r.type.toLowerCase() is 'url'
           url = r.data.value
-          # like these weird chinese ones, which end up throwing 404 anyway, but, just in case - http://doi.org/api/handles/10.7688/j.issn.1000-1646.2014.05.20
+          # like these weird chinese ones, which end up throwing 404 anyway, but, just in case - https://doi.org/api/handles/10.7688/j.issn.1000-1646.2014.05.20
           url = new Buffer(url,'base64').toString('utf-8') if r.data.format is 'base64'
-          API.cache.save doi, 'crossref_resolve', url
+          API.http.cache doi, 'crossref_resolve', url
     return url
 
 API.use.crossref.works.doi = (doi) ->
-  url = 'http://api.crossref.org/works/' + doi
+  url = 'https://api.crossref.org/works/' + doi
   API.log 'Using crossref for ' + url
-  cached = API.cache.get doi, 'crossref_works_doi'
+  cached = API.http.cache doi, 'crossref_works_doi'
   if cached
     return cached
   else
     try
       res = HTTP.call 'GET', url
       if res.statusCode is 200
-        API.cache.save doi, 'crossref_works_doi', res.data.message
+        API.http.cache doi, 'crossref_works_doi', res.data.message
         return res.data.message
       else
         return undefined
@@ -89,7 +93,7 @@ API.use.crossref.works.doi = (doi) ->
       return undefined
 
 API.use.crossref.works.search = (qrystr,from,size,filter) ->
-  url = 'http://api.crossref.org/works?';
+  url = 'https://api.crossref.org/works?';
   if qrystr and qrystr isnt 'all'
     qry = qrystr.replace(/\w+?\:/g,'').replace(/ AND /g,'+').replace(/ OR /g,' ').replace(/ NOT /g,'-').replace(/ /g,'+')
     url += 'query=' + qry
@@ -114,3 +118,163 @@ API.use.crossref.works.indexed = (startdate,enddate,from,size,filter) ->
   filter += ',until-index-date:' + enddate if enddate
   return API.use.crossref.works.search undefined, from, size, filter
 
+
+
+API.use.crossref.status = () ->
+  try
+    res = HTTP.call 'GET', 'https://api.crossref.org/works/10.1186/1758-2946-3-47', {timeout:2000}
+    return if res.statusCode is 200 and res.data.status is 'ok' then true else false
+  catch
+    return false
+
+API.use.crossref.test = (verbose) ->
+  result = {passed:[],failed:[]}
+  tests = [
+    () ->
+      result.record = API.use.crossref.works.search('10.1186/1758-2946-3-47').data[0]
+      return _.isEqual result.record, API.use.crossref.test._examples.record
+  ]
+
+  (if (try tests[t]()) then (result.passed.push(t) if result.passed isnt false) else result.failed.push(t)) for t of tests
+  result.passed = result.passed.length if result.passed isnt false and result.failed.length is 0
+  result = {passed:result.passed} if result.failed.length is 0 and not verbose
+  return result
+
+API.use.crossref.test._examples = {
+  record: {
+    "indexed": {
+      "date-parts": [
+        [
+          2017,
+          10,
+          26
+        ]
+      ],
+      "date-time": "2017-10-26T05:49:15Z",
+      "timestamp": 1508996955369
+    },
+    "reference-count": 0,
+    "publisher": "Springer Nature",
+    "issue": "1",
+    "content-domain": {
+      "domain": [],
+      "crossmark-restriction": false
+    },
+    "short-container-title": [
+      "Journal of Cheminformatics",
+      "J Cheminf"
+    ],
+    "published-print": {
+      "date-parts": [
+        [
+          2011
+        ]
+      ]
+    },
+    "DOI": "10.1186/1758-2946-3-47",
+    "type": "journal-article",
+    "created": {
+      "date-parts": [
+        [
+          2011,
+          11,
+          1
+        ]
+      ],
+      "date-time": "2011-11-01T20:17:30Z",
+      "timestamp": 1320178650000
+    },
+    "page": "47",
+    "source": "Crossref",
+    "is-referenced-by-count": 1,
+    "title": [
+      "Open Bibliography for Science, Technology, and Medicine"
+    ],
+    "prefix": "10.1186",
+    "volume": "3",
+    "author": [
+      {
+        "given": "Richard",
+        "family": "Jones",
+        "affiliation": []
+      },
+      {
+        "given": "Mark",
+        "family": "MacGillivray",
+        "affiliation": []
+      },
+      {
+        "given": "Peter",
+        "family": "Murray-Rust",
+        "affiliation": []
+      },
+      {
+        "given": "Jim",
+        "family": "Pitman",
+        "affiliation": []
+      },
+      {
+        "given": "Peter",
+        "family": "Sefton",
+        "affiliation": []
+      },
+      {
+        "given": "Ben",
+        "family": "O'Steen",
+        "affiliation": []
+      },
+      {
+        "given": "William",
+        "family": "Waites",
+        "affiliation": []
+      }
+    ],
+    "member": "297",
+    "container-title": [
+      "Journal of Cheminformatics"
+    ],
+    "original-title": [],
+    "deposited": {
+      "date-parts": [
+        [
+          2016,
+          5,
+          16
+        ]
+      ],
+      "date-time": "2016-05-16T17:48:02Z",
+      "timestamp": 1463420882000
+    },
+    "score": 1,
+    "subtitle": [],
+    "short-title": [],
+    "issued": {
+      "date-parts": [
+        [
+          2011
+        ]
+      ]
+    },
+    "references-count": 0,
+    "alternative-id": [
+      "1758-2946-3-47"
+    ],
+    "URL": "http://dx.doi.org/10.1186/1758-2946-3-47",
+    "relation": {},
+    "ISSN": [
+      "1758-2946"
+    ],
+    "issn-type": [
+      {
+        "value": "1758-2946",
+        "type": "print"
+      }
+    ],
+    "subject": [
+      "Physical and Theoretical Chemistry",
+      "Library and Information Sciences",
+      "Computer Graphics and Computer-Aided Design",
+      "Computer Science Applications"
+    ]
+  }
+}

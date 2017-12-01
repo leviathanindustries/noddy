@@ -11,18 +11,17 @@ API.add 'use/figshare/doi/:doipre/:doipost',
 
 
 API.use.figshare.doi = (doi) ->
-  res = API.cache.get doi, 'figshare_doi'
+  res = API.http.cache doi, 'figshare_doi'
   if not res?
     res = API.use.figshare.search {search_for:doi}
     if res.data?.length and res.data[0].doi is doi
       res = res.data[0]
-      res.open = API.use.figshare.open res
-      API.cache.save doi, 'figshare_doi', res
-      return res
+      res.url = res.url_public_html
+      API.http.cache doi, 'figshare_doi', res
     else
       return undefined
-  else
-    return res
+  res.redirect = API.http.resolve(res.url) if res?.url?
+  return res
 
 API.use.figshare.search = (params) ->
   url = 'https://api.figshare.com/v2/articles/search'
@@ -34,14 +33,4 @@ API.use.figshare.search = (params) ->
   catch err
     return { status: 'error', data: 'figshare API error', error: err}
 
-
-API.use.figshare.open = (record) ->
-  if res.url_public_html?
-    try
-      resolves = HTTP.call 'HEAD', res.url_public_html
-      return res.url_public_html
-    catch
-      return false
-  else
-    return false
 

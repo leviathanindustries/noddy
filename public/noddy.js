@@ -135,6 +135,12 @@ noddy.failureCallback = function(data,action) {
     }
   }
   if ( action === 'oauth' ) $('.noddyMessage').html('<p>Sorry, we could not sign you in. Please try another method.</p>');
+  if (action === 'login' || action === 'oauth') {
+    $('.noddin').hide();
+    $('.nottin').show();
+    $('.noddyToken').hide();
+    $('.noddyLogin').show();
+  }
   try {
     data.navigator = {
       userAgent: navigator.userAgent,
@@ -145,7 +151,7 @@ noddy.failureCallback = function(data,action) {
   } catch(err) {}
   $.ajax({
     type:'POST',
-    url: 'https://dev.api.cottagelabs.com/mail/error?token=08f98hfwhef98wehf9w8ehf98whe98fh98hw9e8h',
+    url: noddy.api+'/mail/feedback?token=08f98hfwhef98wehf9w8ehf98whe98fh98hw9e8h',
     cache:false,
     processData:false,
     contentType: 'application/json',
@@ -153,7 +159,11 @@ noddy.failureCallback = function(data,action) {
     data:JSON.stringify(data)
   });
   if (noddy.debug) console.log('Login failure callback sent error msg to remote');
-  if (typeof noddy.afterFailure === 'function') noddy.afterFailure();
+  if (action !== undefined && typeof noddy[action+'Failure'] === 'function') {
+    noddy[action+'Failure']();
+  } else if (typeof noddy.afterFailure === 'function') {
+    noddy.afterFailure();
+  }
 }
 
 noddy.form = function(matcher) {
@@ -278,18 +288,24 @@ noddy.token = function(e) {
   } else {
     opts.url += '?email='+encodeURIComponent(noddy.user.email)+'&url='+url;
   }
-  if (noddy.fingerprint && Fingerprint2) {
-    new Fingerprint2().get(function(result, components) {
-      noddy.user.fingerprint = result;
-      if (opts.type === 'POST') {
-        opts.data.fingerprint = result;
-        opts.data = JSON.stringify(opts.data);
-      } else {
-        opts.url += '&fingerprint=' + result;
-      }
+  if (noddy.fingerprint) {
+    try {
+      new Fingerprint2().get(function(result, components) {
+        noddy.user.fingerprint = result;
+        if (opts.type === 'POST') {
+          opts.data.fingerprint = result;
+          opts.data = JSON.stringify(opts.data);
+        } else {
+          opts.url += '&fingerprint=' + result;
+        }
+        $.ajax(opts);
+      });
+    } catch(err) {
+      opts.data = JSON.stringify(opts.data);
       $.ajax(opts);
-    });
+    }
   } else {
+    opts.data = JSON.stringify(opts.data);
     $.ajax(opts);
   }
   // this should really be the ajax success callback, but some browsers appear to behave oddly after the GET request
@@ -367,17 +383,26 @@ noddy.loginSuccess = function(data) {
   cookie.timestamp = data.settings.timestamp;
   cookie.resume = data.settings.resume;
   cookie.domain = data.settings.domain;
-  if (noddy.fingerprint && Fingerprint2) {
-    new Fingerprint2().get(function(result, components) {
-      noddy.user.fingerprint = result;
-      cookie.fingerprint = result;
+  if (noddy.fingerprint) {
+    try {
+      new Fingerprint2().get(function(result, components) {
+        noddy.user.fingerprint = result;
+        cookie.fingerprint = result;
+        noddy.setCookie(noddy.cookie, cookie, data.settings);
+        if (noddy.next) {
+          window.location = noddy.next;
+        } else if (typeof noddy.afterLogin === 'function') {
+          noddy.afterLogin();
+        }
+      });
+    } catch(err) {
       noddy.setCookie(noddy.cookie, cookie, data.settings);
       if (noddy.next) {
         window.location = noddy.next;
       } else if (typeof noddy.afterLogin === 'function') {
         noddy.afterLogin();
       }
-    });
+    }
   } else {
     noddy.setCookie(noddy.cookie, cookie, data.settings);
     if (noddy.next) {

@@ -134,7 +134,8 @@ API.es.mapping = (index, type, url=API.settings.es.url) ->
 
 API.es.call = (action, route, data, refresh, url=API.settings.es.url) ->
   route = '/' + route if route.indexOf('/') isnt 0
-  if API.settings.dev and route.indexOf('_dev') is -1
+  return false if action is 'DELETE' and route.indexOf('/_all') is 0 # disallow delete all
+  if API.settings.dev and route.indexOf('_dev') is -1 and route.indexOf('/_') isnt 0
     rpd = route.split '/'
     rpd[1] += '_dev'
     route = rpd.join '/'
@@ -206,7 +207,7 @@ API.es.terms = (index, type, key, size=100, counts=true, qry, url=API.settings.e
 API.es.status = () ->
   s = API.es.call 'GET', '/_status'
   status = { cluster: {}, shards: { total: s._shards.total, successful: s._shards.successful }, indices: {} }
-  status.indices[i] = { docs: s.indices[i].docs.num_docs, size: Math.ceil(s.indices[i].index.primary_size_in_bytes / 1024 / 1024) } for i in s.indices
+  status.indices[i] = { docs: s.indices[i].docs.num_docs, size: Math.ceil(s.indices[i].index.primary_size_in_bytes / 1024 / 1024) } for i of s.indices
   status.cluster = API.es.call 'GET', '/_cluster/health'
   return status
 
