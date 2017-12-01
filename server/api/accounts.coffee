@@ -86,7 +86,7 @@ API.accounts.token = (tok, send=true) ->
   _hash = Random.hexString 40
   tok.hash = API.accounts.hash _hash
   tok.url ?= settings.url # TODO is it worth checking validity of incoming urls?
-  tok.url += '#' + tok.hash if tok.url?
+  tok.url += '#' + _hash if tok.url?
   tok.timeout = Date.now() + (tok.timeout ? settings.timeout) * 60 * 1000 # convert to ms from now
   Tokens.insert tok
   tok.hash = _hash
@@ -104,8 +104,8 @@ API.accounts.token = (tok, send=true) ->
       re = new RegExp '\{\{LOGINCODE\}\}', 'g'
       ure = new RegExp '\{\{LOGINURL\}\}', 'g'
       tre = new RegExp '\{\{TIMEOUT\}\}', 'g'
-      snd.text = snd.text.replace(re, tok.token).replace(ure,tok.url).replace(tre,settings.timeout) if snd.text
-      snd.html = snd.html.replace(re, tok.token).replace(ure,tok.url).replace(tre,settings.timeout) if snd.html
+      snd.text = snd.text.replace(re, _token).replace(ure,tok.url).replace(tre,settings.timeout) if snd.text
+      snd.html = snd.html.replace(re, _token).replace(ure,tok.url).replace(tre,settings.timeout) if snd.html
       if settings.timeout >= 60 and snd.text and snd.text.indexOf(settings.timeout + ' minutes') isnt -1
         rp = settings.timeout / 60
         rp += if rp > 1 then ' hours' else ' hour'
