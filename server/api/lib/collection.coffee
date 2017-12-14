@@ -307,8 +307,14 @@ API.collection._translate = (q, opts) ->
     else if q.source?
       qry = JSON.parse(q.source) if typeof q.source is 'string'
       qry = q.source if typeof q.source is 'object'
+      if not opts?
+        opts = q
+        delete opts.source
     else if q.q?
       qry.query.filtered.query.bool.must.push query_string: query: q.q
+      if not opts?
+        opts = q
+        delete opts.q
     else if q.must?
       qry.query.filtered.filter.bool.must = q.must
     else if q.should?
@@ -355,6 +361,10 @@ API.collection._translate = (q, opts) ->
     if opts.and?
       qry.query.filtered.filter.bool.must.push a for a in opts.and
       delete opts.and
+    if opts.sort? and typeof opts.sort is 'string' and opts.sort.indexOf(':') isnt -1
+      os = {}
+      os[opts.sort.split(':')[0]] = {order:opts.sort.split(':')[1]}
+      opts.sort = os
     qry[k] = v for k, v of opts
   qry.query.filtered.query = { match_all: {} } if typeof qry is 'object' and qry.query?.filtered?.query? and _.isEmpty(qry.query.filtered.query)
   console.log('Returning translated query',JSON.stringify(qry)) if API.settings.log?.level is 'all'

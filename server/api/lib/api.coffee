@@ -44,7 +44,7 @@
 
       if not this.authOptional
         dets = msg: 'Login attempt by ' + (if xid then xid else 'unknown') + ' to ' + this.request.url + ' from ' + this.request.headers['x-forwarded-for'] + ' ' + this.request.headers['x-real-ip']
-        if xid and xapikey and API.settings.log.root and 'root' in u?.roles?.__global_roles__
+        if xid and xapikey and API.settings.log.root and u?.roles?.__global_roles__? and 'root' in u.roles.__global_roles__
           dets.notify = subject: 'API root login ' + this.request.headers['x-real-ip']
           dets.msg = dets.msg.replace 'Login attempt ', 'ROOT login '
         else if xid and xapikey

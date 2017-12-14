@@ -252,29 +252,19 @@ API.es._mapping = {
     {
       "followingdates": {
         "mapping": {
-          "fields": {
-            "{name}": {
-              "type": "date"
-            },
-            "format": "yyyy-MM-dd mmss||date_optional_time"
-          },
-          "type": "multi_field"
+          "type": "date"
+          "format": "yyyy-MM-dd mmss||date_optional_time"
         },
-        "path_match": "date.*"
+        "path_match": "date*"
       }
     },
     {
       "leadingdates": {
         "mapping": {
-          "fields": {
-            "{name}": {
-              "type": "date"
-            },
-            "format": "yyyy-MM-dd mmss||date_optional_time"
-          },
-          "type": "multi_field"
+          "type": "date",
+          "format": "yyyy-MM-dd mmss||date_optional_time"
         },
-        "path_match": ".*date"
+        "path_match": "*date"
       }
     },
     {

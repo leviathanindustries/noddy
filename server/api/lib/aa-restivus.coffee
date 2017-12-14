@@ -319,8 +319,10 @@ class @Restivus
 
     if @_config.enableCors
       corsHeaders =
+        'Access-Control-Allow-Methods': 'GET, PUT, POST, DELETE, OPTIONS'
         'Access-Control-Allow-Origin': '*'
-        'Access-Control-Allow-Headers': 'X-apikey, X-id, Origin, X-Requested-With, Content-Type, Accept'
+        #'Access-Control-Allow-Headers': 'X-apikey, X-id, Origin, X-Requested-With, Content-Type, Accept'
+        'Access-Control-Allow-Headers': 'X-apikey, X-id, Origin, X-Requested-With, Content-Type, Accept, DNT, Keep-Alive, User-Agent, If-Modified-Since, Cache-Control'
 
       # Set default header to enable CORS if configured
       _.extend @_config.defaultHeaders, corsHeaders

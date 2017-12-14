@@ -240,7 +240,7 @@ API.accounts.auth = (grl, user, cascade=true) ->
 
     return 'root' if group is user._id # any user is effectively root on their own group - which matches their user ID
     return false if not user.roles? # if no roles can't have any auth, except on own group (above)
-    if 'root' in user.roles.__global_roles__ # root has access to everything
+    if user.roles.__global_roles__? and 'root' in user.roles.__global_roles__ # root has access to everything
       API.log 'user ' + user._id + ' has role root'
       return 'root'
 
