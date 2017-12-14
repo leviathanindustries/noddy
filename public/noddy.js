@@ -336,7 +336,7 @@ noddy.oauthLogin = function() {
     },
     error: function(data) {
       noddy.oauth = undefined;
-      noddyn.user.login = 'error';
+      noddy.user.login = 'error';
       noddy.failureCallback(data,'oauth');
     }
   }

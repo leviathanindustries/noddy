@@ -144,6 +144,10 @@ API.es.call = (action, route, data, refresh, url=API.settings.es.url) ->
   opts = data:data
   route = API.es.random(route) if route.indexOf('source') isnt -1 and route.indexOf('random=true') isnt -1
   try
+    try
+      if action is 'POST' and data?.query? and data.sort? and routeparts.length > 1
+        skey = _.keys(data.sort)[0]
+        delete opts.data.sort if JSON.stringify(API.es.mapping(routeparts[0],routeparts[1])).indexOf(skey) is -1
     ret = HTTP.call action, url + route, opts
     API.es.refresh('/' + routeparts[0], url) if refresh and action in ['POST','PUT']
     ld = JSON.parse(JSON.stringify(ret.data))
