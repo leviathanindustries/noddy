@@ -325,7 +325,7 @@ noddy.oauthLogin = function() {
   if (noddy.debug) console.log(noddy.oauth);
   var opts = {
     type:'POST',
-    url: noddy.api + '/login',
+    url: noddy.api + '/accounts/login',
     cache:false,
     processData:false,
     contentType: 'application/json',
