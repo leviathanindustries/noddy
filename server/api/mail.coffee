@@ -49,7 +49,8 @@ API.mail.send = (opts,mail_url) ->
     opts[p] = parts[p] for p of parts
     delete opts.template
 
-  opts.text = opts.content ? "" if not opts.text and not opts.html
+  if not opts.text and not opts.html
+    opts.text = opts.content ? ""
   delete opts.content
 
   # can also take opts.headers
@@ -129,10 +130,10 @@ API.mail.template = (search,template) ->
 
 API.mail.substitute = (content,vars,markdown) ->
   ret = {}
-  for v in vars
+  for v of vars
     if content.toLowerCase().indexOf('{{'+v+'}}') isnt -1
       rg = new RegExp('{{'+v+'}}','gi')
-      content = content.replace rg, v
+      content = content.replace rg, vars[v]
   if content.indexOf('{{') isnt -1
     vs = ['subject','from','to','cc','bcc']
     for k in vs
@@ -156,18 +157,19 @@ API.mail.construct = (tmpl,vars) ->
   md = template.filename.endsWith '.md'
   ret = if vars then API.mail.substitute(template.content,vars,md) else {content: template.content}
   if not md
-    alt
-    if template.filename.endsWith('.txt')
+    alt = false
+    if template.filename.endsWith '.txt'
       ret.text = ret.content
       alt = 'html'
-    else if template.filename.endsWith('.html')
+    else if template.filename.endsWith '.html'
       ret.html = ret.content
       alt = 'txt'
-    try
-      match = {filename:template.filename.split('.',[0])+'.'+alt}
-      match.service ?= template.service
-      other = API.mail.template match
-      ret[alt] = if vars then API.mail.substitute(other.content,vars).content else other.content
+    if alt
+      try
+        match = {filename: template.filename.split('.')[0] + '.' + alt}
+        match.service ?= template.service
+        other = API.mail.template match
+        ret[alt] = if vars then API.mail.substitute(other.content,vars).content else other.content
   return ret
 
 

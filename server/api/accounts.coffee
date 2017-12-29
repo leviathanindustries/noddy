@@ -254,8 +254,7 @@ API.accounts.auth = (grl, user, cascade=true) ->
       ri = cascade.indexOf role
       if ri isnt -1
         cascs = cascade.splice 0, ri
-        for r in cascs
-          rl = cascs[r]
+        for rl in cascs
           if rl in user.roles[group]?
             API.log 'user ' + user._id + ' has cascaded role ' + group + '.' + rl + ' overriding ' + g
             return rl
