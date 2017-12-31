@@ -125,37 +125,42 @@ API.accounts.token = (tok, send=true) ->
 
 API.accounts.oauth = (creds,service,fingerprint) ->
   # https://developers.google.com/identity/protocols/OAuth2UserAgent#validatetoken
-  API.log "API login for oauth"
+  API.log "API login for oauth " + creds.service
   user = undefined
   sets = {}
-  if creds.service is 'google'
-    validate = HTTP.call 'POST', 'https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=' + creds.access_token
-    cid = API.settings.service[service]?.google?.oauth?.client?.id ? API.settings.use?.google?.oauth?.client?.id
-    if validate.data?.aud is cid
-      ret = HTTP.call 'GET', 'https://www.googleapis.com/oauth2/v2/userinfo?access_token=' + creds.access_token
-      user = API.accounts.retrieve ret.data.email
-      user = API.accounts.create(ret.data.email, fingerprint) if not user?
-      sets.google = {id:ret.data.id} if not user.google?
-      sets['profile.name'] = ret.data.name if not user.profile.name and ret.data.name
-      sets['profile.firstname'] = ret.data.given_name if not user.profile.firstname and ret.data.given_name
-      sets['profile.lastname'] = ret.data.family_name if not user.profile.lastname and ret.data.family_name
-      sets['profile.avatar'] = ret.data.picture if not user.profile.avatar and ret.data.picture
-  else if creds.service is 'facebook'
-    fappid = API.settings.service[service]?.facebook?.oauth?.app?.id ? API.settings.use?.facebook?.oauth?.app?.id
-    fappsec = API.settings.service[service]?.facebook?.oauth?.app?.secret ? API.settings.use?.facebook?.oauth?.app?.secret
-    adr = 'https://graph.facebook.com/debug_token?input_token=' + creds.access_token + '&access_token=' + fappid + '|' + fappsec
-    validate = HTTP.call 'GET', adr
-    if validate.data?.data?.app_id is fappid
-      ret = HTTP.call 'GET', 'https://graph.facebook.com/v2.10/' + validate.data.data.user_id + '?access_token=' + creds.access_token + '&fields=email,name,first_name,last_name,picture.width(400).height(400)'
-      console.log ret.data
-      console.log validate.data
-      user = API.accounts.retrieve ret.data.email
-      user = API.accounts.create(ret.data.email, fingerprint) if not user?
-      sets.facebook = {id:validate.data.data.user_id} if not user.facebook?
-      sets['profile.name'] = ret.data.name if not user.profile.name? and info.name
-      sets['profile.firstname'] = ret.data.first_name if not user.profile.firstname and ret.data.first_name
-      sets['profile.lastname'] = ret.data.last_name if not user.profile.lastname and ret.data.last_name
-      sets['profile.avatar'] = ret.data.picture.data.url if not user.profile.avatar and ret.data.picture?.data?.url
+  try
+    if creds.service is 'google'
+      validate = HTTP.call 'POST', 'https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=' + creds.access_token
+      cid = API.settings.service[service]?.google?.oauth?.client?.id ? API.settings.use?.google?.oauth?.client?.id
+      if validate.data?.aud is cid
+        ret = HTTP.call 'GET', 'https://www.googleapis.com/oauth2/v2/userinfo?access_token=' + creds.access_token
+        user = API.accounts.retrieve ret.data.email
+        user = API.accounts.create(ret.data.email, fingerprint) if not user?
+        sets.google = {id:ret.data.id} if not user.google?
+        sets['profile.name'] = ret.data.name if not user.profile.name and ret.data.name
+        sets['profile.firstname'] = ret.data.given_name if not user.profile.firstname and ret.data.given_name
+        sets['profile.lastname'] = ret.data.family_name if not user.profile.lastname and ret.data.family_name
+        sets['profile.avatar'] = ret.data.picture if not user.profile.avatar and ret.data.picture
+    else if creds.service is 'facebook'
+      fappid = API.settings.service[service]?.facebook?.oauth?.app?.id ? API.settings.use?.facebook?.oauth?.app?.id
+      fappsec = API.settings.service[service]?.facebook?.oauth?.app?.secret ? API.settings.use?.facebook?.oauth?.app?.secret
+      console.log fappid, fappsec
+      adr = 'https://graph.facebook.com/debug_token?input_token=' + creds.access_token + '&access_token=' + fappid + '|' + fappsec
+      validate = HTTP.call 'GET', adr
+      if validate.data?.data?.app_id is fappid
+        ret = HTTP.call 'GET', 'https://graph.facebook.com/v2.10/' + validate.data.data.user_id + '?access_token=' + creds.access_token + '&fields=email,name,first_name,last_name,picture.width(400).height(400)'
+        console.log ret.data
+        console.log validate.data
+        user = API.accounts.retrieve ret.data.email
+        user = API.accounts.create(ret.data.email, fingerprint) if not user?
+        sets.facebook = {id:validate.data.data.user_id} if not user.facebook?
+        sets['profile.name'] = ret.data.name if not user.profile.name? and info.name
+        sets['profile.firstname'] = ret.data.first_name if not user.profile.firstname and ret.data.first_name
+        sets['profile.lastname'] = ret.data.last_name if not user.profile.lastname and ret.data.last_name
+        sets['profile.avatar'] = ret.data.picture.data.url if not user.profile.avatar and ret.data.picture?.data?.url
+    API.log('User ' + user._id + ' found by oauth login') if user?
+  catch err
+    API.log msg: 'Oauth login failed', err: err
   Users.update(user._id, sets) if JSON.stringify(sets) isnt '{}'
   return user
 
