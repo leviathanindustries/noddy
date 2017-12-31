@@ -396,9 +396,11 @@ walk('./content', function(err, results) {
 
       var marked;
       if (fl.indexOf('.md') !== -1) {
+        console.log('Rendering markdown for file ' + fl);
         marked = require('marked');
         content = marked(content);
       } else if (content.indexOf('<markdown>') !== -1) {
+        console.log('Rendering markdown within file ' + fl);
         marked = require('marked');
         var nc = '';
         var cp = content.split('<markdown>');

@@ -130,7 +130,7 @@ API.accounts.oauth = (creds,service,fingerprint) ->
   sets = {}
   if creds.service is 'google'
     validate = HTTP.call 'POST', 'https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=' + creds.access_token
-    cid = API.settings.service[service]?.GOOGLE_OAUTH_CLIENT_ID ? API.settings.GOOGLE_OAUTH_CLIENT_ID
+    cid = API.settings.service[service]?.google?.oauth?.client?.id ? API.settings.use?.google?.oauth?.client?.id
     if validate.data?.aud is cid
       ret = HTTP.call 'GET', 'https://www.googleapis.com/oauth2/v2/userinfo?access_token=' + creds.access_token
       user = API.accounts.retrieve ret.data.email
@@ -141,8 +141,8 @@ API.accounts.oauth = (creds,service,fingerprint) ->
       sets['profile.lastname'] = info.family_name if not user.profile.lastname and info.family_name
       sets['profile.avatar'] = info.picture if not user.profile.avatar and info.picture
   else if creds.service is 'facebook'
-    fappid = API.settings.service[service]?.FACEBOOK_APP_ID ? API.settings.FACEBOOK_APP_ID
-    fappsec = API.settings.service[service]?.FACEBOOK_APP_SECRET ? API.settings.FACEBOOK_APP_SECRET
+    fappid = API.settings.service[service]?.facebook?.oauth?.app?.id ? API.settings.use?.facebook?.oauth?.app?.id
+    fappsec = API.settings.service[service]?.facebook?.oauth?.app?.secret ? API.settings.use?.facebook?.oauth?.app?.secret
     adr = 'https://graph.facebook.com/debug_token?input_token=' + creds.access_token + '&access_token=' + fappid + '|' + fappsec
     validate = HTTP.call 'GET', adr
     if validate.data?.data?.app_id is fappid
@@ -154,7 +154,7 @@ API.accounts.oauth = (creds,service,fingerprint) ->
       sets['profile.firstname'] = info.first_name if not user.profile.firstname and info.first_name
       sets['profile.lastname'] = info.last_name if not user.profile.lastname and info.last_name
       sets['profile.avatar'] = info.picture.data.url if not user.profile.avatar and info.picture?.data?.url
-  Users.update user._id, sets if JSON.stringify(sets) isnt '{}'
+  Users.update(user._id, sets) if JSON.stringify(sets) isnt '{}'
   return user
 
 # login requires params.hash OR params.email and params.token OR params.timestamp and params.resume OR user
