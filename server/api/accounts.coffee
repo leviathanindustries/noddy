@@ -135,7 +135,6 @@ API.accounts.oauth = (creds,service,fingerprint) ->
       ret = HTTP.call 'GET', 'https://www.googleapis.com/oauth2/v2/userinfo?access_token=' + creds.access_token
       user = API.accounts.retrieve ret.data.email
       user = API.accounts.create(ret.data.email, fingerprint) if not user?
-      console.log ret.data
       sets.google = {id:ret.data.id} if not user.google?
       sets['profile.name'] = ret.data.name if not user.profile.name and ret.data.name
       sets['profile.firstname'] = ret.data.given_name if not user.profile.firstname and ret.data.given_name
@@ -209,7 +208,7 @@ API.accounts.login = (params, user, request) ->
     return
       apikey: user.api.keys[0].key
       account:
-        email: params.email
+        email: if params.email then params.email else user.emails[0].address
         _id: user._id
         username: user.username ? user.emails[0].address
         profile: user.profile
