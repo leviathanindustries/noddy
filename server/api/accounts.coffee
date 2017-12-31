@@ -135,11 +135,12 @@ API.accounts.oauth = (creds,service,fingerprint) ->
       ret = HTTP.call 'GET', 'https://www.googleapis.com/oauth2/v2/userinfo?access_token=' + creds.access_token
       user = API.accounts.retrieve ret.data.email
       user = API.accounts.create(ret.data.email, fingerprint) if not user?
-      sets.google = {id:info.id} if not user.google?
-      sets['profile.name'] = info.name if not user.profile.name and info.name
-      sets['profile.firstname'] = info.given_name if not user.profile.firstname and info.given_name
-      sets['profile.lastname'] = info.family_name if not user.profile.lastname and info.family_name
-      sets['profile.avatar'] = info.picture if not user.profile.avatar and info.picture
+      console.log ret.data
+      sets.google = {id:ret.data.id} if not user.google?
+      sets['profile.name'] = ret.data.name if not user.profile.name and ret.data.name
+      sets['profile.firstname'] = ret.data.given_name if not user.profile.firstname and ret.data.given_name
+      sets['profile.lastname'] = ret.data.family_name if not user.profile.lastname and ret.data.family_name
+      sets['profile.avatar'] = ret.data.picture if not user.profile.avatar and ret.data.picture
   else if creds.service is 'facebook'
     fappid = API.settings.service[service]?.facebook?.oauth?.app?.id ? API.settings.use?.facebook?.oauth?.app?.id
     fappsec = API.settings.service[service]?.facebook?.oauth?.app?.secret ? API.settings.use?.facebook?.oauth?.app?.secret
@@ -147,13 +148,15 @@ API.accounts.oauth = (creds,service,fingerprint) ->
     validate = HTTP.call 'GET', adr
     if validate.data?.data?.app_id is fappid
       ret = HTTP.call 'GET', 'https://graph.facebook.com/v2.10/' + validate.data.data.user_id + '?access_token=' + creds.access_token + '&fields=email,name,first_name,last_name,picture.width(400).height(400)'
+      console.log ret.data
+      console.log validate.data
       user = API.accounts.retrieve ret.data.email
       user = API.accounts.create(ret.data.email, fingerprint) if not user?
       sets.facebook = {id:validate.data.data.user_id} if not user.facebook?
-      sets['profile.name'] = info.name if not user.profile.name? and info.name
-      sets['profile.firstname'] = info.first_name if not user.profile.firstname and info.first_name
-      sets['profile.lastname'] = info.last_name if not user.profile.lastname and info.last_name
-      sets['profile.avatar'] = info.picture.data.url if not user.profile.avatar and info.picture?.data?.url
+      sets['profile.name'] = ret.data.name if not user.profile.name? and info.name
+      sets['profile.firstname'] = ret.data.first_name if not user.profile.firstname and ret.data.first_name
+      sets['profile.lastname'] = ret.data.last_name if not user.profile.lastname and ret.data.last_name
+      sets['profile.avatar'] = ret.data.picture.data.url if not user.profile.avatar and ret.data.picture?.data?.url
   Users.update(user._id, sets) if JSON.stringify(sets) isnt '{}'
   return user
 
