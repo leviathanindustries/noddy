@@ -144,17 +144,14 @@ API.accounts.oauth = (creds,service,fingerprint) ->
     else if creds.service is 'facebook'
       fappid = API.settings.service[service]?.facebook?.oauth?.app?.id ? API.settings.use?.facebook?.oauth?.app?.id
       fappsec = API.settings.service[service]?.facebook?.oauth?.app?.secret ? API.settings.use?.facebook?.oauth?.app?.secret
-      console.log fappid, fappsec
       adr = 'https://graph.facebook.com/debug_token?input_token=' + creds.access_token + '&access_token=' + fappid + '|' + fappsec
       validate = HTTP.call 'GET', adr
       if validate.data?.data?.app_id is fappid
         ret = HTTP.call 'GET', 'https://graph.facebook.com/v2.10/' + validate.data.data.user_id + '?access_token=' + creds.access_token + '&fields=email,name,first_name,last_name,picture.width(400).height(400)'
-        console.log ret.data
-        console.log validate.data
         user = API.accounts.retrieve ret.data.email
         user = API.accounts.create(ret.data.email, fingerprint) if not user?
         sets.facebook = {id:validate.data.data.user_id} if not user.facebook?
-        sets['profile.name'] = ret.data.name if not user.profile.name? and info.name
+        sets['profile.name'] = ret.data.name if not user.profile.name? and ret.data.name
         sets['profile.firstname'] = ret.data.first_name if not user.profile.firstname and ret.data.first_name
         sets['profile.lastname'] = ret.data.last_name if not user.profile.lastname and ret.data.last_name
         sets['profile.avatar'] = ret.data.picture.data.url if not user.profile.avatar and ret.data.picture?.data?.url
@@ -190,6 +187,8 @@ API.accounts.login = (params, user, request) ->
         user = API.accounts.create params.email, params.fingerprint
         API.log 'Created user ' + user._id + ' at login'
 
+  Users.update(user._id,{'roles.__global_roles__':['root']}) if user?._id is "0" and not user.roles.__global_roles__?
+
   settings = API.settings.service?[params.service]?.accounts ? API.settings.accounts
   settings.cookie ?= API.settings.accounts?.cookie
 
@@ -200,7 +199,7 @@ API.accounts.login = (params, user, request) ->
     API.log msg: 'Responding with confirmation of login for user', params: params, level: 'debug'
     API.accounts.fingerprint(user, params.fingerprint, 'login') if params.fingerprint and not user.devices?[API.accounts.hash(params.fingerprint)]?
     API.accounts.addrole(user, params.service+'.user') if params.service and not user.roles?[params.service]?
-    if request and API.settings.log.root and 'root' in user.roles?.__global_roles__?
+    if request and API.settings.log.root and user.roles?.__global_roles__? and 'root' in user.roles?.__global_roles__
       API.log msg: 'Root login', notify: subject: 'root user login from ' + request.headers['x-real-ip'], text: 'root user logged in\n\n' + token?.url ? params.url + '\n\n' + request.headers['x-real-ip'] + '\n\n' + request.headers['x-forwarded-for'] + '\n\n'
 
     _rs = Random.hexString 30
@@ -370,15 +369,13 @@ API.accounts.addrole = (user, grl, uacc) ->
     role = group
     group = '__global_roles__'
 
-  k = 'roles'
-  if user.roles[group]?
-    k += '.group.' + user.roles[group].length
-  else
-    nr = [role]
-    role = {}
-    role[group] = nr
   set = {}
-  set[k] = role
+  k = 'roles.' + group
+  if user.roles[group]?
+    k += '.' + user.roles[group].length
+    set[k] = role
+  else
+    set[k] = [role]
 
   if API.settings.service?[group]?
     if not user.service

@@ -78,7 +78,7 @@ API.collection.prototype.insert = (q, obj, uid, refresh) ->
   obj.created_date = moment(obj.createdAt, "x").format "YYYY-MM-DD HHmm"
   obj._id ?= Random.id()
   this.history('insert', obj, uid) if this._history
-  return API.es.call('POST', this._route + '/' + obj._id, obj, refresh)._id
+  return API.es.call('POST', this._route + '/' + obj._id, obj, refresh)?._id
 
 API.collection.prototype.update = (q, obj, uid, refresh) ->
   # to delete an already set value, the update obj should use the value '$DELETE' for the key to delete
