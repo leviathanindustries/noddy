@@ -125,7 +125,7 @@ API.accounts.token = (tok, send=true) ->
 
 API.accounts.oauth = (creds,service,fingerprint) ->
   # https://developers.google.com/identity/protocols/OAuth2UserAgent#validatetoken
-  API.log "API login for oauth " + creds.service
+  API.log "API login for oauth " + creds.service + ' on ' + service
   user = undefined
   sets = {}
   try
