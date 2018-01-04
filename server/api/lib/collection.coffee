@@ -45,7 +45,11 @@ API.collection.prototype.history = (action, doc, uid) ->
     # TODO action could actually be a usual search q / doc id here, so would need to check if it meets the criteria
     # and if action was a doc id, doc could be a search q
     # and history search should probably have a default descending sort applied to it
-    return API.es.call 'GET', this._route + '_history/_search'
+    q = API.collection._translate(action ?= '*')
+    if typeof q is 'string'
+      return API.es.call 'GET', this._route + '/_history/_search?' + (if q.indexOf('?') is 0 then q.replace('?', '') else q)
+    else
+      return API.es.call 'POST', this._route + '_history/_search', q
   else
     change =
       action: action
@@ -160,7 +164,7 @@ API.collection.prototype.each = (q, opts, fn) ->
     counter += res.hits.hits.length
     if counter < count
       opts.from += res.hits.hits.length
-      res = this.search(q, opts) 
+      res = this.search(q, opts)
   return counter
 
 API.collection.prototype.count = (q) ->
@@ -378,6 +382,9 @@ API.collection._translate = (q, opts) ->
       os = {}
       os[opts.sort.split(':')[0]] = {order:opts.sort.split(':')[1]}
       opts.sort = os
+    if opts.restrict?
+      qry.query.filtered.filter.bool.must.push(rs) for rs in opts.restrict
+      delete opts.restrict
     qry[k] = v for k, v of opts
   qry.query.filtered.query = { match_all: {} } if typeof qry is 'object' and qry.query?.filtered?.query? and _.isEmpty(qry.query.filtered.query)
   console.log('Returning translated query',JSON.stringify(qry)) if API.settings.log?.level is 'all'
