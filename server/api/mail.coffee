@@ -121,12 +121,17 @@ API.mail.template = (search,template) ->
     mail_template.insert template
   else if search
     if typeof search is 'string'
-      return mail_template.get(search) ? mail_template.find({template:search})
+      return mail_template.get(search) ? mail_template.find([{template:search},{filename:search}])
     else
-      tmpls = mail_template.find search
-      return if tmpls.length is 1 then tmpls[0] else tmpls
+      tmpls = mail_template.search search, 1000
+      tpts = []
+      tpts.push tp._source for tp in tmpls.hits?.hits
+      return if tpts.length is 1 then tpts[0] else tpts
   else
-    return mail_template.find()
+    tmpls = mail_template.search '*', 1000
+    tpts = []
+    tpts.push tp._source for tp in tmpls.hits?.hits
+    return tpts
 
 API.mail.substitute = (content,vars,markdown) ->
   ret = {}

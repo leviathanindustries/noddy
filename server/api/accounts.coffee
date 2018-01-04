@@ -187,7 +187,7 @@ API.accounts.login = (params, user, request) ->
         user = API.accounts.create params.email, params.fingerprint
         API.log 'Created user ' + user._id + ' at login'
 
-  Users.update(user._id,{'roles.__global_roles__':['root']}) if user?._id is "0" and not user.roles.__global_roles__?
+  #Users.update(user._id,{'roles.__global_roles__':['root']}) if user?._id is "0" and not user.roles.__global_roles__?
 
   settings = API.settings.service?[params.service]?.accounts ? API.settings.accounts
   settings.cookie ?= API.settings.accounts?.cookie

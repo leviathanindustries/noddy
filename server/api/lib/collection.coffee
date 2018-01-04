@@ -141,6 +141,14 @@ API.collection.prototype.each = (q, opts, fn) ->
     fn = opts
     opts = undefined
   # TODO could use es.scroll here...
+  opts ?= {}
+  opts = {size:opts} if typeof opts is 'number'
+  opts = {newest: true} if opts is true
+  if opts.newest is true
+    delete opts.newest
+    opts = {sort: {createdAt:{order:'desc'}}}
+  opts = {random:true} if opts is 'random'
+  opts.from ?= 0
   res = this.search q, opts
   return 0 if res is undefined
   count = res.hits.total
@@ -150,7 +158,9 @@ API.collection.prototype.each = (q, opts, fn) ->
       fn = fn.bind this
       fn h._source ? h.fields
     counter += res.hits.hits.length
-    res = this.search(q, opts) if counter < count # TODO how to pass params like size and from?
+    if counter < count
+      opts.from += res.hits.hits.length
+      res = this.search(q, opts) 
   return counter
 
 API.collection.prototype.count = (q) ->
@@ -265,6 +275,7 @@ API.collection.prototype.mount = (opts={}) ->
     Options that can be included:
     If options is true, the query will be adjusted to sort by createdAt descending, so returning the newest first
     If options is string 'random' it will convert the query to be a random order
+    If options is a number it will be assumed to be the size parameter
     Otherwise options should be an object (and the above can be provided as keys, "newest", "random")
     If "random" key is provided, "seed" can be provided too if desired, for seeded random queries
     If "restrict" is provided, should point to list of ES queries to add to the and part of the query filter
@@ -338,12 +349,13 @@ API.collection._translate = (q, opts) ->
       q = '*' if q is ''
       qry.query.filtered.query.bool.must.push query_string: query: q
   if opts?
-    delete opts._ # delete anything that may have come from query params but are not handled by ES
+    opts = {size:opts} if typeof opts is 'number'
     opts = {newest: true} if opts is true
     if opts.newest is true
       delete opts.newest
       opts = {sort: {createdAt:{order:'desc'}}}
     opts = {random:true} if opts is 'random'
+    delete opts._ # delete anything that may have come from query params but are not handled by ES
     if opts.random
       if typeof qry is 'string'
         qry += '&random=true' # the ES module knows how to convert this to a random query

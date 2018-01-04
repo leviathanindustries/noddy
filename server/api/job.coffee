@@ -51,7 +51,7 @@ API.add 'job/:job/results',
       job = job_job.get this.urlParams.job
       # return 401 if not API.job.allowed job,this.user
       return 404 if not job
-      res = API.job.results this.urlParams.job
+      res = API.job.results this.urlParams.job, this.queryParams.full
       if this.queryParams.format is 'csv'
         res = API.convert.json2csv undefined,undefined,res
         this.response.writeHead 200,
@@ -398,11 +398,14 @@ API.job.rerun = (jobid,uid) ->
   Meteor.setTimeout (() -> API.job.create job), 5
   return data: {job:job._id}
 
-API.job.results = (jobid) ->
+API.job.results = (jobid,full) ->
   results = []
   for ji in job_job.get(jobid)?.processes
     jr = job_result.get(ji.process) ? {}
-    res = if jr?.result?.string? and not jr?.result?[jr.function]? then JSON.parse(jr.result.string) else jr?.result?[jr.function]
-    res ?= {}
-    results.push res
+    if full?
+      results.push jr
+    else
+      res = if jr?.result?.string? and not jr?.result?[jr.function]? then JSON.parse(jr.result.string) else jr.result[jr.function]
+      res ?= {}
+      results.push res
   return results
