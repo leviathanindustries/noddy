@@ -146,26 +146,18 @@ API.collection.prototype.each = (q, opts, fn) ->
     opts = undefined
   # TODO could use es.scroll here...
   opts ?= {}
-  opts = {size:opts} if typeof opts is 'number'
-  opts = {newest: true} if opts is true
-  if opts.newest is true
-    delete opts.newest
-    opts = {sort: {createdAt:{order:'desc'}}}
-  opts = {random:true} if opts is 'random'
-  opts.from ?= 0
-  res = this.search q, opts
+  qy = API.collection._translate q, opts
+  qy.from ?= 0
+  res = this.search qy
   return 0 if res is undefined
-  count = res.hits.total
-  counter = 0
-  while (counter < count)
+  while (qy.from < res.hits.total)
     for h in res.hits.hits
       fn = fn.bind this
       fn h._source ? h.fields
-    counter += res.hits.hits.length
-    if counter < count
-      opts.from += res.hits.hits.length
-      res = this.search(q, opts)
-  return counter
+    if qy.from < res.hits.total
+      qy.from += res.hits.hits.length
+      res = this.search qy
+  return res.hits.total
 
 API.collection.prototype.count = (q) ->
   return this.search(q).hits.total
