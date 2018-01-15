@@ -19,3 +19,4 @@ babel-runtime@1.1.1
 http@1.3.0
 coffeescript
 underscore@1.0.10
+meteorhacks:async

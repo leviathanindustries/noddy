@@ -40,9 +40,6 @@ API.add 'convert',
 API.convert.run = (url,from,to,content,opts) ->
   from ?= opts.from
   to ?= opts.to
-  which
-  proc
-  output
   if from is 'table'
     if to.indexOf('json') isnt -1
       output = API.convert.table2json(url,content,opts)
@@ -58,8 +55,7 @@ API.convert.run = (url,from,to,content,opts) ->
       output = API.convert.html2txt(url,content)
   else if from is 'json'
     if opts.es
-      user
-      API.accounts.retrieve({apikey:opts.apikey}) if opts.apikey
+      user = API.accounts.retrieve({apikey:opts.apikey}) if opts.apikey
       uid = if user then user._id else undefined # because could be querying a public ES endpoint
       params = {}
       if opts.es.indexOf('?') isnt -1
@@ -100,7 +96,7 @@ API.convert.run = (url,from,to,content,opts) ->
   else
     return output
 
-_csv2json = (url,content,opts,callback) ->
+API.convert.csv2json = Async.wrap (url,content,opts,callback) ->
   converter
   if not content?
     converter = new Converter({constructResult:false})
@@ -112,7 +108,6 @@ _csv2json = (url,content,opts,callback) ->
   else
     converter = new Converter({})
     converter.fromString content, (err,result) -> return callback(null,result)
-API.convert.csv2json = Meteor.wrapAsync(_csv2json)
 
 API.convert.table2json = (url,content,opts) ->
   content = HTTP.call('GET', url).content if url?
@@ -163,47 +158,47 @@ API.convert.html2txt = (url,content) ->
   text = html2txt.fromString(content, {wordwrap: 130})
   return text
 
-API.convert.file2txt = Meteor.wrapAsync (url, content, opts={}, callback) ->
+API.convert.file2txt = Async.wrap (url, content, opts={}, callback) ->
   # NOTE for this to work, see textract on npm - requires other things installed. May not be useful
   from = opts.from ? 'application/msword'
   delete opts.from
   content = new Buffer (if url? then HTTP.call('GET',url,{npmRequestOptions:{encoding:null}}).content else content)
   textract.fromBufferWithMime from, content, opts, ( err, result ) -> return callback(null,result)
 
-_pdf2txt = (url,content,callback) ->
+API.convert.pdf2txt = Async.wrap (url,content,callback) ->
   pdfParser = new PDFParser()
   pdfParser.on "pdfParser_dataReady", (pdfData) ->
     return callback(null,pdfParser.getRawTextContent())
   content = new Buffer (if url? then HTTP.call('GET',url,{npmRequestOptions:{encoding:null}}).content else content)
   pdfParser.parseBuffer(content)
-API.convert.pdf2txt = Meteor.wrapAsync(_pdf2txt)
 
-_pdf2json = (url,content,callback) ->
+API.convert.pdf2json = Async.wrap (url,content,callback) ->
   pdfParser = new PDFParser();
   pdfParser.on "pdfParser_dataReady", (pdfData) ->
     return callback(null,pdfData)
   content = new Buffer (if url? then HTTP.call('GET',url,{npmRequestOptions:{encoding:null}}).content else content)
   pdfParser.parseBuffer(content)
-API.convert.pdf2json = Meteor.wrapAsync(_pdf2json)
 
 API.convert.xml2txt = (url,content) ->
   return API.convert.file2txt(url,content,{from:'application/xml'})
 
-API.convert.xml2json = Meteor.wrapAsync (url, content, callback) ->
+API.convert.xml2json = Async.wrap (url, content, callback) ->
   content = HTTP.call('GET', url).content if url?
   parser = new xml2js.Parser()
   parser.parseString content, (err, result) -> return callback(null,result)
 
-API.convert.json2csv = Meteor.wrapAsync (opts={}, url, content, callback) ->
+# using meteorhacks:async and Async.wrap seems to work better than using Meteor.wrapAsync
+API.convert.json2csv = Async.wrap (opts={}, url, content, callback) ->
   console.log(content.length) if content # KEEP THIS HERE - oddly, having this here stops endpoints throwing a write before end error and crashing the app when they try to serve out the csv, so just keep this here
-  content = HTTP.call('GET', url).content if url?
+  content = JSON.parse(HTTP.call('GET', url).content) if url?
   if opts.subset
     parts = opts.subset.split('.')
     delete opts.subset
     for p in parts
       if Array.isArray(content)
         c = []
-        c.push(r[p]) for r in content
+        for r in content
+          c.push(r[p])
         content = c
       else
         content = content[p]
