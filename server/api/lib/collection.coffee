@@ -159,8 +159,24 @@ API.collection.prototype.each = (q, opts, fn) ->
       res = this.search qy
   return res.hits.total
 
-API.collection.prototype.count = (q) ->
-  return this.search(q).hits.total
+API.collection.prototype.count = (q,key) ->
+  if key?
+    # TODO could check for a hash mapping for the key, and if available use that instead
+    # is there any benefit to default to doing on the exacts rather than the inexact?
+    # https://www.elastic.co/guide/en/elasticsearch/guide/1.x/cardinality.html
+    qy = API.collection._translate(q)
+    qy.aggs = {
+      "keycard" : {
+        "cardinality" : {
+          "field" : key,
+          "precision_threshold": 40000 # this is high precision and will be very memory-expensive in high cardinality keys, with lots of different values going in to memory
+        }
+      }
+    }
+    res = API.es.call 'POST', this._route + '/_search', qy
+    return res.aggregations.keycard.value
+  else
+    return this.search(q).hits.total
 
 API.collection.prototype.terms = (key, size=100, counts=false, q) ->
   key = key.replace('.exact','')+'.exact' if true # TODO should check the mapping to see if .exact is relevant for key, and have a way for user to decide
@@ -336,6 +352,10 @@ API.collection._translate = (q, opts) ->
           qry.query.filtered.filter.bool.must.push tobj
         else if typeof q[y] in ['number','boolean']
           qry.query.filtered.query.bool.must.push {query_string:{query:y + ':' + q[y]}}
+        else if typeof q[y] is 'object'
+          qobj = {}
+          qobj[y] = q[y]
+          qry.query.filtered.filter.bool.must.push qobj
         else if q[y]?
           qry.query.filtered.filter.bool.must.push q[y]
   else if typeof q is 'string'
