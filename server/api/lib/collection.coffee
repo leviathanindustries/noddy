@@ -51,20 +51,26 @@ API.collection.prototype.history = (action, doc, uid) ->
     else
       return API.es.call 'POST', this._route + '_history/_search', q
   else
-    change =
-      action: action
-      document: if typeof doc is 'object' then doc._id else doc
-      createdAt: Date.now()
-      uid: uid
-    change.created_date = moment(change.createdAt, "x").format "YYYY-MM-DD HHmm"
-    change[action] = doc
-    ret = API.es.call 'POST', this._route + '_history', change
-    if not ret?
-      change.string = JSON.stringify change[action]
-      delete change[action]
+    record = true
+    try
+      delete doc.retrievedAt
+      delete doc.retrieved_date
+      record = false if _.isEmpty doc
+    if record
+      change =
+        action: action
+        document: if typeof doc is 'object' then doc._id else doc
+        createdAt: Date.now()
+        uid: uid
+      change.created_date = moment(change.createdAt, "x").format "YYYY-MM-DD HHmm"
+      change[action] = doc
       ret = API.es.call 'POST', this._route + '_history', change
       if not ret?
-        API.log msg:'History logging failing',error:err,action:action,doc:doc,uid:uid
+        change.string = JSON.stringify change[action]
+        delete change[action]
+        ret = API.es.call 'POST', this._route + '_history', change
+        if not ret?
+          API.log msg:'History logging failing',error:err,action:action,doc:doc,uid:uid
 
 API.collection.prototype.get = (rid) ->
   # TODO is there any case for recording who has accessed certain documents?
@@ -165,6 +171,7 @@ API.collection.prototype.count = (q,key) ->
     # is there any benefit to default to doing on the exacts rather than the inexact?
     # https://www.elastic.co/guide/en/elasticsearch/guide/1.x/cardinality.html
     qy = API.collection._translate(q)
+    qy.size = 0
     qy.aggs = {
       "keycard" : {
         "cardinality" : {
@@ -174,9 +181,9 @@ API.collection.prototype.count = (q,key) ->
       }
     }
     res = API.es.call 'POST', this._route + '/_search', qy
-    return res.aggregations.keycard.value
+    return res?.aggregations?.keycard?.value
   else
-    return this.search(q).hits.total
+    return this.search(q,0)?.hits?.total
 
 API.collection.prototype.terms = (key, size=100, counts=false, q) ->
   key = key.replace('.exact','')+'.exact' if true # TODO should check the mapping to see if .exact is relevant for key, and have a way for user to decide

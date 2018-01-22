@@ -1,4 +1,6 @@
 
+import moment from 'moment'
+
 ironRouterSendErrorToResponse = (err, req, res) ->
   res.statusCode = 500 if res.statusCode < 400
   res.statusCode = err.status if err.status
@@ -225,6 +227,9 @@ class share.Route
     if auth?.user
       endpointContext.user = auth.user
       endpointContext.userId = auth.user._id
+      rd = Date.now()
+      if not auth.user.retrievedAt? or rd - auth.user.retrievedAt > 60000
+        Users.update auth.user._id, {retrievedAt:rd, retrieved_date:moment(rd, "x").format("YYYY-MM-DD HHmm")}
       true
     else if optional
       true

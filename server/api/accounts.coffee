@@ -12,11 +12,13 @@ API.accounts = {}
 API.add 'accounts',
   get:
     authOptional: true
-    action: () -> return if API.accounts.auth('root', this.user) then Users.search this.queryParams else count: Users.count()
+    action: () ->
+      delete this.queryParams.apikey if this.queryParams.apikey?
+      return if API.accounts.auth('root', this.user) then Users.search(if _.isEmpty(this.queryParams) then '*' else this.queryParams) else count: Users.count()
   post:
     roleRequired: 'root'
     action: () ->
-      return Users.search this.bodyParams
+      return Users.search(if _isEmpty(this.bodyParams) then '*' else this.bodyParams)
 
 API.add 'accounts/xsrf', post: authRequired: true, action: () -> return API.accounts.xsrf this.userId
 
@@ -213,6 +215,12 @@ API.accounts.login = (params, user, request) ->
       apikey: user.api.keys[0].key
       account:
         email: if params.email then params.email else user.emails[0].address
+        createdAt: user.createdAt
+        created_date: user.created_date
+        updatedAt: user.updatedAt
+        updated_date: user.updated_date
+        retrievedAt: user.retrievedAt
+        retrieved_date: user.retrieved_date
         _id: user._id
         username: user.username ? user.emails[0].address
         profile: user.profile

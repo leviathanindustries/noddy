@@ -169,7 +169,7 @@ API.use.europepmc.licence = (pmcid,rec,fulltext,noui) ->
 
     if pmcid and not noui
       normalised_pmcid = 'PMC' + pmcid.toLowerCase().replace('pmc','')
-      licsplash = API.job.limit(10000,'API.service.lantern.licence',['http://europepmc.org/articles/' + normalised_pmcid],'EPMCUI')
+      licsplash = API.job.limit(10000,'API.service.lantern.licence',['https://europepmc.org/articles/' + normalised_pmcid],'EPMCUI')
       if licsplash.licence?
         licsplash.source = 'epmc_html'
         return licsplash
@@ -194,7 +194,7 @@ API.use.europepmc.authorManuscript = (pmcid,rec,fulltext,noui) ->
         if typeof fulltext is 'string' and fulltext.indexOf('pub-id-type=\'manuscript\'') isnt -1 and fulltext.indexOf('pub-id-type="manuscript"') isnt -1
           return {aam:true,info:'fulltext'}
         else if not noui
-          url = 'http://europepmc.org/articles/PMC' + pmcid.toLowerCase().replace('pmc','')
+          url = 'https://europepmc.org/articles/PMC' + pmcid.toLowerCase().replace('pmc','')
           try
             pg = API.job.limit 10000, 'HTTP.call', ['GET',url], "EPMCUI"
             if pg?.statusCode is 200
@@ -396,14 +396,14 @@ API.use.europepmc.test._examples = {
           "availabilityCode": "OA",
           "documentStyle": "pdf",
           "site": "Europe_PMC",
-          "url": "http://europepmc.org/articles/PMC3206455?pdf=render"
+          "url": "https://europepmc.org/articles/PMC3206455?pdf=render"
         },
         {
           "availability": "Open access",
           "availabilityCode": "OA",
           "documentStyle": "html",
           "site": "Europe_PMC",
-          "url": "http://europepmc.org/articles/PMC3206455"
+          "url": "https://europepmc.org/articles/PMC3206455"
         },
         {
           "availability": "Free",
