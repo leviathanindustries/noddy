@@ -29,8 +29,9 @@ API.use.noun.svg = (term,set) ->
     body: res
 
 API.use.noun.icon = (term,set) ->
-  res = API.http.cache(term, 'noun_icon') if not set?
-  if not res?
+  #res = API.http.cache(term, 'noun_icon') if not set?
+  #if not res?
+  if true
     res = API.use.noun.search {icon:(if set? then set else term)}
     if res?.icon?
       API.http.cache term, 'noun_icon', res
@@ -39,8 +40,9 @@ API.use.noun.icon = (term,set) ->
   return res
 
 API.use.noun.icons = (term) ->
-  res = API.http.cache term, 'noun_icons'
-  if not res?
+  #res = API.http.cache term, 'noun_icons'
+  #if not res?
+  if true
     res = API.use.noun.search {icons:term}
     if res?.icons?
       API.http.cache term, 'noun_icons', res
@@ -53,9 +55,9 @@ API.use.noun.search = (params) ->
   return {} if JSON.stringify(params) is '{}'
   url = 'http://api.thenounproject.com/' #icon/6324'
   if params.icons?
-    url += 'icons/' + params.icons.replace(/ing$/,'e')
+    url += 'icons/' + params.icons
   else if params.icon?
-    url += 'icon/' + params.icon.replace(/ing$/,'e')
+    url += 'icon/' + params.icon
   API.log 'Using noun project for ' + url
   # search_for is required
   try
