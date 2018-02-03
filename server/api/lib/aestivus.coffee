@@ -1,5 +1,117 @@
 
+import connect from 'connect'
+import connectRoute from 'connect-route'
+import Fiber from 'fibers'
+import Busboy from 'busboy'
 import moment from 'moment'
+
+@JsonRoutes = {}
+
+WebApp.connectHandlers.use connect.urlencoded({limit: '1024mb'})
+WebApp.connectHandlers.use connect.json({limit: '1024mb'})
+WebApp.connectHandlers.use connect.query()
+
+JsonRoutes.Middleware = JsonRoutes.middleWare = connect()
+WebApp.connectHandlers.use JsonRoutes.Middleware
+
+JsonRoutes.routes = []
+@connectRouter
+connectRouter = @connectRouter
+
+WebApp.connectHandlers.use Meteor.bindEnvironment(connectRoute(( (router) -> connectRouter = router )))
+
+# Error middleware must be added last, to catch errors from prior middleware.
+# That's why we cache them and then add after startup.
+errorMiddlewares = []
+JsonRoutes.ErrorMiddleware =
+  use: () ->
+    errorMiddlewares.push arguments
+
+Meteor.startup () ->
+  _.each errorMiddlewares, ((errorMiddleware) ->
+    errorMiddleware = _.map errorMiddleware, ((maybeFn) ->
+      if _.isFunction maybeFn
+        return (a, b, c, d) ->
+          Meteor.bindEnvironment(maybeFn)(a, b, c, d);
+      return maybeFn;
+    )
+    WebApp.connectHandlers.use.apply(WebApp.connectHandlers, errorMiddleware);
+  )
+  errorMiddlewares = []
+
+JsonRoutes.add = (method, path, handler) ->
+  path = '/' + path if path[0] isnt '/'
+  JsonRoutes.routes.push {method: method, path: path}
+
+  connectRouter[method.toLowerCase()] path, ((req, res, next) ->
+    setHeaders res, responseHeaders
+    Fiber(() ->
+      try
+        handler req, res, next
+      catch error
+        next error
+    ).run()
+  )
+
+
+responseHeaders = 'Cache-Control': 'no-store', Pragma: 'no-cache'
+
+JsonRoutes.setResponseHeaders = (headers) ->
+  responseHeaders = headers
+
+JsonRoutes.sendResult = (res, options={}) ->
+  setHeaders(res, options.headers) if options.headers?
+  res.statusCode = options.code || 200
+  writeJsonToBody res, options.data
+  res.end()
+
+setHeaders = (res, headers) ->
+  _.each headers, ((value, key) -> res.setHeader key, value )
+
+writeJsonToBody = (res, json) ->
+  if json?
+    res.setHeader 'Content-type', 'application/json'
+    res.write JSON.stringify(json, null, (if process.env.NODE_ENV is 'development' then 2 else null))
+
+
+
+
+# TODO could make this only apply to certain routes, and handle it directly
+JsonRoutes.Middleware.use (req, res, next) ->
+  if req.headers?['content-type']?.match(/^multipart\/form\-data/)
+    busboy = new Busboy {headers: req.headers}
+    req.files = []
+
+    busboy.on 'file', (fieldname, file, filename, encoding, mimetype) ->
+      uploadedFile = {
+        filename,
+        mimetype,
+        encoding,
+        fieldname,
+        data: null
+      }
+
+      API.log msg: 'busboy have file...', uploadedFile, level: 'debug'
+      buffers = []
+      file.on 'data', (data) ->
+        API.log msg: 'data length: ' + data.length, level: 'debug'
+        buffers.push data
+      file.on 'end', () ->
+        console.log msg: 'End of busboy file', level: 'debug'
+        uploadedFile.data = Buffer.concat buffers
+        req.files.push uploadedFile
+
+    busboy.on "field", (fieldname, value) -> req.body[fieldname] = value
+
+    busboy.on 'finish', () -> next()
+
+    req.pipe busboy
+    return
+
+  next()
+
+
+
 
 ironRouterSendErrorToResponse = (err, req, res) ->
   res.statusCode = 500 if res.statusCode < 400
@@ -15,6 +127,7 @@ ironRouterSendErrorToResponse = (err, req, res) ->
 
   res.end msg
   return
+
 
 
 
@@ -177,7 +290,9 @@ class share.Route
         console.log 'Not creating log for query on a log URL, but logging to console because log level is all'
         console.log endpointContext.request.url, endpointContext.request.method, endpointContext.request.query, endpointContext.request.originalUrl
 
-    if @_authAccepted endpointContext, endpoint
+    if blacklisted = API.blacklist(endpointContext.request) isnt false
+      return blacklisted
+    else if @_authAccepted endpointContext, endpoint
       if @_roleAccepted endpointContext, endpoint
         endpoint.action.call endpointContext
       else
@@ -359,5 +474,4 @@ class @Restivus
     route.addToApi()
 
     return this
-
 

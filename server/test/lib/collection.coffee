@@ -1,4 +1,5 @@
 
+
 import Future from 'fibers/future'
 
 API.add 'collection/test',

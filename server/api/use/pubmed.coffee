@@ -1,4 +1,5 @@
 
+
 # pubmed API http://www.ncbi.nlm.nih.gov/books/NBK25497/
 # examples http://www.ncbi.nlm.nih.gov/books/NBK25498/#chapter3.ESearch__ESummaryEFetch
 # get a pmid - need first to issue a query to get some IDs...

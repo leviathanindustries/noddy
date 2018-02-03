@@ -1,3 +1,5 @@
+
+
 import moment from 'moment'
 
 _log_today = moment(Date.now(), "x").format "YYYYMMDD"
@@ -7,6 +9,8 @@ API.log = (opts, fn, lvl='debug') ->
   try
     opts = { msg: opts } if typeof opts is 'string'
     opts.function ?= fn
+    opts.level ?= opts.lvl
+    delete opts.lvl
     opts.level ?= lvl
     opts.createdAt = Date.now()
     opts.created_date = moment(opts.createdAt, "x").format "YYYY-MM-DD HHmm"

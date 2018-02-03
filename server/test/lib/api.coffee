@@ -1,4 +1,5 @@
 
+
 test_results = new API.collection 'tests'
 
 API.add 'test',

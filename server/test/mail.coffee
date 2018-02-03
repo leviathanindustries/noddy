@@ -1,4 +1,5 @@
 
+
 API.add 'mail/test',
   get:
     roleRequired: if API.settings.dev then undefined else 'root'

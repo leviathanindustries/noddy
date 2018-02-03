@@ -1,4 +1,5 @@
 
+
 import { Random } from 'meteor/random'
 import Future from 'fibers/future'
 import moment from 'moment'
@@ -193,7 +194,7 @@ API.job.limit = (limitms,fname,args,group,save=false) -> # a handy way to direct
   waitfor = job_processing.find {'group.exact':group}, {sort:{timeout:{order:'desc'}}}
   if waitfor?.timeout?
     future = new Future()
-    setTimeout (() -> future.return()), waitfor.timeout - Date.now()
+    Meteor.setTimeout (() -> future.return()), waitfor.timeout - Date.now()
     future.wait()
   return API.job.process({group: group, function: fname, args: args, limit: limitms, save: save}).result?[fname]
 
@@ -251,7 +252,7 @@ API.job.process = (proc) ->
     job_process.insert pn
   else if proc.order
     job_process.update {job: proc.job, order: proc.order+1}, {available:true}
-  Meteor.setTimeout (() -> job_job.each('job.processes.process:'+proc._id, ((job) -> API.job.progress(job) if job._id isnt proc._id ))), 5000
+  job_job.each 'job.processes.process:'+proc._id, (job) -> API.job.progress(job,300000) if job._id isnt proc._id and not job_processing.get(job._id)?
   if proc.callback
     cb = API
     cb = cb[c] for c in proc.callback.replace('API.','').split('.')
@@ -375,20 +376,21 @@ API.job._checking = (jobid) ->
       API.mail.send to:email, subject:text, text:text
   return {createdAt:job.createdAt, progress:p, name:job.name, email:job.email, _id:job._id, new:job.new}
 
-API.job.progress = (jobid) ->
+API.job.progress = (jobid,limit) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
   if job.new or job.done
     return {createdAt:job.createdAt, progress:(if job.done then 100 else 0), name:job.name, email:job.email, _id:job._id, new:job.new}
   else if checking = job_processing.get job._id
     while checking
       future = new Future()
-      setTimeout (() -> future.return()), 1000
+      Meteor.setTimeout (() -> future.return()), 3000
       future.wait()
       checking = job_processing.get job._id
     checked = job_result.get job._id
     return checked.result['API.job._checking']
   else
-    return API.job.process({_id: job._id, group: 'PROGRESS', function: 'API.job._checking', args: job._id}).result['API.job._checking']
+    API.log msg: 'Checking job progress of ' + job._id, level: 'debug'
+    return API.job.process({_id: job._id, group: 'PROGRESS', limit: limit ? 2000, function: 'API.job._checking', args: job._id}).result['API.job._checking']
 
 API.job.rerun = (jobid,uid) ->
   job = job_job.get jobid

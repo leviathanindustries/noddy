@@ -1,4 +1,5 @@
 
+
 # useful http things, so far include a URL resolver and a phantomjs resolver
 # and a simple way for any endpoint (probably the use endpoints) to cache
 # results. e.g. if the use/europepmc submits a query to europepmc, it could
@@ -169,7 +170,7 @@ _phantom = (url,delay=1000,callback) ->
       else
         API.log('retrieving content');
         future = new Future()
-        setTimeout (() -> future.return()), delay
+        Meteor.setTimeout (() -> future.return()), delay
         future.wait()
         return _page.property('content')
     )

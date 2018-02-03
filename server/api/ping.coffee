@@ -1,4 +1,5 @@
 
+
 # craft an img link and put it in an email, if the email is viewed as html it will load the URL of the img,
 # which actually hits this route, and allows us to record stuff about the event
 

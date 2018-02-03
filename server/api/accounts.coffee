@@ -1,3 +1,5 @@
+
+
 import moment from 'moment'
 import Future from 'fibers/future'
 import { Random } from 'meteor/random'
@@ -35,7 +37,7 @@ API.add 'accounts/login',
     authOptional: true # it is possible to get a noddy login POST from same domain that will contain an already valid cookie, resulting in already having valid user
     action: () ->
       future = new Future();
-      setTimeout (() -> future.return()), 100
+      Meteor.setTimeout (() -> future.return()), 100
       future.wait()
       return API.accounts.login this.bodyParams, this.user, this.request
 
@@ -117,7 +119,7 @@ API.accounts.token = (tok, send=true) ->
       # allows things to continue if e.g. on dev and email not configured
       sent = API.mail.send snd
       future = new Future()
-      setTimeout (() -> future.return()), 333
+      Meteor.setTimeout (() -> future.return()), 333
       future.wait()
       return mid: sent?.data?.id ? true
     catch

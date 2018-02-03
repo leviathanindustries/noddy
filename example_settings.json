@@ -12,6 +12,10 @@
     "from": "DEFAULT_LOG_FROM_ADDRESS",
     "to": "DEFAULT_LOG_TO_ADDRESS"
   },
+  "blacklist": {
+    "disabled": "if true, blacklist never gets checked",
+    "sheet": "the URL of a google sheet from which the API blacklist info can be read"
+  },
   "es": {
     "url": "http://localhost:9200",
     "index": "noddy - this will default to settings.name if not provided",

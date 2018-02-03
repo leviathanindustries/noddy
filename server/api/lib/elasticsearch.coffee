@@ -1,3 +1,5 @@
+
+
 # elasticsearch API
 # because the logger uses ES to log logs, ES uses console.log at some points where other things should use API.log
 # NOTE: if an index/type can be public, just make it public and have nginx route to it directly, saving app load.

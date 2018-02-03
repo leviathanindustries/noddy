@@ -1,3 +1,5 @@
+
+
 import fs from 'fs'
 import { Random } from 'meteor/random'
 import request from 'request'
@@ -228,7 +230,7 @@ API.store.retrieve = (path, user, token) ->
       request.get(API.settings.store.local + path + '?token=' + token + '&apikey=' + user?.api.keys[0].key).pipe str
       while not done
         future = new Future();
-        setTimeout (() -> future.return()), 300
+        Meteor.setTimeout (() -> future.return()), 300
         future.wait()
       return fs.readFileSync fn
     catch

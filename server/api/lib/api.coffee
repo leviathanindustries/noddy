@@ -58,6 +58,27 @@
 
 API.settings = Meteor.settings
 
+API.blacklist = (request) ->
+  # TODO could add blacklisting by stored values in an index, instead of or in addition to from a google sheet
+  if API.settings.blacklist?.disabled
+    return false
+  else if API.settings.blacklist?.sheet
+    blacklist = API.use.google.sheets.feed API.settings.blacklist.sheet
+    if request?
+      for b in blacklist
+        check = if b.key and b.key isnt '*' then (request.headers[b.key] ? request.params[b.key]) else JSON.stringify(request.headers) + JSON.stringify(request.params)
+        if check and b.value and check.indexOf(b.value) isnt -1
+          try parseInt b.code
+          return
+            statusCode: b.code ? 403
+            headers:
+              'Content-Type': 'text/plain'
+            body: b.msg ? b.value + ' is blacklisted.' + (if API.settings.blacklist.contact then ' Contact ' + API.settings.blacklist.contact + ' for further information.' else '')
+    else
+      return blacklist
+  else
+    return false
+
 API.add '/',
   get: () ->
     res =
@@ -78,4 +99,3 @@ API.add '/',
           # could add a docs key to the endpoints that explains their usage
     res.routes.sort()
     return res
-
