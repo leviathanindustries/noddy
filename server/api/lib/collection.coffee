@@ -374,12 +374,12 @@ API.collection._translate = (q, opts) ->
       q = '*' if q is ''
       qry.query.filtered.query.bool.must.push query_string: query: q
   if opts?
+    opts = {random:true} if opts is 'random'
     opts = {size:opts} if typeof opts is 'number'
     opts = {newest: true} if opts is true
     if opts.newest is true
       delete opts.newest
-      opts = {sort: {createdAt:{order:'desc'}}}
-    opts = {random:true} if opts is 'random'
+      opts.sort = {createdAt:{order:'desc'}}
     delete opts._ # delete anything that may have come from query params but are not handled by ES
     if opts.random
       if typeof qry is 'string'
