@@ -9,7 +9,7 @@ API.service.lantern.status = () ->
       total: job_job.count('service:lantern')
       done: job_job.count('service:lantern AND done:true')
     results: job_result.count('service:lantern')
-    users: API.accounts.count({"roles.lantern":"*"})
+    users: Users.count({"roles.lantern":"*"})
 
 API.service.lantern.job = (job) ->
   for i of job.processes
