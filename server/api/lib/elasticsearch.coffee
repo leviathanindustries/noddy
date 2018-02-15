@@ -75,7 +75,7 @@ API.es.action = (uacc, action, urlp, params, data, refresh) ->
 API.es.refresh = (index, url) ->
   try
     API.log 'Refreshing index'
-    h = API.es.call 'POST', index + '/_refresh', undefined, undefined, url
+    h = API.es.call 'POST', index + '/_refresh', undefined, undefined, undefined, url
     return true
   catch err
     return false
@@ -132,9 +132,9 @@ API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url) ->
 
 API.es.mapping = (index, type, url=API.settings.es.url) ->
   index += '_dev' if API.settings.dev and index.indexOf('_dev') is -1
-  return API.es.call('GET', index + '/_mapping/' + type, undefined, undefined, url)[index].mappings[type]
+  return API.es.call('GET', index + '/_mapping/' + type, undefined, undefined, undefined, url)[index].mappings[type]
 
-API.es.call = (action, route, data, refresh, url=API.settings.es.url) ->
+API.es.call = (action, route, data, refresh, versioned, url=API.settings.es.url) ->
   route = '/' + route if route.indexOf('/') isnt 0
   return false if action is 'DELETE' and route.indexOf('/_all') is 0 # disallow delete all
   if API.settings.dev and route.indexOf('_dev') is -1 and route.indexOf('/_') isnt 0
@@ -145,6 +145,7 @@ API.es.call = (action, route, data, refresh, url=API.settings.es.url) ->
   # API.es.map(routeparts[0],routeparts[1],undefined,undefined,url) if route.indexOf('/_') is -1 and routeparts.length >= 1 and action in ['POST','PUT']
   opts = data:data
   route = API.es.random(route) if route.indexOf('source') isnt -1 and route.indexOf('random=true') isnt -1
+  route += (if route.indexOf('?') isnt -1 then '?' else '&') + 'version=' + versioned if versioned?
   try
     try
       if action is 'POST' and data?.query? and data.sort? and routeparts.length > 1
@@ -161,6 +162,8 @@ API.es.call = (action, route, data, refresh, url=API.settings.es.url) ->
       console.log('ES SEARCH DEBUG INFO\n' + JSON.stringify(opts),'\n',JSON.stringify(ld),'\n')
     return ret.data
   catch err
+    # if versioned and versions don't match, there will be a 409 thrown here - this should be handled in some way, here or in collection
+    # https://www.elastic.co/blog/elasticsearch-versioning-support
     lg = level: 'debug', msg: 'ES error, but may be OK, 404 for empty lookup, for example', action: action, url: url, route: route, opts: opts, error: err.toString()
     if err.response?.statusCode isnt 404 and route.indexOf('_log') is -1
       API.log lg
@@ -204,7 +207,7 @@ API.es.terms = (index, type, key, size=100, counts=true, qry, url=API.settings.e
   query.facets ?= {}
   query.facets[key] = { terms: { field: key, size: size } }; # TODO need some way to decide if should check on .exact? - collection assumes it so far
   try
-    ret = API.es.call 'POST', '/' + index + '/' + type + '/_search', query, undefined, url
+    ret = API.es.call 'POST', '/' + index + '/' + type + '/_search', query, undefined, undefined, url
     return if counts then ret.facets[key].terms else _.pluck(ret.facets[key].terms,'term')
   catch err
     console.log(err) if API.settings.log?.level is 'debug'

@@ -73,7 +73,7 @@ API.use.europepmc.pmid = (ident) ->
   return API.use.europepmc.get 'EXT_ID:' + ident + ' AND SRC:MED'
 
 API.use.europepmc.pmc = (ident) ->
-  res = API.use.europepmc.get 'PMCID:PMC' + ident.toLowerCase().replace('pmc','')
+  return API.use.europepmc.get 'PMCID:PMC' + ident.toLowerCase().replace('pmc','')
 
 API.use.europepmc.title = (title) ->
   return API.use.europepmc.get 'title:"' + title + '"'

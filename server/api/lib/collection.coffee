@@ -74,11 +74,11 @@ API.collection.prototype.history = (action, doc, uid) ->
         if not ret?
           API.log msg:'History logging failing',error:err,action:action,doc:doc,uid:uid
 
-API.collection.prototype.get = (rid) ->
+API.collection.prototype.get = (rid,versioned) ->
   # TODO is there any case for recording who has accessed certain documents?
   if typeof rid is 'number' or (typeof rid is 'string' and rid.indexOf(' ') is -1 and rid.indexOf(':') is -1 and rid.indexOf('/') is -1)
     check = API.es.call 'GET', this._route + '/' + rid
-    return check._source if check?.found isnt false and check?.status isnt 'error' and check?.statusCode isnt 404 and check?._source?
+    return (if versioned then check else check._source) if check?.found isnt false and check?.status isnt 'error' and check?.statusCode isnt 404 and check?._source?
   return undefined
 
 API.collection.prototype.insert = (q, obj, uid, refresh) ->
@@ -92,7 +92,7 @@ API.collection.prototype.insert = (q, obj, uid, refresh) ->
   this.history('insert', obj, uid) if this._history
   return API.es.call('POST', this._route + '/' + obj._id, obj, refresh)?._id
 
-API.collection.prototype.update = (q, obj, uid, refresh) ->
+API.collection.prototype.update = (q, obj, uid, refresh, versioned) ->
   # to delete an already set value, the update obj should use the value '$DELETE' for the key to delete
   # TODO may need a lock index to control disordered overwrites
   rec = this.get q
@@ -102,11 +102,15 @@ API.collection.prototype.update = (q, obj, uid, refresh) ->
     rec.updatedAt = Date.now()
     rec.updated_date = moment(rec.updatedAt, "x").format "YYYY-MM-DD HHmm"
     API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, rec: rec, updateset: obj, level: 'debug' }) if this._route.indexOf('_log') is -1
-    API.es.call 'POST', this._route + '/' + rec._id, rec, refresh # TODO this should catch failures due to versions, and try merges and retries (or ES layer should do this)
+    if versioned
+      rs = API.es.call 'POST', this._route + '/' + rec._id, rec, refresh, versioned
+      versioned = rs._version
+    else
+      API.es.call 'POST', this._route + '/' + rec._id, rec, refresh # TODO this should catch failures due to versions, and try merges and retries (or ES layer should do this)
     if this._history
       obj._id = rec._id # put actual ID back in for history info
       this.history 'update', obj, uid
-    return true
+    return if versioned? then versioned else true
   else
     return this.each q, ((res) -> this.update res._id, obj, uid )
 
@@ -124,26 +128,34 @@ API.collection.prototype.remove = (q, uid) ->
   else
     return this.each q, ((res) -> this.remove res._id, uid )
 
-API.collection.prototype.search = (q, opts) ->
+API.collection.prototype.search = (q, opts, versioned) ->
   # NOTE is there any case for recording who has done searches? - a write for every search could be a heavy load...
   # or should it be possible to apply certain restrictions on what the search returns?
   # Perhaps - but then this coud/should be applied by the service providing access to the collection
+  try
+    versioned = opts.versioned
+    delete opts.versioned
+  if opts is 'versioned'
+    versioned = true
+    opts = undefined
   q = API.collection._translate q, opts
   if not q?
     return undefined
   else if typeof q is 'string'
-    return API.es.call 'GET', this._route + '/_search?' + (if q.indexOf('?') is 0 then q.replace('?', '') else q)
+    return API.es.call 'GET', this._route + '/_search?' + (if versioned then 'version=true&' else '') + (if q.indexOf('?') is 0 then q.replace('?', '') else q)
   else
-    return API.es.call 'POST', this._route + '/_search', q
+    return API.es.call 'POST', this._route + '/_search' + (if versioned then '?version=true' else ''), q
 
-API.collection.prototype.find = (q, opts) ->
-  got = this.get q
+API.collection.prototype.find = (q, opts, versioned) ->
+  try versioned = opts.versioned
+  versioned = true if opts is 'versioned'
+  got = this.get q, versioned
   if got?
     return got
   else
     try
       res = this.search(q, opts).hits.hits[0]
-      return if res?._source or res?.fields then res._source ? res.fields else undefined
+      return if res? then (if versioned then res else res._source ? res.fields) else undefined
     catch err
       API.log({ msg: 'Collection find threw error', q: q, level: 'error', error: err }) if this._route.indexOf('_log') is -1
       return undefined

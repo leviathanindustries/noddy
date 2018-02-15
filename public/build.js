@@ -186,19 +186,19 @@ var dereference = function(bundlefile) {
           if (retrieved[bundlefile] !== undefined) {
             refurl = sourceparts.join('/') + tgt;
             if (request === undefined) request = require('sync-request');
-            fs.writeFileSync('./serve/static/' + filename, request('GET', refurl).getBody());
+            fs.writeFileSync('./serve/static/' + filename.split('?')[0].split('#')[0], request('GET', refurl).getBody());
           } else {
             filename = sourceparts.join('/') + tgt;
           }
           ncontent += 'url(' + quote + ('/static/' + filename.replace('static/','')).replace('//','/') + remainder;
         } else {
-          fs.writeFileSync('./serve/static/' + refurl.split('/').pop(), request('GET', refurl).getBody());
+          fs.writeFileSync('./serve/static/' + refurl.split('/').pop().split('?')[0].split('#')[0], request('GET', refurl).getBody());
           ncontent += 'url(' + quote + '/static/' + refurl.split('/').pop() + remainder;
           //ncontent += 'url(' + quote + refurl + remainder;
         }
       }
     }
-    fs.writeFileSync(bundlefile.replace('./static','./serve/static'),ncontent);
+    fs.writeFileSync(bundlefile.replace('./static','./serve/static').split('?')[0].split('#')[0],ncontent);
     return true;
   } else {
     return false;
@@ -218,6 +218,10 @@ var render = function(err,results) {
       if (coffee === undefined) coffee = require('coffeescript');
       newcontent = coffee.compile(fs.readFileSync(results[sr]).toString());
     }
+    if (newcontent === undefined) {
+      var oldcontent = fs.readFileSync(results[sr]).toString();
+      if (oldcontent.indexOf('{{') !== -1 && oldcontent.indexOf('}}') !== -1) newcontent = oldcontent;
+    }
     if (newcontent !== undefined) {
       var fl = results[sr].replace('./static', './serve/static').replace('.coffee', '.js').replace('.scss', '.css');
       var dcp = fl.replace('./serve/static/', '').split('/');
@@ -225,6 +229,10 @@ var render = function(err,results) {
       for (var i = 0; i < dcp.length - 1; i++) {
         dc += '/' + dcp[i];
         if (!fs.existsSync(dc)) fs.mkdirSync(dc);
+      }
+      if (newcontent.indexOf('{{') !== -1 && newcontent.indexOf('}}') !== -1) {
+        var nc = handlebars.compile(newcontent);
+        newcontent = nc(vars);
       }
       fs.writeFileSync(fl, newcontent);
     }
@@ -447,7 +455,7 @@ walk('./content', function(err, results) {
   console.log(results);
 
   // if we know the service and the api, try updating the reloader unless that option is disabled
-  if (vars !== undefined && vars.service && vars.api) {
+  if (args.reload && vars !== undefined && vars.service && vars.api) {
     try {
       if (request === undefined) request = require('sync-request');
       request('POST', vars.api + '/reload/' + vars.service);

@@ -10,6 +10,8 @@
   auth:
     token: 'api.keys.hash'
     user: () ->
+      console.log('API checking auth') if API.settings.log?.level is 'debug'
+
       xapikey = this.request.headers['x-apikey'] ? this.request.query.apikey
       u = API.accounts.retrieve({apikey:xapikey}) if xapikey
       xid = u._id if API.settings.accounts?.email and this.request.query.email and u?.emails[0].address is this.request.query.email

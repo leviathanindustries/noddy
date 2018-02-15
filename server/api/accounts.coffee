@@ -24,6 +24,22 @@ API.add 'accounts',
 
 API.add 'accounts/xsrf', post: authRequired: true, action: () -> return API.accounts.xsrf this.userId
 
+API.add 'accounts/cutter',
+  get:
+    authRequired: true
+    action: () ->
+      # for an authorised user, lookup some value that should match an existing token, and which
+      # NOTE if this is used, the resume tokens would not match from different sites - the user would have logged in somewhere else... resume less often?
+      if this.queryParams.cut and false
+        lgd = API.accounts.login {}, this.user
+        return
+          statusCode: 200
+          headers:
+            'Content-Type': 'text/html'
+          body: '<html><script src="/noddy.js"></script><script>noddy.loginSuccess(' + JSON.stringify(lgd) + ')</script></html>'
+      else
+        return
+
 API.add 'accounts/token',
   get: () ->
     this.queryParams.action ?= 'login'
@@ -44,6 +60,30 @@ API.add 'accounts/login',
 API.add 'accounts/logout',
   post: authRequired: true, action: () -> API.accounts.logout this.userId
 
+API.add 'accounts/forgot',
+  get: () ->
+    if this.queryParams.token and this.queryParams.id
+      token = Tokens.get this.queryParams.token
+      if token?
+        Tokens.remove this.queryParams.token
+        # reset the user password and send an email out with the new password
+        # and prompt the user to change it to something else on the change password screen
+        # note then that this could be the change password screen for more than one service - and emails could come from more than one service
+        # pass that service info in somehow
+      else
+        return false
+    else if this.queryParams.id or this.queryParams.email or this.queryParams.username
+      user = if this.queryParams.id then Users.get(this.queryParams.id) else API.accounts.retrieve(this.queryParams.email ? this.queryParams.username)
+      if user?
+        # create an xsrf token (or any token that lasts some time)
+        # send an email to the account, with a reset password link back to here including the user account ID and the token ID
+        # note the email address to send from, and the URL site address to click on, may differ by service
+        return true
+      else
+        return false
+    else
+      return false
+
 API.add 'accounts/logout/:id',
   post: roleRequired: 'root', action: () -> API.accounts.logout this.urlParams.id
 
@@ -60,6 +100,12 @@ API.add 'accounts/:id',
     authRequired: true
     action: () ->
       return if API.settings.accounts?.xsrf and not API.accounts.xsrf(this.userId, this.queryParams.xsrf) then 401 else API.accounts.remove this.urlParams.id, this.user, this.queryParams.service
+
+API.add 'accounts/:id/password',
+  post:
+    authRequired: true
+    action: () ->
+      return API.accounts.password this.bodyParams.password, this.user, this.urlParams.id
 
 API.add 'accounts/:id/auth/:grouproles',
   get: () -> return auth: API.accounts.auth this.urlParams.grouproles.split(','), this.urlParams.id
@@ -172,6 +218,9 @@ API.accounts.login = (params, user, request) ->
   token
   user = API.accounts.retrieve(user) if typeof user is 'string'
   user = API.accounts.oauth(request.body.oauth,params.service,params.fingerprint) if request?.body?.oauth?
+  if params?.password? and (params.username? or params.email?)
+    user = API.accounts.retrieve({password:params.password})
+    user = undefined if (params.email? and user.email isnt params.email and user.emails[0].address isnt params.email) or (user.username isnt params.username)
   if not user
     if params.resume and params.timestamp
       token = Tokens.find resume: API.accounts.hash(params.resume), timestamp: params.timestamp, action: 'resume'
@@ -238,6 +287,19 @@ API.accounts.login = (params, user, request) ->
   else
     API.log msg: 'User unauthorised', params: params, level: 'debug'
     return if request then 401 else false
+
+API.accounts.password = (password,user,acc) ->
+  if not password?
+    return false
+  else if acc? and acc isnt user?._id
+    if API.accounts.auth 'root', user # TODO who should be allowed to change user passwords other than root?
+      Users.update acc, {password: API.accounts.hash(password)}
+      return true
+    else
+      return 401
+  else
+    Users.update user._id, {password: API.accounts.hash(password)}
+    return true
 
 API.accounts.logout = (user) ->
   user = user._id if typeof user is 'object'
@@ -306,6 +368,8 @@ API.accounts.retrieve = (val) ->
     if val.apikey?
       # a convenience for passing in apikey searches - these must be separate and specified, unlike id / email searches, otherwise putting an id as apikey would return a user object
       srch = {'api.keys.hash.exact': API.accounts.hash(val.apikey)}
+    else if val.password?
+      srch = {'password.exact': API.accounts.hash(val.password)}
     else
       srch = ''
       for k in val
