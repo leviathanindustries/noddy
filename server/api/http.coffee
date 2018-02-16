@@ -28,6 +28,40 @@ API.add 'http/phantom',
         'Content-Type': 'text/' + this.queryParams.format ? 'plain'
       body: API.http.phantom this.queryParams.url, this.queryParams.delay ? 1000
 
+API.add 'http/cache',
+  get: () ->
+    q = if _.isEmpty(this.queryParams) then '' else API.collection._translate this.queryParams
+    if typeof q is 'string'
+      return API.es.call 'GET', API.settings.es.index + '_cache/_search?' + q.replace('?', '')
+    else
+      return API.es.call 'POST', API.settings.es.index + '_cache/_search', q
+
+API.add 'http/cache/types',
+  get: () ->
+    types = []
+    mapping = API.es.call 'GET', API.settings.es.index + '_cache/_mapping'
+    for m of mapping
+      if mapping[m].mappings?
+        for t of mapping[m].mappings
+          types.push t
+    return types
+
+API.add 'http/cache/:type',
+  get: () ->
+    q = if _.isEmpty(this.queryParams) then '' else API.collection._translate this.queryParams
+    if typeof q is 'string'
+      return API.es.call 'GET', API.settings.es.index + '_cache/' + this.urlParams.type + '/_search?' + q.replace('?', '')
+    else
+      return API.es.call 'POST', API.settings.es.index + '_cache/' + this.urlParams.type + '/_search', q
+
+API.add 'http/cache/:types/clear',
+  get:
+    authRequired: 'root'
+    action: () ->
+      API.es.call 'DELETE', API.settings.es.index + '_cache' + if this.urlParams.types isnt '_all' then '/' + this.urlParams.types else ''
+      return true
+
+
 
 
 _save = (lookup,type='cache',content) ->

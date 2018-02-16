@@ -84,20 +84,20 @@ API.blacklist = (request) ->
 API.add '/',
   get: () ->
     res =
-      name: (if API.settings.name then API.settings.name else 'API')
-      version: (if API.settings.version then API.settings.version else "0.0.1")
-    if API.settings.dev
-      res.routes = []
-      for k in API._routes
-        if k.path.indexOf('/test') is -1 and k.path.indexOf(':r0') is -1 and k.path isnt '/' and k.path isnt 'test'
-          info = k.path
-          for ky of k.endpoints
-            if ky isnt 'options'
-              info += ' ' + ky.toUpperCase()
-              info += if k.endpoints[ky].roleRequired then '(' + k.endpoints[ky].roleRequired + ') ' else (if k.endpoints[ky].authRequired then '(R) ' else (if k.endpoints[ky].authOptional then '(O) ' else ' '))
-          res.routes.push info.trim().trim(',').replace(/  /g,' ')
-          # TODO if this is useful could also have an auth filter to this route so only shows what the user can actually access
-          # note though that some endpoints further filter the user capabilities even if no specific auth is listed
-          # could add a docs key to the endpoints that explains their usage
+      name: if API.settings.name then API.settings.name else 'API'
+      version: if API.settings.version then API.settings.version else "0.0.1"
+    res.routes = []
+    for k in API._routes
+      if k.path.indexOf('/test') is -1 and k.path.indexOf(':r0') is -1 and k.path isnt '/' and k.path isnt 'test'
+        info = k.path
+        for ky of k.endpoints
+          if ky isnt 'options' and ky isnt 'desc'
+            info += ' ' + ky.toUpperCase()
+            info += if k.endpoints[ky].roleRequired then '(' + k.endpoints[ky].roleRequired + ') ' else (if k.endpoints[ky].authRequired then '(R) ' else (if k.endpoints[ky].authOptional then '(O) ' else ' '))
+            info += ' ' + k.endpoints[ky].desc if k.endpoints[ky].desc
+        info += ' ' + k.endpoints.desc if k.endpoints.desc
+        res.routes.push info.trim().trim(',').replace(/  /g,' ')
+        # have an auth filter to this route so only shows what the user can actually access
+        # note though that some endpoints further filter the user capabilities even if no specific auth is listed
     res.routes.sort()
     return res
