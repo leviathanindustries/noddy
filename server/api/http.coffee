@@ -139,7 +139,7 @@ API.http.resolve = (url) ->
       resolve = (url, callback) ->
         API.log 'Resolving ' + url
         request.head url, {jar:true, headers: {'User-Agent':'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36'}}, (err, res, body) ->
-          callback null, (if not res? then false else res.request.uri.href)
+          callback null, (if not res? or (res.statusCode? and res.statusCode > 399) then false else res.request.uri.href)
       aresolve = Meteor.wrapAsync resolve
       resolved = aresolve resolved ? url
       API.http.cache(url, 'http_resolve', resolved) if resolved
