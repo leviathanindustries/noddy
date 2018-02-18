@@ -7,24 +7,24 @@ proxy_http_version 1.1;
 proxy_buffer_size 256k;
 proxy_buffers 4 256k;
 proxy_busy_buffers_size 256k;
-proxy_connect_timeout 1;
+proxy_connect_timeout 2;
 proxy_send_timeout 600;
 proxy_read_timeout 600;
 send_timeout 600;
 keepalive_timeout 600;
 
 # DEFINE A DEV UPSTREAM CL API
-upstream clapidev {
+upstream noddy_dev {
     server localhost:3002;
 }
 
 # DEFINE A LOCAL UPSTREAM CL API FOR SOME SERVICE
-upstream clapilocal {
+upstream noddy_local {
     server localhost:3333;
 }
 
 # DEFINE A CLUSTER UPSTREAM CL API FOR CHECKING
-upstream clapicluster {
+upstream noddy_cluster {
     server 10.131.20.129:3000 max_fails=1 fail_timeout=60;
     server 10.131.20.129:3001 max_fails=1 fail_timeout=60;
     server 10.131.11.72:3000 max_fails=1 fail_timeout=60;
@@ -33,7 +33,7 @@ upstream clapicluster {
 
 # LIVE API PROPER VIA CLUSTER
 # can mark these as not being available by adding down to the line of the server not available
-upstream clapi {
+upstream noddy {
     #ip_hash;
     keepalive 16;
     server localhost:3333 max_fails=1 fail_timeout=60;
@@ -60,7 +60,7 @@ server {
         # DO NOT add the usual origin * header to the api and dev api routes, it is already set by the software in a default way, and setting it twice results in errors
         add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
         add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Disposition';
-        proxy_pass http://clapi/api/;
+        proxy_pass http://noddy/api/;
         proxy_redirect off;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -71,7 +71,7 @@ server {
         # DO NOT add the usual origin * header to the api and dev api routes, it is already set by the software in a default way, and setting it twice results in errors
         add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
         add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Disposition';
-        proxy_pass http://clapilocal/api/store/;
+        proxy_pass http://noddy_local/api/store/;
         proxy_redirect off;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -89,7 +89,7 @@ server {
     location / {
         add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
         add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Disposition';
-        proxy_pass http://clapilocal/api/;
+        proxy_pass http://noddy_local/api/;
         proxy_redirect off;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -111,7 +111,7 @@ server {
     location / {
         add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
         add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Disposition';
-        proxy_pass http://clapicluster/api/;
+        proxy_pass http://noddy_cluster/api/;
         proxy_redirect off;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -134,7 +134,7 @@ server {
         add_header Strict-Transport-Security "max-age=31536000;";
         add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
         add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Disposition';
-        proxy_pass http://clapidev/api/;
+        proxy_pass http://noddy_dev/api/;
         proxy_redirect off;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
