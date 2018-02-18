@@ -9,16 +9,6 @@ import fs from 'fs'
 API.use ?= {}
 API.use.google = {places:{},docs:{},sheets:{},cloud:{},knowledge:{}}
 
-API.add 'use/google/clear',
-  get: () ->
-    # TODO this would really need a way to send a clear cache signal across all cluster instances - maybe use the job runner
-    removed = []
-    if fs.existsSync '.googlelocalcopy'
-      fs.readdirSync('.googlelocalcopy').forEach (file, index) ->
-        fs.unlinkSync ".googlelocalcopy/" + file
-        removed.push file
-    return removed
-
 API.add 'use/google/places/autocomplete',
   get: () -> return API.use.google.places.autocomplete this.queryParams.q,this.queryParams.location,this.queryParams.radius
 
@@ -54,6 +44,17 @@ API.add 'use/google/knowledge/search',
   get:
     roleRequired:'root'
     action: () -> return API.use.google.knowledge.search this.queryParams.q,this.queryParams.limit
+
+API.add 'use/google/clear',
+  get: () ->
+    # TODO this would really need a way to send a clear cache signal across all cluster instances - maybe use the job runner
+    removed = []
+    if fs.existsSync '.googlelocalcopy'
+      fs.readdirSync('.googlelocalcopy').forEach (file, index) ->
+        fs.unlinkSync ".googlelocalcopy/" + file
+        removed.push file
+    return removed
+
 
 
 # TODO add old deprecated google finance API, if useful for anything. Runs 15 mins delay
