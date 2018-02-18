@@ -9,6 +9,16 @@ import fs from 'fs'
 API.use ?= {}
 API.use.google = {places:{},docs:{},sheets:{},cloud:{},knowledge:{}}
 
+API.add 'use/google/clear',
+  get: () ->
+    # TODO this would really need a way to send a clear cache signal across all cluster instances - maybe use the job runner
+    removed = []
+    if fs.existsSync '.googlelocalcopy'
+      fs.readdirSync('.googlelocalcopy').forEach (file, index) ->
+        fs.unlinkSync ".googlelocalcopy/" + file
+        removed.push file
+    return removed
+
 API.add 'use/google/places/autocomplete',
   get: () -> return API.use.google.places.autocomplete this.queryParams.q,this.queryParams.location,this.queryParams.radius
 
@@ -141,12 +151,13 @@ API.use.google.sheets.feed = (sheetid,stale=3600000) ->
   # NOTE the sheet must be published for this to work, should have the data in sheet 1, and should have columns of data with key names in row 1
   url = if sheetid.indexOf('http') isnt 0 then 'https://spreadsheets.google.com/feeds/list/' + sheetid + '/od6/public/values?alt=json' else sheetid
   sheetid = sheetid.replace('https://','').replace('http://','').replace('spreadsheets.google.com/feeds/list/','').split('/')[0]
-  localcopy = '.googlelocalcopy' + sheetid + '.json'
+  localcopy = '.googlelocalcopy/' + sheetid + '.json'
   values = []
   if fs.existsSync(localcopy) and ((new Date()) - fs.statSync(localcopy).mtime) < stale
     values = JSON.parse fs.readFileSync(localcopy)
   else
     try
+      API.log 'Getting google sheet from ' + url
       g = HTTP.call('GET',url)
       list = g.data.feed.entry
       for l of list
@@ -154,6 +165,7 @@ API.use.google.sheets.feed = (sheetid,stale=3600000) ->
         for k of list[l]
           try val[k.replace('gsx$','')] = list[l][k].$t if k.indexOf('gsx$') is 0
         values.push val
+    fs.mkdirSync('.googlelocalcopy') if not fs.existsSync '.googlelocalcopy'
     fs.writeFileSync localcopy, JSON.stringify(values)
   return values
 

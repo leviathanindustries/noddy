@@ -219,8 +219,12 @@ var render = function(err,results) {
       newcontent = coffee.compile(fs.readFileSync(results[sr]).toString());
     }
     if (newcontent === undefined) {
-      var oldcontent = fs.readFileSync(results[sr]).toString();
-      if (oldcontent.indexOf('{{') !== -1 && oldcontent.indexOf('}}') !== -1) newcontent = oldcontent;
+      try {
+        var oldcontent = fs.readFileSync(results[sr]).toString();
+        if (oldcontent.indexOf('{{') !== -1 && oldcontent.indexOf('}}') !== -1) newcontent = oldcontent;
+      } catch(err) {
+        console.log('Failed to read content of ' + results[sr] + ' for render');
+      }
     }
     if (newcontent !== undefined) {
       var fl = results[sr].replace('./static', './serve/static').replace('.coffee', '.js').replace('.scss', '.css');
@@ -230,9 +234,14 @@ var render = function(err,results) {
         dc += '/' + dcp[i];
         if (!fs.existsSync(dc)) fs.mkdirSync(dc);
       }
-      if (newcontent.indexOf('{{') !== -1 && newcontent.indexOf('}}') !== -1) {
-        var nc = handlebars.compile(newcontent);
-        newcontent = nc(vars);
+      if (newcontent.indexOf('{{') !== -1 && newcontent.indexOf('}}') !== -1 && fl.indexOf('.') !== -1 && ['css','html','md','markdown','js','coffee'].indexOf(fl.split('.')[1].toLowerCase()) !== -1) {
+        try {
+          var nc = handlebars.compile(newcontent);
+          newcontent = nc(vars);
+          console.log('Render did handlerbars compile for ' + fl);
+        } catch(err) {
+          console.log('Failed to compile handlebars for ' + fl)
+        }
       }
       fs.writeFileSync(fl, newcontent);
     }
