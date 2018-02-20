@@ -46,7 +46,7 @@ upstream noddy {
 #REDIRECT PORT 80 TO PORT 443 FOR ANYTHING THAT SHOULD ONLY SERVE ON 443
 server {
     listen      80;
-    server_name api.cottagelabs.com dev.api.cottagelabs.com cluster.api.cottagelabs.com local.api.cottagelabs.com cottagelabs.com test.cottagelabs.com accounts.cottagelabs.com;
+    server_name api.cottagelabs.com dev.api.cottagelabs.com cluster.api.cottagelabs.com local.api.cottagelabs.com;
     return 301 https://$host$request_uri;
 }
 
