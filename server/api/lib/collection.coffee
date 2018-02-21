@@ -170,14 +170,15 @@ API.collection.prototype.each = (q, opts, fn) ->
   qy.from ?= 0
   res = this.search qy
   return 0 if res is undefined
-  while (qy.from < res.hits.total)
+  remove = res.hits.total
+  size = res.hits.hits.length
+  while (qy.from < remove)
     for h in res.hits.hits
       fn = fn.bind this
       fn h._source ? h.fields
-    if qy.from < res.hits.total
-      qy.from += res.hits.hits.length
-      res = this.search qy
-  return res.hits.total
+    qy.from += size
+    res = this.search(qy) if qy.from < remove
+  return remove
 
 API.collection.prototype.count = (q,key) ->
   if key?
@@ -330,6 +331,7 @@ API.collection._translate = (q, opts) ->
     qry.query.filtered.query = bool: must: ms
   qry.query.filtered.query.bool.must ?= []
   if typeof q is 'object'
+    delete q.apikey if q.apikey?
     if JSON.stringify(q).indexOf('[') is 0
       qry.query.filtered.filter.bool.should = []
       for m in q

@@ -85,8 +85,39 @@ API.add 'job/jobs/:email',
         job_job.each {email:this.urlParams.email}, ((job) -> job.processes = job.processes.length; results.push job)
         return total:results.length, jobs: results
 
-API.add 'job/processes', get: () -> return data: job_process.count() # TODO these could become index searches, for some or all users
-API.add 'job/processing', get: () -> return data: job_processing.count()
+API.add 'job/results',
+  get:
+    authOptional: true
+    action: () ->
+      if this.user? and API.accounts.auth 'root', this.user
+        return job_result.search this.queryParams
+      else
+        return data: job_result.count()
+
+API.add 'job/results/remove',
+  get:
+    authRequired: 'root'
+    action: () ->
+      return job_result.remove this.queryParams
+
+API.add 'job/processes',
+  get:
+    authOptional: true
+    action: () ->
+      if this.user? and API.accounts.auth 'root', this.user
+        return job_process.search this.queryParams
+      else
+        return data: job_process.count()
+
+API.add 'job/processing',
+  get:
+    authOptional: true
+    action: () ->
+      if this.user? and API.accounts.auth 'root', this.user
+        return job_processing.search this.queryParams
+      else
+        return data: job_processing.count()
+
 API.add 'job/processing/reload',
   get:
     roleRequired: if API.settings.dev then false else 'job.admin'
