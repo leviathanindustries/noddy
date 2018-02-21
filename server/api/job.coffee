@@ -252,7 +252,7 @@ API.job.process = (proc) ->
     job_process.insert pn
   else if proc.order
     job_process.update {job: proc.job, order: proc.order+1}, {available:true}
-  job_job.each 'job.processes.process:'+proc._id, (job) -> API.job.progress(job,300000) if job._id isnt proc._id and not job_processing.get(job._id)?
+  job_job.each 'job.processes.process:'+proc._id, (job) -> API.job.progress(job,(if job.processes.length > 1 then 300000 else 2000)) if job._id isnt proc._id and not job_processing.get(job._id)?
   if proc.callback
     cb = API
     cb = cb[c] for c in proc.callback.replace('API.','').split('.')
@@ -356,7 +356,7 @@ API.job.reload = (jobid) ->
   )
   return ret
 
-API.job._checking = (jobid) ->
+API.job._progress = (jobid) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
   job_result.remove job._id
   total = job.processes.length
@@ -380,17 +380,14 @@ API.job.progress = (jobid,limit) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
   if job.new or job.done
     return {createdAt:job.createdAt, progress:(if job.done then 100 else 0), name:job.name, email:job.email, _id:job._id, new:job.new}
-  else if checking = job_processing.get job._id
-    while checking
-      future = new Future()
-      Meteor.setTimeout (() -> future.return()), 3000
-      future.wait()
-      checking = job_processing.get job._id
-    checked = job_result.get job._id
-    return checked.result['API.job._checking']
+  else if job_processing.get job._id
+    if checked = job_result.get job._id
+      return checked.result['API.job._progress']
+    else
+      return {createdAt:job.createdAt, progress:0, name:job.name, email:job.email, _id:job._id, new:false}
   else
     API.log msg: 'Checking job progress of ' + job._id, level: 'debug'
-    return API.job.process({_id: job._id, group: 'PROGRESS', limit: limit ? 2000, function: 'API.job._checking', args: job._id}).result['API.job._checking']
+    return API.job.process({_id: job._id, group: 'PROGRESS', limit: limit ? 2000, function: 'API.job._progress', args: job._id}).result['API.job._progress']
 
 API.job.rerun = (jobid,uid) ->
   job = job_job.get jobid
