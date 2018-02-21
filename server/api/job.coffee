@@ -160,12 +160,12 @@ API.job.create = (job) ->
     proc.signature = encodeURIComponent proc.function + '_' + proc.args # combines with refresh to decide if need to run process or just pick up result from a same recent process
     proc.save ?= job.save ? true # option can set one or all processes to not bother saving to job_result
 
-    if job.refresh is true or proc.callback? or proc.repeat?
+    job.refresh = parseInt(job.refresh) if typeof job.refresh is 'string'
+    if job.refresh is true or job.refresh is 0 or proc.callback? or proc.repeat?
       proc.process = job_process.insert proc
     else
       fnd = 'signature.exact:"' + proc.signature + '" AND NOT exists:"result.error"'
       try
-        job.refresh = parseInt(job.refresh) if typeof job.refresh is 'string'
         if typeof job.refresh is 'number' and job.refresh isnt 0
           d = new Date()
           fnd += ' AND createdAt:>' + d.setDate(d.getDate() - job.refresh)

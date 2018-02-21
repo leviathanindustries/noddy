@@ -19,13 +19,16 @@ API.add 'use/sherpa/romeo/colour/:issn', get: () -> return API.use.sherpa.romeo.
 
 
 API.use.sherpa.romeo.search = (params) ->
-	apikey = API.settings.use?.romeo?.apikey
-	return { status: 'error', data: 'NO ROMEO API KEY PRESENT!'} if not apikey
-	url = 'http://www.sherpa.ac.uk/romeo/api29.php?ak=' + apikey + '&'
-	url += q + '=' + params[q] + '&' for q of params
-	res = HTTP.call 'GET', url
-	result = API.convert.xml2json undefined,res.content
-	return if res.statusCode is 200 then {journals: result.romeoapi.journals, publishers: result.romeoapi.publishers} else { status: 'error', data: result}
+  apikey = API.settings.use?.romeo?.apikey
+  return { status: 'error', data: 'NO ROMEO API KEY PRESENT!'} if not apikey
+  url = 'http://www.sherpa.ac.uk/romeo/api29.php?ak=' + apikey + '&'
+  url += q + '=' + params[q] + '&' for q of params
+  res = HTTP.call 'GET', url
+  if res.statusCode is 200
+    result = API.convert.xml2json undefined, res.content
+    return {journals: result.romeoapi.journals, publishers: result.romeoapi.publishers}
+  else
+    return { status: 'error', data: result}
 
 API.use.sherpa.romeo.colour = (issn) ->
 	resp = API.use.sherpa.romeo.search {issn:issn}
