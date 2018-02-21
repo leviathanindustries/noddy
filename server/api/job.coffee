@@ -203,64 +203,61 @@ API.job.process = (proc) ->
   return false if typeof proc isnt 'object'
   proc.timeout = Date.now() + proc.limit if proc.limit?
   proc.args = JSON.stringify proc.args if proc.args? and typeof proc.args is 'object' # in case a process is passed directly with non-string args
-  if not proc._id? or job_process.get(proc._id)? # make sure the process has not already been picked up by another cluster machine (this may still result in occasional duplicate jobs, but this is not a terrible additional load)
-    proc._id = job_processing.insert(proc,undefined,undefined,proc.limit?) # in case was passed a process directly - need to catch the ID
-    job_process.remove proc._id
-    API.log {msg:'Processing ' + proc._id,process:proc,level:'debug',function:'API.job.process'}
-    fn = if proc.function.indexOf('API.') is 0 then API else global
-    fn = fn[p] for p in proc.function.replace('API.','').split('.')
-    try
-      proc.result = {}
-      args = proc # default just send the whole process as the arg
-      if proc.args?
-        if typeof proc.args is 'string'
-          try
-            args = JSON.parse proc.args
-          catch
-            args = proc.args
-        else
-          args = proc.args
-      if typeof args is 'object' and typeof proc.args is 'string' and proc.args.indexOf('[') is 0
-        # save results keyed by function, so assuming functions produce results of same shape, they fit in index
-        proc.result[proc.function] = fn.apply this, args
-      else
-        proc.result[proc.function] = fn args
-    catch err
-      proc.result = {error: err.toString()}
-      API.log msg: 'Job process error', error: err, string: err.toString(), process: proc, level: 'debug'
-      if API.settings.log.level in ['debug','all']
-        console.log JSON.stringify err
-        console.log err.toString()
-        console.log proc
-    if proc.save isnt false # direct limit processes don't need to save their results, maybe others won't bother either
-      try
-        job_result.insert proc # if this fails, we stringify and save that way
-      catch
+  proc._id = job_processing.insert(proc,undefined,undefined,proc.limit?) # in case was passed a process directly - need to catch the ID
+  job_process.remove proc._id
+  API.log {msg:'Processing ' + proc._id,process:proc,level:'debug',function:'API.job.process'}
+  fn = if proc.function.indexOf('API.') is 0 then API else global
+  fn = fn[p] for p in proc.function.replace('API.','').split('.')
+  try
+    proc.result = {}
+    args = proc # default just send the whole process as the arg
+    if proc.args?
+      if typeof proc.args is 'string'
         try
-          proc.result.string = JSON.stringify proc.result[proc.function] # try saving as string then change it back
-          delete proc.result[proc.function]
-          job_result.insert proc
-          proc.result[proc.function] = JSON.parse(pros.result.string)
-          delete proc.result.string
-    job_processing.remove(proc._id) if not proc.limit or Date.now() >= proc.timeout
-    if proc.repeat
-      proc.counter ?= 1
-      proc.original ?= proc._id
-      pn = JSON.parse(JSON.stringify(proc))
-      pn.repeat -= 1 if pn.repeat isnt true
-      pn.counter += 1
-      pn._id = Random.id()
-      job_process.insert pn
-    else if proc.order
-      job_process.update {job: proc.job, order: proc.order+1}, {available:true}
-    job_job.each 'job.processes.process:'+proc._id, (job) -> API.job.progress(job,300000) if job._id isnt proc._id and not job_processing.get(job._id)?
-    if proc.callback
-      cb = API
-      cb = cb[c] for c in proc.callback.replace('API.','').split('.')
-      cb null, proc # TODO should this go in timeout?
-    return proc
-  else
-    return false
+          args = JSON.parse proc.args
+        catch
+          args = proc.args
+      else
+        args = proc.args
+    if typeof args is 'object' and typeof proc.args is 'string' and proc.args.indexOf('[') is 0
+      # save results keyed by function, so assuming functions produce results of same shape, they fit in index
+      proc.result[proc.function] = fn.apply this, args
+    else
+      proc.result[proc.function] = fn args
+  catch err
+    proc.result = {error: err.toString()}
+    API.log msg: 'Job process error', error: err, string: err.toString(), process: proc, level: 'debug'
+    if API.settings.log.level in ['debug','all']
+      console.log JSON.stringify err
+      console.log err.toString()
+      console.log proc
+  if proc.save isnt false # direct limit processes don't need to save their results, maybe others won't bother either
+    try
+      job_result.insert proc # if this fails, we stringify and save that way
+    catch
+      try
+        proc.result.string = JSON.stringify proc.result[proc.function] # try saving as string then change it back
+        delete proc.result[proc.function]
+        job_result.insert proc
+        proc.result[proc.function] = JSON.parse(pros.result.string)
+        delete proc.result.string
+  job_processing.remove(proc._id) if not proc.limit or Date.now() >= proc.timeout
+  if proc.repeat
+    proc.counter ?= 1
+    proc.original ?= proc._id
+    pn = JSON.parse(JSON.stringify(proc))
+    pn.repeat -= 1 if pn.repeat isnt true
+    pn.counter += 1
+    pn._id = Random.id()
+    job_process.insert pn
+  else if proc.order
+    job_process.update {job: proc.job, order: proc.order+1}, {available:true}
+  job_job.each 'job.processes.process:'+proc._id, (job) -> API.job.progress(job,300000) if job._id isnt proc._id and not job_processing.get(job._id)?
+  if proc.callback
+    cb = API
+    cb = cb[c] for c in proc.callback.replace('API.','').split('.')
+    cb null, proc # TODO should this go in timeout?
+  return proc
 
 API.job._ignores = {}
 API.job.next = (ignore=[]) ->
