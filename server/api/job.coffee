@@ -239,7 +239,7 @@ API.job.process = (proc) ->
         proc.result.string = JSON.stringify proc.result[proc.function] # try saving as string then change it back
         delete proc.result[proc.function]
         job_result.insert proc
-        proc.result[proc.function] = JSON.parse(pros.result.string)
+        proc.result[proc.function] = JSON.parse(proc.result.string)
         delete proc.result.string
   job_processing.remove(proc._id) if not proc.limit or Date.now() >= proc.timeout
   if proc.repeat
