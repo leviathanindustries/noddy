@@ -355,11 +355,9 @@ API.service.lantern.process = (proc) ->
         else
           result.provenance.push 'Tried, but could not add publisher from Sherpa Romeo.'
       result.romeo_colour = publisher?.romeocolour[0]
-      console.log publisher
       for k in ['preprint','postprint','publisher_copy']
         main = if k.indexOf('publisher_copy') is -1 then k + 's' else 'pdfversion'
         stub = k.replace('print','').replace('publisher_copy','pdf')
-        console.log main, stub
         if publisher?[main]?
           if publisher[main][0][stub+'restrictions']?
             for p in publisher[main][0][stub+'restrictions']

@@ -168,6 +168,7 @@ API.collection.prototype.each = (q, opts, fn) ->
   opts ?= {}
   qy = API.collection._translate q, opts
   qy.from ?= 0
+  qy.size ?= 100
   res = this.search qy
   return 0 if res is undefined
   remove = res.hits.total
@@ -177,6 +178,7 @@ API.collection.prototype.each = (q, opts, fn) ->
       fn = fn.bind this
       fn h._source ? h.fields
     qy.from += size
+    this.refresh()
     res = this.search(qy) if qy.from < remove
   return remove
 
@@ -332,6 +334,7 @@ API.collection._translate = (q, opts) ->
   qry.query.filtered.query.bool.must ?= []
   if typeof q is 'object'
     delete q.apikey if q.apikey?
+    delete q._ if q._?
     if JSON.stringify(q).indexOf('[') is 0
       qry.query.filtered.filter.bool.should = []
       for m in q
@@ -395,6 +398,7 @@ API.collection._translate = (q, opts) ->
       delete opts.newest
       opts.sort = {createdAt:{order:'desc'}}
     delete opts._ # delete anything that may have come from query params but are not handled by ES
+    delete opts.apikey
     if opts.random
       if typeof qry is 'string'
         qry += '&random=true' # the ES module knows how to convert this to a random query
