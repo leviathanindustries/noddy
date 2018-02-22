@@ -70,12 +70,12 @@ API.es.action = (uacc, action, urlp, params, data, refresh) ->
   return if allowed then API.es.call(action, rt, data, refresh) else 401
 
 # TODO add other actions in addition to map, for exmaple _reindex would be useful
-# how about _alias and _scroll? And check for others too, and add here
+# how about _alias? And check for others too, and add here
 
 API.es.refresh = (index, url) ->
   try
     API.log 'Refreshing index'
-    h = API.es.call 'POST', index + '/_refresh', undefined, undefined, undefined, url
+    h = API.es.call 'POST', index + '/_refresh', undefined, undefined, undefined, undefined, undefined, url
     return true
   catch err
     return false
@@ -132,9 +132,9 @@ API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url) ->
 
 API.es.mapping = (index, type, url=API.settings.es.url) ->
   index += '_dev' if API.settings.dev and index.indexOf('_dev') is -1
-  return API.es.call('GET', index + '/_mapping/' + type, undefined, undefined, undefined, url)[index].mappings[type]
+  return API.es.call('GET', index + '/_mapping/' + type, undefined, undefined, undefined, undefined, undefined, url)[index].mappings[type]
 
-API.es.call = (action, route, data, refresh, versioned, url=API.settings.es.url) ->
+API.es.call = (action, route, data, refresh, versioned, scan, scroll='1m', url=API.settings.es.url) ->
   route = '/' + route if route.indexOf('/') isnt 0
   return false if action is 'DELETE' and route.indexOf('/_all') is 0 # disallow delete all
   if API.settings.dev and route.indexOf('_dev') is -1 and route.indexOf('/_') isnt 0
@@ -145,7 +145,11 @@ API.es.call = (action, route, data, refresh, versioned, url=API.settings.es.url)
   # API.es.map(routeparts[0],routeparts[1],undefined,undefined,url) if route.indexOf('/_') is -1 and routeparts.length >= 1 and action in ['POST','PUT']
   opts = data:data
   route = API.es.random(route) if route.indexOf('source') isnt -1 and route.indexOf('random=true') isnt -1
-  route += (if route.indexOf('?') isnt -1 then '?' else '&') + 'version=' + versioned if versioned?
+  route += (if route.indexOf('?') is -1 then '?' else '&') + 'version=' + versioned if versioned?
+  if scan is true
+    route += (if route.indexOf('?') is -1 then '?' else '&') + 'search_type=scan&scroll=' + scroll
+  else if scan?
+    route = '/_search/scroll?scroll=' + scroll + '&scroll_id=' + scan
   try
     try
       if action is 'POST' and data?.query? and data.sort? and routeparts.length > 1
@@ -207,7 +211,7 @@ API.es.terms = (index, type, key, size=100, counts=true, qry, url=API.settings.e
   query.facets ?= {}
   query.facets[key] = { terms: { field: key, size: size } }; # TODO need some way to decide if should check on .exact? - collection assumes it so far
   try
-    ret = API.es.call 'POST', '/' + index + '/' + type + '/_search', query, undefined, undefined, url
+    ret = API.es.call 'POST', '/' + index + '/' + type + '/_search', query, undefined, undefined, undefined, undefined, url
     return if counts then ret.facets[key].terms else _.pluck(ret.facets[key].terms,'term')
   catch err
     console.log(err) if API.settings.log?.level is 'debug'

@@ -168,19 +168,20 @@ API.collection.prototype.each = (q, opts, fn) ->
   opts ?= {}
   qy = API.collection._translate q, opts
   qy.from ?= 0
-  qy.size ?= 100
-  res = this.search qy
-  return 0 if res is undefined
-  remove = res.hits.total
-  size = res.hits.hits.length
-  while (qy.from < remove)
+  qy.size ?= 300
+  res = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, true
+  return 0 if not res?._scroll_id?
+  res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id
+  return 0 if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
+  processed = 0
+  while (res.hits.hits.length)
+    processed += res.hits.hits.length
     for h in res.hits.hits
       fn = fn.bind this
       fn h._source ? h.fields
-    qy.from += size
-    this.refresh()
-    res = this.search(qy) if qy.from < remove
-  return remove
+    res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id
+  this.refresh()
+  return processed
 
 API.collection.prototype.count = (q,key) ->
   if key?
