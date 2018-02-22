@@ -30,7 +30,7 @@ API.collection.prototype.map = (mapping) ->
   return API.es.map this._index, this._type, mapping, true # would overwrite any existing mapping
 API.collection.prototype.mapping = (original) -> return if this._mapping and original then this._mapping else API.es.mapping this._index, this._type
 
-API.collection.prototype.refresh = () -> API.es.refresh this._route
+API.collection.prototype.refresh = () -> API.es.refresh this._index
 
 API.collection.prototype.delete = (confirm, history) ->
   # TODO who should be allowed to do this, and how should it be recorded in history, if history is not itself removed?
