@@ -71,8 +71,12 @@ API.add 'job/:job/rerun',
 
 API.add 'job/jobs',
   get:
-    roleRequired: if API.settings.dev then false else 'root'
-    action: () -> return job_job.search this.queryParams
+    authOptional: true
+    action: () ->
+      if this.user? and API.accounts.auth 'root', this.user
+        return job_job.search this.queryParams
+      else
+        return data: job_job.count()
 
 API.add 'job/jobs/:email',
   get:
@@ -93,12 +97,6 @@ API.add 'job/results',
         return job_result.search this.queryParams
       else
         return data: job_result.count()
-
-API.add 'job/results/remove',
-  get:
-    authRequired: 'root'
-    action: () ->
-      return job_result.remove this.queryParams
 
 API.add 'job/processes',
   get:
@@ -122,6 +120,21 @@ API.add 'job/processing/reload',
   get:
     roleRequired: if API.settings.dev then false else 'job.admin'
     action: () -> return API.job.reload()
+
+API.add 'job/:which/remove',
+  get:
+    authRequired: 'root'
+    action: () ->
+      if this.urlParams.which is 'results'
+        return job_result.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
+      else if this.urlParams.which is 'processes'
+        return job_process.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
+      else if this.urlParams.which is 'processing'
+        return job_processing.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
+      else if this.urlParams.which is 'jobs'
+        return job_job.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
+      else
+        return false
 
 API.add 'job/process/:proc',
   get:
@@ -154,7 +167,6 @@ API.job.create = (job) ->
   # A job can have order:true if so, processes will be set to available:false and only run once their previous process completes and changes this
   # TODO what is best default refresh for job? And should it change from current use as days down to ms?
   job.args = JSON.stringify(job.args) if job.args? and typeof job.args isnt 'string' # store args as string so can handle multiple types
-  # TODO there is a process.env.APP_ID - if it were ever useful to limit processes to one cluster machine, can this be used to identify?
   for i of job.processes
     # processes list can contain string name of function to run, or else assumed to be different args for the overall job function
     proc = if typeof job.processes[i] is 'string' and job.processes[i].indexOf('API.') is 0 then {function: job.processes[i]} else (if typeof job.processes[i] is 'object' and job.processes[i].function? then job.processes[i] else {function: job.function, args:job.processes[i]})
@@ -239,6 +251,8 @@ API.job.process = (proc) ->
   API.log {msg:'Processing ' + proc._id,process:proc,level:'debug',function:'API.job.process'}
   fn = if proc.function.indexOf('API.') is 0 then API else global
   fn = fn[p] for p in proc.function.replace('API.','').split('.')
+  try proc._cid = process.env.CID
+  try proc._APPID = process.env.APP_ID
   try
     proc.result = {}
     args = proc # default just send the whole process as the arg
