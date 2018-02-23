@@ -297,7 +297,7 @@ API.job.process = (proc) ->
     job_process.insert pn
   else if proc.order
     job_process.update {job: proc.job, order: proc.order+1}, {available:true}
-  job_job.each 'job.processes.process:'+proc._id, (job) -> API.job.progress(job,(if job.processes.length > 1 then 300000 else 2000)) if job._id isnt proc._id and not job_processing.get(job._id)?
+  #job_job.each 'job.processes.process:'+proc._id, (job) -> API.job.progress(job,(if job.processes.length > 1 then 300000 else 2000)) if job._id isnt proc._id and not job_processing.get(job._id)?
   if proc.callback
     cb = API
     cb = cb[c] for c in proc.callback.replace('API.','').split('.')
