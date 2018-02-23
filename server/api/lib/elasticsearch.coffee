@@ -74,7 +74,7 @@ API.es.action = (uacc, action, urlp, params, data, refresh) ->
 
 API.es.refresh = (index, url) ->
   try
-    API.log 'Refreshing index'
+    API.log 'Refreshing index ' + index
     h = API.es.call 'POST', index + '/_refresh', undefined, undefined, undefined, undefined, undefined, url
     return true
   catch err
@@ -216,6 +216,31 @@ API.es.terms = (index, type, key, size=100, counts=true, qry, url=API.settings.e
   catch err
     console.log(err) if API.settings.log?.level is 'debug'
     return []
+
+API.es.import = (index, type, data, bulk=50000, url=API.settings.es.url) ->
+  index += '_dev' if API.settings.dev and index.indexOf('_dev') is -1
+  rows = if typeof data is 'object' and not Array.isArray(data) and data?.hits?.hits? then data.hits.hits else data
+  rows = [rows] if not Array.isArray rows
+  API.log 'Doing bulk import of ' + rows.length + ' rows for ' + index + ' ' + type
+  counter = 0
+  pkg = ''
+  responses = []
+  for r of rows
+    counter += 1
+    row = rows[r]
+    row._index += '_dev' if row._index? and row._index.indexOf('_dev') is -1 and API.settings.dev
+    meta = {"index": {"_index": (if row._index? then row._index else index), "_type": (if row._type? then row._type else type) }}
+    meta.index._id = row._id if row._id?
+    pkg += JSON.stringify(meta) + '\n'
+    pkg += JSON.stringify(if row._source then row._source else row) + '\n'
+    if counter is bulk or parseInt(r) is (rows.length - 1)
+      hp = HTTP.call 'POST', url + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'}}
+      responses.push hp
+      pkg = ''
+      counter = 0
+  return {records:rows.length, responses:responses}
+
+
 
 API.es.status = () ->
   s = API.es.call 'GET', '/_status'

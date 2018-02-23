@@ -147,6 +147,7 @@ API.http.resolve = (url) ->
     catch
       return undefined
 
+
 # old resolve notes:
 # using external dependency to call request.head because Meteor provides no way to access the final url from the request module, annoyingly
 # https://secure.jbs.elsevierhealth.com/action/getSharedSiteSession?rc=9&redirect=http%3A%2F%2Fwww.cell.com%2Fcurrent-biology%2Fabstract%2FS0960-9822%2815%2901167-7%3F%26np%3Dy&code=cell-site

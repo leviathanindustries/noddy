@@ -21,8 +21,9 @@ API.add 'job',
       if checklength > maxallowedlength
         return 413
       else
-        j = if this.request.body.processes then this.request.body else {processes:this.request.body}
-        j._id = job_job.insert new:true, user:this.userId # jobs created to provide immediate info to user
+        j = {new:true, user:this.userId}
+        j._id = job_job.insert j # jobs created to provide immediate info to user
+        j.processes = if this.request.body.processes then this.request.body.processes else this.request.body
         j.refresh ?= this.queryParams.refresh
         Meteor.setTimeout (() -> API.job.create j), 5
         return job:j._id
@@ -167,6 +168,7 @@ API.job.create = (job) ->
   # A job can have order:true if so, processes will be set to available:false and only run once their previous process completes and changes this
   # TODO what is best default refresh for job? And should it change from current use as days down to ms?
   job.args = JSON.stringify(job.args) if job.args? and typeof job.args isnt 'string' # store args as string so can handle multiple types
+  imports = []
   for i of job.processes
     # processes list can contain string name of function to run, or else assumed to be different args for the overall job function
     proc = if typeof job.processes[i] is 'string' and job.processes[i].indexOf('API.') is 0 then {function: job.processes[i]} else (if typeof job.processes[i] is 'object' and job.processes[i].function? then job.processes[i] else {function: job.function, args:job.processes[i]})
@@ -184,9 +186,8 @@ API.job.create = (job) ->
     # (and does not check for cached results, so new process and fresh results every time). Counts down until reaches zero, or if true, forever
     # For a process that repeats AND is in an ordered job, it will complete all repeats before kicking off the next process
     proc.repeat ?= job.repeat
-    proc.concurrency ?= job.concurrency # option how many can run at once - also requires group key to know how to batch them
-    proc.limit ?= job.limit # option number of ms to wait before starting another one (can combine with concurrency)
-    proc.group ?= job.group ? proc.function # group name string necessary for concurrency and limit to compare against
+    proc.limit ?= job.limit # option number of ms to wait before starting another one
+    proc.group ?= job.group ? proc.function # group name string necessary for limit to compare against
     # NOTE, group defaults to process function name string, because it is usually more useful to limit certain functions
     # than the set of processes of a job. This also usefully limits in relation to processes in separate jobs running in the same cluster.
     # To group all processes of a job where they have different functions, provide a unique group name.
@@ -205,7 +206,8 @@ API.job.create = (job) ->
 
     job.refresh = parseInt(job.refresh) if typeof job.refresh is 'string'
     if job.refresh is true or job.refresh is 0 or proc.callback? or proc.repeat?
-      proc.process = job_process.insert proc
+      proc._id = Random.id()
+      imports.push proc
     else
       fnd = 'signature.exact:"' + proc.signature + '" AND NOT exists:"result.error"'
       try
@@ -217,46 +219,53 @@ API.job.create = (job) ->
       rs = job_processing.find(ofnd, true) if not rs?
       ofnd.limit = proc.limit if proc.limit?
       rs = job_process.find(ofnd, true) if not rs? # TODO check undefined limit does not show up as search term
-      proc.process = if rs then rs._id else job_process.insert proc
+      if rs
+        proc._id = rs._id
+      else
+        proc._id = Random.id()
+        imports.push proc
 
     job.processes[i] = proc
+
+  if imports.length
+    job_process.import(imports)
+    job_process.refresh()
 
   # NOTE job can also have a "complete" function string name, which will be called when API.job.progress hits 100%, see below
   # the "complete" function will receive the whole job object as the only argument (so can look up results by the process IDs)
   job.done = job.processes.length is 0 # bit pointless submitting empty jobs, but theoretically possible. Could make impossible...
   job.new = false
   if job._id
-    job_job.update job._id,job
+    job_job.update job._id, job
   else
     job._id = job_job.insert job
   return job
 
 API.job.limit = (limitms,fname,args,group,save=API.settings.dev) -> # a handy way to directly create a sync throttled process
-  job_processing.remove 'timeout:<' + Date.now() # get rid of old processing that were just there to limit the next start if necessary
-  group = fname if not group?
-  waitfor = job_processing.get group
-  waitfor = job_processing.find('group.exact:'+group,{sort:{timeout:{order:'desc'}}}) if not waitfor?
-  if waitfor?.timeout?
-    future = new Future()
-    Meteor.setTimeout (() -> future.return()), waitfor.timeout - Date.now()
-    future.wait()
-  return API.job.process({group: group, function: fname, args: args, limit: limitms, save: save}).result?[fname]
+  return API.job.process({group: group, function: fname, args: args, signature: encodeURIComponent(fname + '_' + args), limit: limitms, save: save}).result?[fname]
 
 API.job.process = (proc) ->
   proc = job_process.get(proc) if typeof proc isnt 'object'
   return false if typeof proc isnt 'object'
-  proc.timeout = Date.now() + proc.limit if proc.limit?
   proc.args = JSON.stringify proc.args if proc.args? and typeof proc.args is 'object' # in case a process is passed directly with non-string args
   if proc.limit?
-    proc.signature ?= encodeURIComponent proc.function + '_' + proc.args
-    proc._id = proc.group ? proc.signature
-  proc._id = job_processing.insert proc # in case was passed a process directly - need to catch the ID
+    proc.timeout = Date.now() + proc.limit
+    proc.group ?= proc.function
+    proc.pid = proc._id ? Random.id()
+    proc._id = proc.group
+  try proc._cid = process.env.CID
+  try proc._APPID = process.env.APP_ID
+  proc._id = job_processing.insert proc # in case is a process with no ID, need to catch the ID
   job_process.remove proc._id
+  if proc.limit?
+    waitfor = job_processing.get proc.group
+    if waitfor?.timeout?
+      future = new Future()
+      Meteor.setTimeout (() -> future.return()), waitfor.timeout - Date.now()
+      future.wait()
   API.log {msg:'Processing ' + proc._id,process:proc,level:'debug',function:'API.job.process'}
   fn = if proc.function.indexOf('API.') is 0 then API else global
   fn = fn[p] for p in proc.function.replace('API.','').split('.')
-  try proc._cid = process.env.CID
-  try proc._APPID = process.env.APP_ID
   try
     proc.result = {}
     args = proc # default just send the whole process as the arg
@@ -280,20 +289,20 @@ API.job.process = (proc) ->
       console.log JSON.stringify err
       console.log err.toString()
       console.log proc
-  if proc.save isnt false # direct limit processes don't need to save their results, maybe others won't bother either
+  if proc.save isnt false
     try
-      job_result.insert proc # if this fails, we stringify and save that way
+      if proc.pid? then job_result.insert(proc.pid, proc) else job_result.insert proc # if this fails, we stringify and save that way
     catch
       try
         proc.result.string = JSON.stringify proc.result[proc.function] # try saving as string then change it back
         delete proc.result[proc.function]
-        job_result.insert proc
+        if proc.pid? then job_result.insert(proc.pid, proc) else job_result.insert proc
         proc.result[proc.function] = JSON.parse(proc.result.string)
         delete proc.result.string
   job_processing.remove(proc._id) if not proc.limit or Date.now() >= proc.timeout
   if proc.repeat
     proc.counter ?= 1
-    proc.original ?= proc._id
+    proc.original ?= proc.pid ? proc._id
     pn = JSON.parse(JSON.stringify(proc))
     pn.repeat -= 1 if pn.repeat isnt true
     pn.counter += 1
@@ -327,9 +336,9 @@ API.job.next = (ignore=[]) ->
     match.must_not.push term: 'group.exact':g for g in ignore
     p = job_process.find match, {sort:{priority:{order:'desc'}}, random:true} # TODO check if random sorted wil work - may have to be more complex
     if p and not job_processing.get(p._id)
-      if p.group and (job_processing.get(p.group) or job_processing.count({'group.exact': p.group}) >= (p.concurrency ?= (if p.limit then 1 else 1000000000)))
+      if p.limit and job_processing.get(p.group)
         ignore.push p.group
-        API.job._ignores[p.group] = now + p.limit if p.limit?
+        API.job._ignores[p.group] = now + p.limit ? 0
         return API.job.next ignore
       else
         return API.job.process p
@@ -337,7 +346,7 @@ API.job.next = (ignore=[]) ->
 API.job._iid
 API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   API.log 'Starting job runner with interval ' + interval
-  # create a repeating limited stuck check process with an id like 'STUCK' so that it can check for stuck jobs
+  # create a repeating limited stuck check process with id 'STUCK' so that it can check for stuck jobs
   # multiple clusters trying to create it wont matter because they will just overwrite each other, eventually only one process will run
   job_process.remove [{function:'API.job.stuck'},{group:'PROGRESS'}]
   job_processing.remove [{function:'API.job.stuck'},{group:'PROGRESS'}]
@@ -359,9 +368,11 @@ API.job.stop = () ->
       job_processing.insert _id:'STOP', createdAt:Date.now()
 
 API.job.stuck = (p) ->
+  job_job.each 'NOT done:true', (rec) -> API.job.progress(rec._id)
   st = API.job.status()
   # compare count, oldest and newest of processes and processing with p.result[function] if it exists
   # if all the same, and if not having timeout after now, send a warning
+  # also look for jobs still not done, and if nothing running, consider them stuck
   return st
 
 API.job.status = (filter='*') ->
@@ -384,13 +395,13 @@ API.job.status = (filter='*') ->
       count: job_result.count(filter)
       oldest: {_id: jro._id, createdAt: jro.createdAt, created_date: jro.created_date} if jro = job_result.find(filter, {sort:{createdAt:{order:'asc'}}})
       newest: {_id: jrn._id, createdAt: jrn.createdAt, created_date: jrn.created_date} if jrn = job_result.find(filter, true)
-  groups = API.es.terms API.settings.es.index + (if API.settings.dev then '_dev'), 'job_process,job_processing,job_result', 'group', 1000, true, filter
+  groups = API.es.terms 'job' + (if API.settings.dev then '_dev' else ''), 'job_process,job_processing,job_result', 'group', 1000, true, filter
   res.limits = {}
   for g in groups
     res.limits[g.term] =
       count: g.count
       waiting: job_process.count({'group.exact':g.term}) # TODO this would have to take account of a provided filter
-      timeout: moment(lt.timeout, "x").format("YYYY-MM-DD HHmm") if lt = job_processing.find({'group.exact':g.term}, true)
+      timeout: moment(lt.timeout, "x").format("YYYY-MM-DD HHmm") if lt = job_processing.get(g.term)
   return res
 
 API.job.reload = (jobid) ->
@@ -411,7 +422,7 @@ API.job._progress = (jobid) ->
   total = job.processes.length
   count = 0
   for i in job.processes
-    count += 1 if job_result.get(i.process)?
+    count += 1 if job_result.get(i._id)?
   p = count/total * 100
   if p is 100
     job_job.update job._id, {done:true}
@@ -420,9 +431,10 @@ API.job._progress = (jobid) ->
       fn = fn[f] for f in job.complete.replace('API.','').split('.')
       fn job
     catch
-      text = 'Job ' + (if job.name then job.name else job._id) + ' is complete.'
-      email = job.email ? job.user and API.accounts.retrieve(job.user)?.emails[0].address
-      API.mail.send to:email, subject:text, text:text
+      if job.group isnt 'JOBTEST'
+        text = 'Job ' + (if job.name then job.name else job._id) + ' is complete.'
+        email = job.email ? job.user and API.accounts.retrieve(job.user)?.emails[0].address
+        API.mail.send to:email, subject:text, text:text
   return {createdAt:job.createdAt, progress:p, name:job.name, email:job.email, _id:job._id, new:job.new}
 
 API.job.progress = (jobid,limit) ->
@@ -442,14 +454,14 @@ API.job.rerun = (jobid,uid) ->
   job = job_job.get jobid
   job.user = uid if uid
   job.refresh = true
-  _id: job_job.insert new:true, user:job.user
+  _id: job_job.insert {new:true, user:job.user}
   Meteor.setTimeout (() -> API.job.create job), 5
   return data: {job:job._id}
 
 API.job.results = (jobid,full) ->
   results = []
   for ji in job_job.get(jobid)?.processes
-    jr = job_result.get(ji.process) ? {}
+    jr = job_result.get(ji._id) ? {}
     if full?
       results.push jr
     else

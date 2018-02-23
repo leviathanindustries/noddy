@@ -81,6 +81,9 @@ API.collection.prototype.get = (rid,versioned) ->
     return (if versioned then check else check._source) if check?.found isnt false and check?.status isnt 'error' and check?.statusCode isnt 404 and check?._source?
   return undefined
 
+API.collection.prototype.import = (recs) ->
+  return API.es.import this._index, this._type, recs
+  
 API.collection.prototype.insert = (q, obj, uid, refresh) ->
   if typeof q is 'string' and typeof obj is 'object'
     obj._id = q
@@ -97,8 +100,8 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned) ->
   # TODO may need a lock index to control disordered overwrites
   rec = this.get q
   if rec
-    delete obj._id # just in case, can't replace the record ID.
-    API.collection._dot(rec,k,obj[k]) for k of obj
+    for k of obj
+      API.collection._dot(rec,k,obj[k]) if k isnt '_id'
     rec.updatedAt = Date.now()
     rec.updated_date = moment(rec.updatedAt, "x").format "YYYY-MM-DD HHmm"
     API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, rec: rec, updateset: obj, level: 'debug' }) if this._route.indexOf('_log') is -1
@@ -108,7 +111,6 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned) ->
     else
       API.es.call 'POST', this._route + '/' + rec._id, rec, refresh # TODO this should catch failures due to versions, and try merges and retries (or ES layer should do this)
     if this._history
-      obj._id = rec._id # put actual ID back in for history info
       this.history 'update', obj, uid
     return if versioned? then versioned else true
   else
