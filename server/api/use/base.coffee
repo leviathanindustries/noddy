@@ -46,7 +46,7 @@ API.use.base.search = (qry='*',from,size,timeout=10000) ->
 	proxy = API.settings.proxy # need to route through the proxy so requests come from registered IP
 	if not proxy
 		API.log 'No proxy settings available to use BASE'
-		return { status: 'error', data: 'NO BASE PROXY SETTING PRESENT!'}
+		return { status: 'error', data: 'NO BASE PROXY SETTING PRESENT!', error: 'NO BASE PROXY SETTING PRESENT!'}
 	qry = qry.replace(/ /g,'+') if qry.indexOf('"') is -1 and qry.indexOf(' ') isnt -1
 	url = 'https://api.base-search.net/cgi-bin/BaseHttpSearchInterface.fcgi?func=PerformSearch&format=json&query=' + qry
 	url += '&offset=' + from if from
@@ -61,8 +61,8 @@ API.use.base.search = (qry='*',from,size,timeout=10000) ->
 
 
 API.use.base.status = () ->
-  s = API.use.base.search(undefined,undefined,undefined,3000)
-	return if s.status isnt 'error' then true else s.error
+  res = API.use.base.search(undefined,undefined,undefined,3000)
+  return if res.status isnt 'error' then true else res.error
 
 API.use.base.test = (verbose) ->
   result = {passed:[],failed:[]}

@@ -170,7 +170,7 @@ API.use.europepmc.licence = (pmcid,rec,fulltext,noui) ->
 
     if pmcid and not noui
       normalised_pmcid = 'PMC' + pmcid.toLowerCase().replace('pmc','')
-      licsplash = API.job.limit(10000,'API.service.lantern.licence',['https://europepmc.org/articles/' + normalised_pmcid],'EPMCUI')
+      licsplash = API.job.limit(5000,'API.service.lantern.licence',['https://europepmc.org/articles/' + normalised_pmcid],'EPMCUI')
       if licsplash.licence?
         licsplash.source = 'epmc_html'
         return licsplash
@@ -197,7 +197,7 @@ API.use.europepmc.authorManuscript = (pmcid,rec,fulltext,noui) ->
         else if not noui
           url = 'https://europepmc.org/articles/PMC' + pmcid.toLowerCase().replace('pmc','')
           try
-            pg = API.job.limit 10000, 'HTTP.call', ['GET',url], "EPMCUI"
+            pg = API.job.limit 5000, 'HTTP.call', ['GET',url], "EPMCUI"
             if pg?.statusCode is 200
               page = pg.content if not page?
               s1 = 'Author Manuscript; Accepted for publication in peer reviewed journal'

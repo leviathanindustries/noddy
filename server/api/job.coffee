@@ -234,7 +234,8 @@ API.job.create = (job) ->
 API.job.limit = (limitms,fname,args,group,save=API.settings.dev) -> # a handy way to directly create a sync throttled process
   job_processing.remove 'timeout:<' + Date.now() # get rid of old processing that were just there to limit the next start if necessary
   group = fname if not group?
-  waitfor = job_processing.find {'group.exact':group}, {sort:{timeout:{order:'desc'}}}
+  waitfor = job_processing.get group
+  waitfor = job_processing.find('group.exact:'+group,{sort:{timeout:{order:'desc'}}}) if not waitfor?
   if waitfor?.timeout?
     future = new Future()
     Meteor.setTimeout (() -> future.return()), waitfor.timeout - Date.now()
@@ -246,7 +247,10 @@ API.job.process = (proc) ->
   return false if typeof proc isnt 'object'
   proc.timeout = Date.now() + proc.limit if proc.limit?
   proc.args = JSON.stringify proc.args if proc.args? and typeof proc.args is 'object' # in case a process is passed directly with non-string args
-  proc._id = job_processing.insert(proc,undefined,undefined,proc.limit?) # in case was passed a process directly - need to catch the ID
+  if proc.limit?
+    proc.signature ?= encodeURIComponent proc.function + '_' + proc.args
+    proc._id = proc.group ? proc.signature
+  proc._id = job_processing.insert proc # in case was passed a process directly - need to catch the ID
   job_process.remove proc._id
   API.log {msg:'Processing ' + proc._id,process:proc,level:'debug',function:'API.job.process'}
   fn = if proc.function.indexOf('API.') is 0 then API else global
@@ -323,7 +327,7 @@ API.job.next = (ignore=[]) ->
     match.must_not.push term: 'group.exact':g for g in ignore
     p = job_process.find match, {sort:{priority:{order:'desc'}}, random:true} # TODO check if random sorted wil work - may have to be more complex
     if p and not job_processing.get(p._id)
-      if p.group and job_processing.count({'group.exact': p.group}) >= (p.concurrency ?= (if p.limit then 1 else 1000000000))
+      if p.group and (job_processing.get(p.group) or job_processing.count({'group.exact': p.group}) >= (p.concurrency ?= (if p.limit then 1 else 1000000000)))
         ignore.push p.group
         API.job._ignores[p.group] = now + p.limit if p.limit?
         return API.job.next ignore
