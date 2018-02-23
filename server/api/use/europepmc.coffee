@@ -248,8 +248,8 @@ API.use.europepmc.xmlAvailable = (pmcid) ->
 API.use.europepmc.status = () ->
   try
     return true if HTTP.call 'GET', 'https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=*', {timeout:2000}
-  catch
-    return false
+  catch err
+    return err.toString()
 
 API.use.europepmc.test = (verbose) ->
   result = {passed:[],failed:[]}

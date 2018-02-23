@@ -79,7 +79,8 @@ API.use.core.redirect = (record) ->
 
 
 API.use.core.status = () ->
-  return API.use.core.search('doi:"10.1186/1758-2946-3-47"', undefined, undefined, 3000).status isnt 'error'
+  s = API.use.core.search('doi:"10.1186/1758-2946-3-47"', undefined, undefined, 3000)
+  return if s.status isnt 'error' then true else s.error
 
 API.use.core.test = (verbose) ->
   result = {passed:[],failed:[]}

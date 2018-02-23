@@ -174,7 +174,7 @@ _phantom = (url,delay=1000,callback) ->
   phantom.create(['--ignore-ssl-errors=true','--load-images=false','--cookies-file=./cookies.txt'],{phantomPath:ppath})
     .then((ph) ->
       _ph = ph
-      API.log('creating page')
+      #API.log('creating page')
       return ph.createPage()
     )
     .then((page) ->
@@ -182,7 +182,7 @@ _phantom = (url,delay=1000,callback) ->
       page.setting('resourceTimeout',3000)
       page.setting('loadImages',false)
       page.setting('userAgent','Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.120 Safari/537.36')
-      API.log('retrieving page ' + url)
+      #API.log('retrieving page ' + url)
       page.property('onResourceRequested',(requestData, request) ->
         if (/http:\/\/.+?\.css/gi).test(requestData['url']) or requestData.headers['Content-Type'] is 'text/css'
           API.log('not getting css at ' + requestData['url'])
@@ -196,14 +196,14 @@ _phantom = (url,delay=1000,callback) ->
     )
     .then((status) ->
       if _redirect
-        API.log('redirecting to ' + _redirect)
+        #API.log('redirecting to ' + _redirect)
         _page.close()
         _ph.exit()
         _phantom(_redirect,delay,callback)
       else if status is 'fail'
         _fail = true
       else
-        API.log('retrieving content');
+        #API.log('retrieving content');
         future = new Future()
         Meteor.setTimeout (() -> future.return()), delay
         future.wait()
@@ -218,10 +218,10 @@ _phantom = (url,delay=1000,callback) ->
         _page.close()
         _ph.exit()
         redirector = undefined
-        API.log('trying again with delay ' + delay)
+        #API.log('trying again with delay ' + delay)
         _phantom(url,delay,callback)
       else
-        API.log('got content')
+        #API.log('got content')
         _page.close()
         _ph.exit()
         _redirect = undefined

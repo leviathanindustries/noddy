@@ -61,7 +61,8 @@ API.use.base.search = (qry='*',from,size,timeout=10000) ->
 
 
 API.use.base.status = () ->
-	return API.use.base.search(undefined,undefined,undefined,3000).status isnt 'error'
+  s = API.use.base.search(undefined,undefined,undefined,3000)
+	return if s.status isnt 'error' then true else s.error
 
 API.use.base.test = (verbose) ->
   result = {passed:[],failed:[]}

@@ -28,9 +28,10 @@ API.use.dissemin.doi = (doi) ->
 
 API.use.dissemin.status = () ->
   try
-    return true if HTTP.call('GET', 'http://beta.dissem.in/api/10.1186/1758-2946-3-47',{timeout:3000}).data.paper
-  catch
-    return false
+    h = HTTP.call('GET', 'http://beta.dissem.in/api/10.1186/1758-2946-3-47',{timeout:3000})
+    return if h.data.paper then true else h.data
+  catch err
+    return err.toString()
 
 API.use.dissemin.test = (verbose) ->
   result = {passed:[],failed:[]}

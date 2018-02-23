@@ -124,9 +124,9 @@ API.use.crossref.works.indexed = (startdate,enddate,from,size,filter) ->
 API.use.crossref.status = () ->
   try
     res = HTTP.call 'GET', 'https://api.crossref.org/works/10.1186/1758-2946-3-47', {timeout:2000}
-    return if res.statusCode is 200 and res.data.status is 'ok' then true else false
-  catch
-    return false
+    return if res.statusCode is 200 and res.data.status is 'ok' then true else res.data
+  catch err
+    return err.toString()
 
 API.use.crossref.test = (verbose) ->
   result = {passed:[],failed:[]}

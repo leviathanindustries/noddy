@@ -29,8 +29,8 @@ API.use.oadoi.doi = (doi) ->
 API.use.oadoi.status = () ->
   try
     return true if HTTP.call 'GET', 'http://api.oadoi.org/v2/', {timeout:2000}
-  catch
-    return false
+  catch err
+    return err.toString()
 
 API.use.oadoi.test = (verbose) ->
   result = {passed:[],failed:[]}

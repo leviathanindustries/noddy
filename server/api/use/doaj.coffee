@@ -75,8 +75,8 @@ API.use.doaj.articles.redirect = (record) ->
 API.use.doaj.status = () ->
   try
     return true if HTTP.call 'GET', 'https://doaj.org/api/v1/search/articles/_search', {timeout:2000}
-  catch
-    return false
+  catch err
+    return err.toString()
 
 API.use.doaj.test = (verbose) ->
   result = {passed:[],failed:[]}
