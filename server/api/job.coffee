@@ -231,7 +231,7 @@ API.job.create = (job) ->
     job._id = job_job.insert job
   return job
 
-API.job.limit = (limitms,fname,args,group,save=false) -> # a handy way to directly create a sync throttled process
+API.job.limit = (limitms,fname,args,group,save=API.settings.dev) -> # a handy way to directly create a sync throttled process
   job_processing.remove 'timeout:<' + Date.now() # get rid of old processing that were just there to limit the next start if necessary
   group = fname if not group?
   waitfor = job_processing.find {'group.exact':group}, {sort:{timeout:{order:'desc'}}}
@@ -297,8 +297,7 @@ API.job.process = (proc) ->
     job_process.insert pn
   else if proc.order
     job_process.update {job: proc.job, order: proc.order+1}, {available:true}
-  for parent in job_job.search('job.processes.process:'+proc._id, {fields:['_id'],size:10000})?.hits?.hits
-    API.job.progress(parent.fields._id,300000) if parent?.fields?._id? and not job_processing.get(parent.fields._id)
+  # TODO trigger a job progress check in a way that does not cause memory creep
   if proc.callback
     cb = API
     cb = cb[c] for c in proc.callback.replace('API.','').split('.')

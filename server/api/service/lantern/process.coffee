@@ -105,7 +105,7 @@ API.service.lantern.process = (proc) ->
               result.confidence = 0.7
 
   if eupmc?
-    API.log msg: 'Lantern found in eupmc', eupmc: eupmc
+    API.log msg: 'Lantern found in eupmc'
     if eupmc.pmcid and result.pmcid isnt eupmc.pmcid
       result.pmcid = eupmc.pmcid
       result.provenance.push 'Added PMCID from EUPMC'
