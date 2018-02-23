@@ -380,9 +380,6 @@ class share.Route
 
     # Prepare JSON body for response when Content-Type indicates JSON type
     if headers['content-type'].match(/json|javascript/) isnt null
-      if API.settings.dev
-        try body._cid = process.env.CID
-        try body._appid = process.env.APP_ID
       if @api._config.prettyJson
         body = JSON.stringify body, undefined, 2
       else

@@ -133,3 +133,44 @@ API.use.opendoar.index = () ->
 
 
 
+API.use.opendoar.test = (verbose) ->
+  result = {passed:[],failed:[]}
+
+  tests = [
+    () ->
+      result.opendoar = API.use.opendoar.search 'spiral'
+      return _.isEqual result.opendoar?.data[0], API.use.opendoar.test._examples.record
+  ]
+
+  (if (try tests[t]()) then (result.passed.push(t) if result.passed isnt false) else result.failed.push(t)) for t of tests
+  result.passed = result.passed.length if result.passed isnt false and result.failed.length is 0
+  result = {passed:result.passed} if result.failed.length is 0 and not verbose
+  return result
+
+API.use.opendoar.test._examples = {
+  record: {
+    "_id": "1032",
+    "name": "Spiral - Imperial College Digital Repository",
+    "acronym": "",
+    "url": "https://spiral.imperial.ac.uk/",
+    "oai": "https://spiral.imperial.ac.uk/dspace-oai/request",
+    "uname": "",
+    "uacronym": "",
+    "uurl": "",
+    "oname": "Imperial College London",
+    "oacronym": "",
+    "ourl": "https://www.imperial.ac.uk/",
+    "phone": "020-75895111",
+    "fax": "",
+    "description": "College repository providing open access to the research output of the institution.",
+    "remarks": "Partners: SHERPA, LEAP Consortium",
+    "location": {
+      "geo": {
+        "lat": "51.488000",
+        "lon": "-0.172000"
+      }
+    },
+    "country": "United Kingdom",
+    "countryIso": "GB"
+  }
+}
