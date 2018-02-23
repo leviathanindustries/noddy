@@ -355,19 +355,23 @@ API.service.lantern.process = (proc) ->
         else
           result.provenance.push 'Tried, but could not add publisher from Sherpa Romeo.'
       result.romeo_colour = publisher?.romeocolour[0]
-      for k in ['preprint','postprint','publisher_copy']
-        main = if k.indexOf('publisher_copy') is -1 then k + 's' else 'pdfversion'
-        stub = k.replace('print','').replace('publisher_copy','pdf')
-        if publisher?[main]?
-          if publisher[main][0][stub+'restrictions']?
-            for p in publisher[main][0][stub+'restrictions']
-              if p?
-                ps = if typeof p is 'object' then (p[stub+'restriction'] ? '') else p
-                if ps? and ps.replace(/<.*?>/g,'') isnt ''
-                  if result[k+'_embargo'] is 'unknown' then result[k+'_embargo'] = '' else result[k+'_embargo'] += ','
-                  result[k+'_embargo'] += ps.replace(/<.*?>/g,'')
-          result[k+'_self_archiving'] = publisher[main][0][stub+'archiving'][0] if not _.isEmpty(publisher[main]) and typeof publisher[main][0] is 'object' and publisher[main][0][stub+'archiving'] and not _.isEmpty(publisher[main][0][stub+'archiving']) and publisher[main][0][stub+'archiving'][0] isnt ''
-      result.provenance.push 'Added embargo and archiving data from Sherpa Romeo'
+      try
+        for k in ['preprint','postprint','publisher_copy']
+          main = if k.indexOf('publisher_copy') is -1 then k + 's' else 'pdfversion'
+          stub = k.replace('print','').replace('publisher_copy','pdf')
+          if publisher?[main]?
+            if publisher[main][0][stub+'restrictions']?
+              for p in publisher[main][0][stub+'restrictions']
+                if p?
+                  ps = if typeof p is 'object' then (p[stub+'restriction'] ? '') else p
+                  if ps? and typeof ps is 'string' and ps.replace(/<.*?>/g,'') isnt ''
+                    if result[k+'_embargo'] is 'unknown' then result[k+'_embargo'] = '' else result[k+'_embargo'] += ','
+                    result[k+'_embargo'] += ps.replace(/<.*?>/g,'')
+            result[k+'_self_archiving'] = publisher[main][0][stub+'archiving'][0] if not _.isEmpty(publisher[main]) and typeof publisher[main][0] is 'object' and publisher[main][0][stub+'archiving'] and not _.isEmpty(publisher[main][0][stub+'archiving']) and publisher[main][0][stub+'archiving'][0] isnt ''
+        result.provenance.push 'Added embargo and archiving data from Sherpa Romeo'
+      catch err
+        API.log msg: 'Error processing Sherpa Romeo embargo and archiving data', error: err
+        result.provenance.push 'Could not process embargo and archiving data from Sherpa Romeo'
     else
       result.provenance.push 'Unable to add any data from Sherpa Romeo.'
   else

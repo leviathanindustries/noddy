@@ -23,6 +23,7 @@ API.use.sherpa.romeo.search = (params) ->
   return { status: 'error', data: 'NO ROMEO API KEY PRESENT!'} if not apikey
   url = 'http://www.sherpa.ac.uk/romeo/api29.php?ak=' + apikey + '&'
   url += q + '=' + params[q] + '&' for q of params
+  API.log 'Using sherpa romeo for ' + url
   res = HTTP.call 'GET', url
   if res.statusCode is 200
     result = API.convert.xml2json undefined, res.content

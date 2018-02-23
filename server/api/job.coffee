@@ -297,7 +297,8 @@ API.job.process = (proc) ->
     job_process.insert pn
   else if proc.order
     job_process.update {job: proc.job, order: proc.order+1}, {available:true}
-  #job_job.each 'job.processes.process:'+proc._id, (job) -> API.job.progress(job,(if job.processes.length > 1 then 300000 else 2000)) if job._id isnt proc._id and not job_processing.get(job._id)?
+  for parent in job_job.search('job.processes.process:'+proc._id, {fields:['_id'],size:10000})?.hits?.hits
+    API.job.progress(parent.fields._id,300000) if parent?.fields?._id? and not job_processing.get(parent.fields._id)
   if proc.callback
     cb = API
     cb = cb[c] for c in proc.callback.replace('API.','').split('.')
@@ -432,7 +433,7 @@ API.job.progress = (jobid,limit) ->
       return {createdAt:job.createdAt, progress:0, name:job.name, email:job.email, _id:job._id, new:false}
   else
     API.log msg: 'Checking job progress of ' + job._id, level: 'debug'
-    return API.job.process({_id: job._id, group: 'PROGRESS', limit: limit ? 2000, function: 'API.job._progress', args: job._id}).result['API.job._progress']
+    return API.job.process({_id: job._id, group: 'PROGRESS', limit: limit ? 5000, function: 'API.job._progress', args: job._id}).result['API.job._progress']
 
 API.job.rerun = (jobid,uid) ->
   job = job_job.get jobid
