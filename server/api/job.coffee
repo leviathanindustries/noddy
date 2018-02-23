@@ -121,7 +121,7 @@ API.add 'job/processing/reload',
     roleRequired: if API.settings.dev then false else 'job.admin'
     action: () -> return API.job.reload()
 
-API.add 'job/:which/remove',
+API.add 'job/clear/:which',
   get:
     authRequired: 'root'
     action: () ->
