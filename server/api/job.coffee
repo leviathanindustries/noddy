@@ -249,20 +249,19 @@ API.job.process = (proc) ->
   return false if typeof proc isnt 'object'
   proc.args = JSON.stringify proc.args if proc.args? and typeof proc.args is 'object' # in case a process is passed directly with non-string args
   if proc.limit?
-    proc.timeout = Date.now() + proc.limit
     proc.group ?= proc.function
+    waitfor = job_processing.get proc.group
+    if waitfor?.timeout?
+      future = new Future()
+      Meteor.setTimeout (() -> future.return()), waitfor.timeout - Date.now()
+      future.wait()
+    proc.timeout = Date.now() + proc.limit
     proc.pid = proc._id ? Random.id()
     proc._id = proc.group
   try proc._cid = process.env.CID
   try proc._APPID = process.env.APP_ID
   proc._id = job_processing.insert proc # in case is a process with no ID, need to catch the ID
   job_process.remove proc._id
-  if proc.limit?
-    waitfor = job_processing.get proc.group
-    if waitfor?.timeout?
-      future = new Future()
-      Meteor.setTimeout (() -> future.return()), waitfor.timeout - Date.now()
-      future.wait()
   API.log {msg:'Processing ' + proc._id,process:proc,level:'debug',function:'API.job.process'}
   fn = if proc.function.indexOf('API.') is 0 then API else global
   fn = fn[p] for p in proc.function.replace('API.','').split('.')

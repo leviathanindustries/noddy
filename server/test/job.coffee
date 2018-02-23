@@ -21,9 +21,10 @@ API.job.test = (verbose) ->
       result.first = API.job.limit 2000, 'API.job.running', undefined, 'JOBTEST'
       result.second = API.job.limit 3000, 'API.job.running', undefined, 'JOBTEST'
       result.third = API.job.limit 1000, 'API.job.running', undefined, 'JOBTEST'
+      result.fourth = API.job.limit 2000, 'API.job.running', undefined, 'JOBTEST'
       result.limitend = Date.now()
       result.limitdifference = result.limitend - result.limitstart
-      return result.first? and result.second? and result.third? and result.limitdifference > 6000 and result.first is (API.settings.job?.startup ? false) and result.first is result.second and result.second is result.third
+      return result.first? and result.second? and result.third? and result.fourth? and result.limitdifference > 6000 and result.first is (API.settings.job?.startup ? false) and result.first is result.second and result.second is result.third and result.third is result.fourth
   ]
 
   if API.settings.job?.startup is true
