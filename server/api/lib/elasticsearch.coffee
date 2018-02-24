@@ -4,6 +4,7 @@
 # because the logger uses ES to log logs, ES uses console.log at some points where other things should use API.log
 # NOTE: if an index/type can be public, just make it public and have nginx route to it directly, saving app load.
 
+import Future from 'fibers/future'
 import fs from 'fs'
 
 API.es = {}
@@ -37,6 +38,27 @@ for r in [0,1,2]
     delete:
       authRequired: true
       action: () -> return API.es.action this.user, 'DELETE', this.urlParams, this.queryParams, this.request.body
+
+# track if we are waiting on retry to connect http to ES (when it is busy it takes a while to respond)
+API.es._waiting = false
+API.es._retries = {
+  baseTimeout: 100,
+  maxTimeout: 5000,
+  times: 10,
+  shouldRetry: (err,res,cb) ->
+    rt = false
+    try
+      serr = err.toString()
+      rt = serr.indexOf('ECONNREFUSED') isnt -1 or serr.indexOf('ECONNRESET') isnt -1 or serr.indexOf('socket hang up') isnt -1 or (typeof err?.response?.statusCode is 'number' and err.response.statusCode >= 500)
+    catch
+      rt = true
+    if rt and API.settings.dev # cannot API.log because will already be hitting ES access problems
+      console.log 'Waiting for Retry on ES connection'
+      try console.log serr
+      try console.log err?.response?.statusCode
+    API.es._waiting = rt
+    cb null, rt
+}
 
 API.es.action = (uacc, action, urlp, params, data, refresh) ->
   rt = ''
@@ -83,10 +105,10 @@ API.es.refresh = (index, url) ->
 API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url) ->
   console.log('ES checking mapping for ' + index + (if API.settings.dev then '_dev') + ' ' + type) if API.settings.log?.level is 'debug'
   try
-    try HTTP.call 'PUT', url + '/' + index + (if API.settings.dev then '_dev')
+    try RetryHttp.call 'PUT', url + '/' + index + (if API.settings.dev then '_dev'), {retry:API.es._retries}
     maproute = index + (if API.settings.dev then '_dev') + '/_mapping/' + type
     try
-      m = HTTP.call 'GET', url + '/' + maproute
+      m = RetryHttp.call 'GET', url + '/' + maproute, {retry:API.es._retries}
       overwrite = true if _.isEmpty(m.data)
     catch
       overwrite = true
@@ -98,7 +120,7 @@ API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url) ->
         else
           try
             if API.settings.es.mappings.indexOf('http') is 0
-              maps = HTTP.call('GET', API.settings.es.mappings).data
+              maps = RetryHttp.call('GET', API.settings.es.mappings, {retry:API.es._retries}).data
             else
               maps = JSON.parse fs.readFileSync(API.settings.es.mappings).toString()
         if maps?[index]?[type]?
@@ -111,7 +133,7 @@ API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url) ->
         else
           try
             if API.settings.es.mappings.indexOf('http') is 0
-              mapping = HTTP.call('GET', API.settings.es.mapping).data
+              mapping = RetryHttp.call('GET', API.settings.es.mapping, {retry:API.es._retries}).data
             else
               mapping = JSON.parse fs.readFileSync(API.settings.es.mapping).toString()
       if not mapping?
@@ -119,7 +141,7 @@ API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url) ->
       if not mapping?
         try mapping = JSON.parse fs.readFileSync(process.env.PWD + '/public/mapping.json').toString()
       if mapping?
-        HTTP.call 'PUT', url + '/' + maproute, data: mapping
+        RetryHttp.call 'PUT', url + '/' + maproute, {data: mapping, retry:API.es._retries}
         console.log('ES mapping created') if API.settings.log?.level is 'debug'
       else
         console.log('ES has no mapping available') if API.settings.log?.level is 'debug'
@@ -135,6 +157,11 @@ API.es.mapping = (index, type, url=API.settings.es.url) ->
   return API.es.call('GET', index + '/_mapping/' + type, undefined, undefined, undefined, undefined, undefined, url)[index].mappings[type]
 
 API.es.call = (action, route, data, refresh, versioned, scan, scroll='1m', url=API.settings.es.url) ->
+  if API.es._waiting
+    future = new Future()
+    Meteor.setTimeout (() -> future.return()), 100
+    future.wait()
+    API.es._waiting = false
   route = '/' + route if route.indexOf('/') isnt 0
   return false if action is 'DELETE' and route.indexOf('/_all') is 0 # disallow delete all
   if API.settings.dev and route.indexOf('_dev') is -1 and route.indexOf('/_') isnt 0
@@ -155,7 +182,8 @@ API.es.call = (action, route, data, refresh, versioned, scan, scroll='1m', url=A
       if action is 'POST' and data?.query? and data.sort? and routeparts.length > 1
         skey = _.keys(data.sort)[0]
         delete opts.data.sort if JSON.stringify(API.es.mapping(routeparts[0],routeparts[1])).indexOf(skey) is -1
-    ret = HTTP.call action, url + route, opts
+    opts.retry = API.es._retries
+    ret = RetryHttp.call action, url + route, opts
     API.es.refresh('/' + routeparts[0], url) if refresh and action in ['POST','PUT']
     ld = JSON.parse(JSON.stringify(ret.data))
     ld.hits?.NOTE = 'Results length reduced from ' + ld.hits.hits.length + ' to 1 for logging example, does not affect output'
@@ -234,7 +262,7 @@ API.es.import = (index, type, data, bulk=50000, url=API.settings.es.url) ->
     pkg += JSON.stringify(meta) + '\n'
     pkg += JSON.stringify(if row._source then row._source else row) + '\n'
     if counter is bulk or parseInt(r) is (rows.length - 1)
-      hp = HTTP.call 'POST', url + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'}}
+      hp = RetryHttp.call 'POST', url + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
       responses.push hp
       pkg = ''
       counter = 0

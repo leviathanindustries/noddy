@@ -20,3 +20,4 @@ http@1.4.0
 coffeescript
 underscore@1.0.10
 meteorhacks:async
+dispatch:retry-http
