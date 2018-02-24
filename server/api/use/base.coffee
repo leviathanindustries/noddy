@@ -78,7 +78,7 @@ API.use.base.test = (verbose) ->
   return result
 
 API.use.base.test._examples = {
-	record: {
+  record: {
     "dcdate": "2011-10-01T00:00:00Z",
     "dcpublisher": [
       "Springer"

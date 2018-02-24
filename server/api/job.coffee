@@ -253,7 +253,7 @@ API.job.create = (job) ->
   return job
 
 API.job.limit = (limitms,fn,args,group) -> # a handy way to directly create a sync throttled process
-  pr = {_id:Random.id(),group:(group ? fn), function: fn, args: args, signature: encodeURIComponent(fn + '_' + args), limit: limitms, save: API.settings.dev}
+  pr = {priority:10000,_id:Random.id(),group:(group ? fn), function: fn, args: args, signature: encodeURIComponent(fn + '_' + args), limit: limitms, save: API.settings.dev}
   jp = job_process.insert pr
   jr = job_result.get pr._id
   while not jr?
@@ -268,7 +268,7 @@ API.job.process = (proc) ->
   return false if typeof proc isnt 'object'
   proc.args = JSON.stringify proc.args if proc.args? and typeof proc.args is 'object' # in case a process is passed directly with non-string args
   try proc._cid = process.env.CID
-  try proc._APPID = process.env.APP_ID
+  try proc._appid = process.env.APP_ID
   proc._id = job_processing.insert proc # in case is a process with no ID, need to catch the ID
   job_process.remove proc._id
   API.log {msg:'Processing ' + proc._id,process:proc,level:'debug',function:'API.job.process'}
@@ -336,28 +336,35 @@ API.job.next = (ignore=[]) ->
     job_processing.remove 'RELOAD'
     API.job.reload()
     # TODO is it worth doing job progress checks here? If so, for all not done jobs?
-  else if not job_processing.get('STOP') and (API.settings.job?.concurrency ?= 1000000000) > job_processing.count()
-    API.log {msg:'Checking for jobs to run',ignore:ignore,function:'API.job.next',level:'all'}
-    match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
-    match.must_not.push term: 'group.exact':g for g in ignore
-    p = job_process.find match, {sort:{priority:{order:'desc'}}, random:true} # TODO check if random sorted wil work - may have to be more complex
-    if p and not job_processing.get(p._id)
-      if p.limit?
-        lm = job_limit.get p.group
-        if lm? and lm.last + p.limit > now
-          ignore.push p.group
-          API.job._ignores[p.group] = now + p.limit
-          return API.job.next ignore
+  else if not job_processing.get('STOP')
+    if (API.settings.job?.concurrency ?= 1000000000) <= job_processing.count()
+      API.log {msg:'Not running more jobs, job max concurrency reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
+    else if (API.settings.job?.memory ? 1300000000) <= process.memoryUsage().rss
+      # TODO should check why this is happening, is it memory leak or just legit usage while running lots of jobs?
+      # and if legit and being hit on every available machine in the cluster, should trigger alert to start more cluster machines?
+      API.log {msg:'Not running more jobs, job max memory reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
+    else
+      API.log {msg:'Checking for jobs to run',ignore:ignore,function:'API.job.next',level:'all'}
+      match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
+      match.must_not.push term: 'group.exact':g for g in ignore
+      p = job_process.find match, {sort:{priority:{order:'desc'}}, random:true} # TODO check if random sorted wil work - may have to be more complex
+      if p and not job_processing.get(p._id)
+        if p.limit?
+          lm = job_limit.get p.group
+          if lm? and lm.last + p.limit > now
+            ignore.push p.group
+            API.job._ignores[p.group] = now + p.limit
+            return API.job.next ignore
+          else
+            job_limit.insert {group:lm.group,last:lm.last} if lm? and API.settings.dev # keep a history of limit counters until service restarts
+            jl = job_limit.insert {_id:p.group,group:p.group,last:now}
+            return API.job.process p
         else
-          job_limit.insert {group:lm.group,last:lm.last} if lm? and API.settings.dev # keep a history of limit counters until service restarts
-          jl = job_limit.insert {_id:p.group,group:p.group,last:now}
           return API.job.process p
-      else
-        return API.job.process p
 
 API.job._iid
 API.job.start = (interval=API.settings.job?.interval ? 1000) ->
-  API.log 'Starting job runner with interval ' + interval
+  API.log {msg: 'Starting job runner with interval ' + interval, _cid: process.env.CID, _appid: process.env.APP_ID, function: 'API.job.start', level: 'all'}
   # create a repeating limited stuck check process with id 'STUCK' so that it can check for stuck jobs
   # multiple clusters trying to create it wont matter because they will just overwrite each other, eventually only one process will run
   job_limit.remove('*')

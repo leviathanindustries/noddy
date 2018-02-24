@@ -75,36 +75,36 @@ API.tdm.levenshtein = (a,b) ->
 		return x if x <= y and x <= z
 		return y if y <= x and y <= z
 		return z
-
-  cost
-  m = a.length
-  n = b.length
-
-  if m < n
-    c = a
-    a = b
-    b = c
-    o = m
-    m = n
-    n = o
-
-  r = [[]]
-  c = 0
-  while c < n + 1
-    c++
-    r[0][c] = c
-
-  i = 1
-  while i < m + 1
-    i++
-    r[i] = [i]
-    j = 1
-    while j < n + 1
-      j++
-      cost = if a.charAt( i - 1 ) is b.charAt( j - 1 ) then 0 else 1
-      r[i][j] = minimator( r[i-1][j] + 1, r[i][j-1] + 1, r[i-1][j-1] + cost )
-
-  dist = r[ r.length - 1 ][ r[ r.length - 1 ].length - 1 ]
+	
+	cost
+	m = a.length
+	n = b.length
+	
+	if m < n
+		c = a
+		a = b
+		b = c
+		o = m
+		m = n
+		n = o
+	
+	r = [[]]
+	c = 0
+	while c < n + 1
+		c++
+		r[0][c] = c
+	
+	i = 1
+	while i < m + 1
+		i++
+		r[i] = [i]
+		j = 1
+		while j < n + 1
+			j++
+			cost = if a.charAt( i - 1 ) is b.charAt( j - 1 ) then 0 else 1
+			r[i][j] = minimator( r[i-1][j] + 1, r[i][j-1] + 1, r[i-1][j-1] + cost )
+	
+	dist = r[ r.length - 1 ][ r[ r.length - 1 ].length - 1 ]
 	return distance:dist,detail:r
 
 API.tdm.categorise = (entity) ->
