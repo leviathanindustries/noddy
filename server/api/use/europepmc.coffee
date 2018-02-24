@@ -188,7 +188,7 @@ API.use.europepmc.authorManuscript = (pmcid,rec,fulltext,noui) ->
     pmcid ?= rec?.pmcid
     if pmcid
       cached = API.http.cache pmcid, 'epmc_aam'
-      if cached
+      if cached?
         return cached
       else
         fulltext = API.use.europepmc.xml pmcid

@@ -83,7 +83,7 @@ API.collection.prototype.get = (rid,versioned) ->
 
 API.collection.prototype.import = (recs) ->
   return API.es.import this._index, this._type, recs
-  
+
 API.collection.prototype.insert = (q, obj, uid, refresh) ->
   if typeof q is 'string' and typeof obj is 'object'
     obj._id = q
@@ -100,19 +100,25 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned) ->
   # TODO may need a lock index to control disordered overwrites
   rec = this.get q
   if rec
-    for k of obj
-      API.collection._dot(rec,k,obj[k]) if k isnt '_id'
-    rec.updatedAt = Date.now()
-    rec.updated_date = moment(rec.updatedAt, "x").format "YYYY-MM-DD HHmm"
-    API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, rec: rec, updateset: obj, level: 'debug' }) if this._route.indexOf('_log') is -1
-    if versioned
-      rs = API.es.call 'POST', this._route + '/' + rec._id, rec, refresh, versioned
-      versioned = rs._version
+    if obj.script?
+      # TODO this is not handling versioned, history, or user who made the change - consider if necessary
+      # note that this will not work unless scripts are enabled too, but that then means ensuring they cannot be passed in from remote
+      ps = API.es.call 'POST', this._route + '/' + rec._id + '/_update', obj, refresh
+      return true
     else
-      API.es.call 'POST', this._route + '/' + rec._id, rec, refresh # TODO this should catch failures due to versions, and try merges and retries (or ES layer should do this)
-    if this._history
-      this.history 'update', obj, uid
-    return if versioned? then versioned else true
+      for k of obj
+        API.collection._dot(rec,k,obj[k]) if k isnt '_id'
+      rec.updatedAt = Date.now()
+      rec.updated_date = moment(rec.updatedAt, "x").format "YYYY-MM-DD HHmm"
+      API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, rec: rec, updateset: obj, level: 'debug' }) if this._route.indexOf('_log') is -1
+      if versioned
+        rs = API.es.call 'POST', this._route + '/' + rec._id, rec, refresh, versioned
+        versioned = rs._version
+      else
+        API.es.call 'POST', this._route + '/' + rec._id, rec, refresh # TODO this should catch failures due to versions, and try merges and retries (or ES layer should do this)
+      if this._history
+        this.history 'update', obj, uid
+      return if versioned? then versioned else true
   else
     return this.each q, ((res) -> this.update res._id, obj, uid )
 

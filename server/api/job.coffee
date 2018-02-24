@@ -8,6 +8,7 @@ import moment from 'moment'
 @job_process = new API.collection index:"job", type: "process"
 @job_processing = new API.collection index:"job", type:"processing"
 @job_result = new API.collection index:"job", type:"result"
+@job_limit = new API.collection index:"job", type:"limit"
 
 API.job = {}
 
@@ -99,6 +100,15 @@ API.add 'job/results',
       else
         return data: job_result.count()
 
+API.add 'job/limits',
+  get:
+    authOptional: true
+    action: () ->
+      if this.user? and API.accounts.auth 'root', this.user
+        return job_limit.search this.queryParams
+      else
+        return data: job_limit.count()
+
 API.add 'job/processes',
   get:
     authOptional: true
@@ -129,7 +139,9 @@ API.add 'job/clear/:which',
       if this.urlParams.which is 'results'
         return job_result.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
       else if this.urlParams.which is 'processes'
-        return job_process.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
+        res = job_process.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
+        job_process.insert _id: 'STUCK', repeat: true, function: 'API.job.stuck', priority: 1, group: 'API.job.stuck', limit: 900000
+        return res
       else if this.urlParams.which is 'processing'
         return job_processing.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
       else if this.urlParams.which is 'jobs'
@@ -202,7 +214,6 @@ API.job.create = (job) ->
     # However the returned (or callbacked) result object will still have the JSON version as normal.
     proc.callback ?= job.callback # optional callback name string per job or process, will call when process completes. Processes do return too, so either way is good
     proc.signature = encodeURIComponent proc.function + '_' + proc.args # combines with refresh to decide if need to run process or just pick up result from a same recent process
-    proc.save ?= job.save ? true # option can set one or all processes to not bother saving to job_result
 
     job.refresh = parseInt(job.refresh) if typeof job.refresh is 'string'
     if job.refresh is true or job.refresh is 0 or proc.callback? or proc.repeat?
@@ -241,23 +252,21 @@ API.job.create = (job) ->
     job._id = job_job.insert job
   return job
 
-API.job.limit = (limitms,fname,args,group,save=API.settings.dev) -> # a handy way to directly create a sync throttled process
-  return API.job.process({group: group, function: fname, args: args, signature: encodeURIComponent(fname + '_' + args), limit: limitms, save: save}).result?[fname]
+API.job.limit = (limitms,fn,args,group) -> # a handy way to directly create a sync throttled process
+  pr = {_id:Random.id(),group:(group ? fn), function: fn, args: args, signature: encodeURIComponent(fn + '_' + args), limit: limitms, save: API.settings.dev}
+  jp = job_process.insert pr
+  jr = job_result.get pr._id
+  while not jr?
+    future = new Future()
+    Meteor.setTimeout (() -> future.return()), limitms
+    future.wait()
+    jr = job_result.get pr._id
+  return jr.result?[fn]
 
 API.job.process = (proc) ->
   proc = job_process.get(proc) if typeof proc isnt 'object'
   return false if typeof proc isnt 'object'
   proc.args = JSON.stringify proc.args if proc.args? and typeof proc.args is 'object' # in case a process is passed directly with non-string args
-  if proc.limit?
-    proc.group ?= proc.function
-    waitfor = job_processing.get proc.group
-    if waitfor?.timeout?
-      future = new Future()
-      Meteor.setTimeout (() -> future.return()), waitfor.timeout - Date.now()
-      future.wait()
-    proc.timeout = Date.now() + proc.limit
-    proc.pid = proc._id ? Random.id()
-    proc._id = proc.group
   try proc._cid = process.env.CID
   try proc._APPID = process.env.APP_ID
   proc._id = job_processing.insert proc # in case is a process with no ID, need to catch the ID
@@ -288,20 +297,19 @@ API.job.process = (proc) ->
       console.log JSON.stringify err
       console.log err.toString()
       console.log proc
-  if proc.save isnt false
+  try
+    job_result.insert proc # if this fails, we stringify and save that way
+  catch
     try
-      if proc.pid? then job_result.insert(proc.pid, proc) else job_result.insert proc # if this fails, we stringify and save that way
-    catch
-      try
-        proc.result.string = JSON.stringify proc.result[proc.function] # try saving as string then change it back
-        delete proc.result[proc.function]
-        if proc.pid? then job_result.insert(proc.pid, proc) else job_result.insert proc
-        proc.result[proc.function] = JSON.parse(proc.result.string)
-        delete proc.result.string
-  job_processing.remove(proc._id) if not proc.limit or Date.now() >= proc.timeout
+      proc.result.string = JSON.stringify proc.result[proc.function] # try saving as string then change it back
+      delete proc.result[proc.function]
+      job_result.insert proc
+      proc.result[proc.function] = JSON.parse(proc.result.string)
+      delete proc.result.string
+  job_processing.remove proc._id
   if proc.repeat
     proc.counter ?= 1
-    proc.original ?= proc.pid ? proc._id
+    proc.original ?= proc._id
     pn = JSON.parse(JSON.stringify(proc))
     pn.repeat -= 1 if pn.repeat isnt true
     pn.counter += 1
@@ -319,7 +327,6 @@ API.job.process = (proc) ->
 API.job._ignores = {}
 API.job.next = (ignore=[]) ->
   now = Date.now()
-  job_processing.remove 'timeout:<' + now # get rid of old processing that were just there to limit the next start if necessary
   for k, v of API.job._ignores
     if v <= now
       delete API.job._ignores[k]
@@ -335,10 +342,16 @@ API.job.next = (ignore=[]) ->
     match.must_not.push term: 'group.exact':g for g in ignore
     p = job_process.find match, {sort:{priority:{order:'desc'}}, random:true} # TODO check if random sorted wil work - may have to be more complex
     if p and not job_processing.get(p._id)
-      if p.limit and job_processing.get(p.group)
-        ignore.push p.group
-        API.job._ignores[p.group] = now + p.limit ? 0
-        return API.job.next ignore
+      if p.limit?
+        lm = job_limit.get p.group
+        if lm? and lm.last + p.limit > now
+          ignore.push p.group
+          API.job._ignores[p.group] = now + p.limit
+          return API.job.next ignore
+        else
+          job_limit.insert {group:lm.group,last:lm.last} if lm? and API.settings.dev # keep a history of limit counters until service restarts
+          jl = job_limit.insert {_id:p.group,group:p.group,last:now}
+          return API.job.process p
       else
         return API.job.process p
 
@@ -347,6 +360,7 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   API.log 'Starting job runner with interval ' + interval
   # create a repeating limited stuck check process with id 'STUCK' so that it can check for stuck jobs
   # multiple clusters trying to create it wont matter because they will just overwrite each other, eventually only one process will run
+  job_limit.remove('*')
   job_process.remove [{function:'API.job.stuck'},{group:'PROGRESS'}]
   job_processing.remove [{function:'API.job.stuck'},{group:'PROGRESS'}]
   job_result.remove [{function:'API.job.stuck'},{group:'PROGRESS'}]
@@ -396,17 +410,12 @@ API.job.status = (filter='*') ->
       newest: {_id: jrn._id, createdAt: jrn.createdAt, created_date: jrn.created_date} if jrn = job_result.find(filter, true)
   groups = API.es.terms 'job' + (if API.settings.dev then '_dev' else ''), 'job_process,job_processing,job_result', 'group', 1000, true, filter
   res.limits = {}
-  for g in groups
-    res.limits[g.term] =
-      count: g.count
-      waiting: job_process.count({'group.exact':g.term}) # TODO this would have to take account of a provided filter
-      timeout: moment(lt.timeout, "x").format("YYYY-MM-DD HHmm") if lt = job_processing.get(g.term)
   return res
 
 API.job.reload = (jobid) ->
   ret = 0
   job_processing.each (if jobid then 'job:'+jobid else '*'), ((proc) ->
-    if proc._id not in ['RELOAD','STOP'] and not job_process.get(proc._id) and not job_result.get proc._id
+    if proc._id not in ['RELOAD','STOP'] and not job_process.get(proc._id) and not job_result.get(proc._id)
       proc.reloaded ?= []
       proc.reloaded.push proc.createdAt
       job_process.insert proc

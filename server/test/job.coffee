@@ -7,6 +7,13 @@ API.add 'job/test',
     roleRequired: if API.settings.dev then undefined else 'root'
     action: () -> return API.job.test this.queryParams.verbose
 
+API.job._test = {
+  counter: 0,
+  times: [],
+  run: () ->
+    API.job._test.times.push(Date.now())
+    API.job._test.counter += 1
+}
 API.job.test = (verbose) ->
   result = {passed:[],failed:[]}
 
@@ -20,11 +27,39 @@ API.job.test = (verbose) ->
       result.limitstart = Date.now()
       result.first = API.job.limit 2000, 'API.job.running', undefined, 'JOBTEST'
       result.second = API.job.limit 3000, 'API.job.running', undefined, 'JOBTEST'
-      result.third = API.job.limit 1000, 'API.job.running', undefined, 'JOBTEST'
-      result.fourth = API.job.limit 2000, 'API.job.running', undefined, 'JOBTEST'
+      result.third = API.job.limit 2000, 'API.job.running', undefined, 'JOBTEST'
       result.limitend = Date.now()
       result.limitdifference = result.limitend - result.limitstart
-      return result.first? and result.second? and result.third? and result.fourth? and result.limitdifference > 6000 and result.first is (API.settings.job?.startup ? false) and result.first is result.second and result.second is result.third and result.third is result.fourth
+      return result.first? and result.second? and result.third? and result.limitdifference > 5000 and result.first is (API.settings.job?.startup ? false) and result.first is result.second and result.second is result.third
+    () ->
+      result.stlimitstart = Date.now()
+      API.job._test.counter = 0
+      API.job._test.times = []
+      Meteor.setTimeout (() -> API.job.limit 2000, 'API.job._test.run', undefined, 'JOBTEST'), 1
+      Meteor.setTimeout (() -> API.job.limit 2000, 'API.job._test.run', undefined, 'JOBTEST'), 1
+      Meteor.setTimeout (() -> API.job.limit 2000, 'API.job._test.run', undefined, 'JOBTEST'), 1
+      while API.job._test.counter isnt 3
+        future = new Future()
+        Meteor.setTimeout (() -> future.return()), 1500
+        future.wait()
+      result.sttimes = API.job._test.times
+      result.stlimitend = Date.now()
+      result.stlimitdifference = result.stlimitend - result.stlimitstart
+      API.job._test.counter = 0
+      API.job._test.times = []
+      return result.stlimitdifference > 6000
+    () ->
+      result.limits = job_limit.search(group:"JOBTEST",{sort:{last:{order:'desc'}},fields:['last']})?.hits?.hits
+      result.greater = true
+      result.diffs = []
+      ts = true
+      for lm in result.limits
+        if ts isnt true
+          diff = ts - lm.fields.last[0]
+          result.diffs.push diff
+          result.greater = diff > 2000
+        ts = lm.fields.last[0]
+      return result.greater is true
   ]
 
   if API.settings.job?.startup is true
@@ -34,7 +69,7 @@ API.job.test = (verbose) ->
     tests.push () ->
       while result.progress?.progress isnt 100
         future = new Future()
-        setTimeout (() -> future.return()), 1500
+        Meteor.setTimeout (() -> future.return()), 1500
         future.wait()
         result.progress = API.job.progress result.job._id
         return true if result.progress.progress is 100
@@ -50,6 +85,7 @@ API.job.test = (verbose) ->
   job_process.remove group: 'JOBTEST'
   job_processing.remove group: 'JOBTEST'
   job_result.remove group: 'JOBTEST'
+  job_limit.remove group: 'JOBTEST'
 
   return result
 
