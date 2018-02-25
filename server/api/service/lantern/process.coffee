@@ -33,7 +33,7 @@ _formatepmcdate = (date) ->
       dy = "0" + dy if dy.length is 1
       return yr + '-' + mth + '-' + dy + 'T00:00:00Z'
   catch
-    return date
+    return undefined
 
 
 API.service.lantern.process = (proc) ->
@@ -140,11 +140,21 @@ API.service.lantern.process = (proc) ->
       result.grants = eupmc.grantsList.grant
       result.provenance.push 'Added grants data from EUPMC'
     if eupmc.journalInfo?.dateOfPublication
-      result.publication_date = _formatepmcdate eupmc.journalInfo.dateOfPublication
-      result.provenance.push 'Added date of publication from EUPMC'
+      fd = _formatepmcdate eupmc.journalInfo.dateOfPublication
+      if fd?
+        result.publication_date = fd
+        result.provenance.push 'Added date of publication from EUPMC'
+      else
+        result._invalid_date_of_publication = eupmc.journalInfo.dateOfPublication
+        result.provenance.push 'Could not add invalid date of publication from EUPMC (' + result._invalid_date_of_publication + ')'
     if eupmc.electronicPublicationDate
-      result.electronic_publication_date = _formatepmcdate eupmc.electronicPublicationDate
-      result.provenance.push 'Added electronic publication date from EUPMC'
+      efd = _formatepmcdate eupmc.electronicPublicationDate
+      if efd
+        result.electronic_publication_date = efd
+        result.provenance.push 'Added electronic publication date from EUPMC'
+      else
+        result_invalid_date_of_electronic_publication = eupmc.electronicPublicationDate
+        result.provenance.push 'Could not add invalid electronic publication date from EUPMC (' + result_invalid_date_of_electronic_publication + ')'
 
     xml = API.use.europepmc.xml(result.pmcid) if result.pmcid and result.open_access and result.in_epmc
     if xml is 404

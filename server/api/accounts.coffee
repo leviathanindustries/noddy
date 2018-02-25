@@ -258,7 +258,7 @@ API.accounts.login = (params, user, request) ->
     _rs = Random.hexString 30
     nt = uid: user._id, action: 'resume', resume: API.accounts.hash(_rs), timestamp: Date.now(), timeout: Date.now() + (settings.cookie?.timeout ? 259200) * 60 * 1000
     nt.fingerprint = API.accounts.hash(params.fingerprint) if params.fingerprint
-    nt.timeout_date = moment(nt.timeout, "x").format "YYYY-MM-DD HHmm"
+    nt.timeout_date = moment(nt.timeout, "x").format "YYYY-MM-DD HHmm.ss"
     Tokens.insert nt
     services = {}
     services[s] = _.omit(user.service[s], 'private') for s of user.service

@@ -10,14 +10,16 @@
     "level": "debug",
     "notify": true,
     "from": "DEFAULT_LOG_FROM_ADDRESS",
-    "to": "DEFAULT_LOG_TO_ADDRESS"
+    "to": "DEFAULT_LOG_TO_ADDRESS",
+    "bulk": "Optional number, if zero logs will be saved as soon as created, otherwise if not zero, logs will only be saved when there is a stack of them this size. If not set at all, logs will be bulked at default of 5000",
+    "timeout": "Optional number of ms to save the log stack even if not at the bulk size yet, defaults to 300000 (5 minutes)"
   },
   "blacklist": {
     "disabled": "if true, blacklist never gets checked",
     "sheet": "the URL of a google sheet from which the API blacklist info can be read"
   },
   "es": {
-    "url": "http://localhost:9200",
+    "url": "http://localhost:9200 - can be a string of one URL or a list of URL strings, all of which must have http or https at the start. For a list, one will be chosen at random for any connection",
     "index": "noddy - this will default to settings.name if not provided",
     "mappings": "OPTIONAL OBJECT WITH NAME KEYS OF INDEXES CONTAINING TYPE OR JUST TYPES AS TOP LEVEL KEYS, POINTING TO MAPPING OBJECTS FOR THAT TYPE OR INDEXTYPE".
     "mapping": "OPTIONAL A MAPPING OBJECT TO BE USED GENERALLY FOR ALL TYPES, OR A STRING URL TO REMOTE MAPPING LOCATION, OR STRING LOCAL FILE LOCATION - ONLY CHECKED IF MAPPINGS IS NOT PRESENT. IF NEITHER ARE PRESENT, A DEFAULT MAPPING FROM THE PUBLIC FOLDER WILL BE USED, EITHER NAMED mapping.json FOR ES < 5 OR mapping5.json FOR ES >= 5. IF THAT IS ALSO NOT PRESENT, AN ATTEMPT TO GET SUCH DEFAULT MAPPINGS FROM https://static.cottagelabs.com WILL OCCUR",
@@ -47,7 +49,8 @@
   "job": {
     "startup": "true/false, if true the job runner is started on system startup",
     "interval": "Optional number of milliseconds to wait between checking for new job processes to start (if not set, 1000 is used)",
-    "concurrency": "Optional max number of job processes to allow processing at the same time, across all machines"
+    "concurrency": "Optional max number of job processes to allow processing at the same time, across all machines",
+    "memory": "Optional max size of process memory space - stops new jobs running if already using most of the available memory"
   },
   "store": {
     "api": "The API URL that will definitely go to the store route on the machine with the storage on it (nginx can configure it to always do that, but local code may still call the store code, so may still need to know this to forward it on)",

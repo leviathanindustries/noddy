@@ -64,7 +64,7 @@ API.collection.prototype.history = (action, doc, uid) ->
         document: if typeof doc is 'object' then doc._id else doc
         createdAt: Date.now()
         uid: uid
-      change.created_date = moment(change.createdAt, "x").format "YYYY-MM-DD HHmm"
+      change.created_date = moment(change.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
       change[action] = doc
       ret = API.es.call 'POST', this._route + '_history', change
       if not ret?
@@ -90,7 +90,7 @@ API.collection.prototype.insert = (q, obj, uid, refresh) ->
   else if typeof q is 'object' and not obj?
     obj = q
   obj.createdAt = Date.now()
-  obj.created_date = moment(obj.createdAt, "x").format "YYYY-MM-DD HHmm"
+  obj.created_date = moment(obj.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
   obj._id ?= Random.id()
   this.history('insert', obj, uid) if this._history
   return API.es.call('POST', this._route + '/' + obj._id, obj, refresh)?._id
@@ -109,7 +109,7 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned) ->
       for k of obj
         API.collection._dot(rec,k,obj[k]) if k isnt '_id'
       rec.updatedAt = Date.now()
-      rec.updated_date = moment(rec.updatedAt, "x").format "YYYY-MM-DD HHmm"
+      rec.updated_date = moment(rec.updatedAt, "x").format "YYYY-MM-DD HHmm.ss"
       API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, rec: rec, updateset: obj, level: 'debug' }) if this._route.indexOf('_log') is -1
       if versioned
         rs = API.es.call 'POST', this._route + '/' + rec._id, rec, refresh, versioned
@@ -172,7 +172,6 @@ API.collection.prototype.each = (q, opts, fn) ->
   if fn is undefined and typeof opts is 'function'
     fn = opts
     opts = undefined
-  # TODO could use es.scroll here...
   opts ?= {}
   qy = API.collection._translate q, opts
   qy.from ?= 0

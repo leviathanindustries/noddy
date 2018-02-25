@@ -22,6 +22,13 @@ else
     console.log err
 API.settings.es.index ?= API.settings.name ? 'noddy'
 
+'''API.add 'es_reindex/:index/:type',
+  get:
+    authRequired: 'root'
+    action: () ->
+      Meteor.setTimeout (() -> API.es.reindex this.urlParams.index, this.urlParams.type, undefined, this.queryParams.rename, not this.queryParams.delete? ), 1
+      return true'''
+
 _esr = 'es'
 for r in [0,1,2]
   _esr += '/:r' + r
@@ -39,28 +46,13 @@ for r in [0,1,2]
       authRequired: true
       action: () -> return API.es.action this.user, 'DELETE', this.urlParams, this.queryParams, this.request.body
 
-# track if we are waiting on retry to connect http to ES (when it is busy it takes a while to respond)
-API.es._waiting = false
-API.es._retries = {
-  baseTimeout: 100,
-  maxTimeout: 5000,
-  times: 10,
-  shouldRetry: (err,res,cb) ->
-    rt = false
-    try
-      serr = err.toString()
-      rt = serr.indexOf('ECONNREFUSED') isnt -1 or serr.indexOf('ECONNRESET') isnt -1 or serr.indexOf('socket hang up') isnt -1 or (typeof err?.response?.statusCode is 'number' and err.response.statusCode >= 500)
-    catch
-      rt = true
-    if rt and API.settings.dev # cannot API.log because will already be hitting ES access problems
-      console.log 'Waiting for Retry on ES connection'
-      try console.log serr
-      try console.log err?.response?.statusCode
-    API.es._waiting = rt
-    cb null, rt
-}
-
 API.es.action = (uacc, action, urlp, params, data, refresh) ->
+  if action is 'GET' and urlp.r0 is '_reindex' and urlp.r1? and urlp.r2?
+    if API.accounts.auth 'root', uacc
+      Meteor.setTimeout (() -> API.es.reindex urlp.r1, urlp.r2, undefined, params?.rename, not params?.delete? ), 1
+      return true
+    else
+      return 401
   rt = ''
   rt += '/' + urlp[up] for up of urlp
   rt += '/_search' if action in ['GET','POST'] and rt.indexOf('/_') is -1 and rt.split('/').length <= 3
@@ -91,8 +83,26 @@ API.es.action = (uacc, action, urlp, params, data, refresh) ->
         allowed = true
   return if allowed then API.es.call(action, rt, data, refresh) else 401
 
-# TODO add other actions in addition to map, for exmaple _reindex would be useful
-# how about _alias? And check for others too, and add here
+# track if we are waiting on retry to connect http to ES (when it is busy it takes a while to respond)
+API.es._waiting = false
+API.es._retries = {
+  baseTimeout: 100,
+  maxTimeout: 5000,
+  times: 10,
+  shouldRetry: (err,res,cb) ->
+    rt = false
+    try
+      serr = err.toString()
+      rt = serr.indexOf('ECONNREFUSED') isnt -1 or serr.indexOf('ECONNRESET') isnt -1 or serr.indexOf('socket hang up') isnt -1 or (typeof err?.response?.statusCode is 'number' and err.response.statusCode >= 500)
+    catch
+      rt = true
+    if rt and API.settings.dev # cannot API.log because will already be hitting ES access problems
+      console.log 'Waiting for Retry on ES connection'
+      try console.log serr
+      try console.log err?.response?.statusCode
+    API.es._waiting = rt
+    cb null, rt
+}
 
 API.es.refresh = (index, url) ->
   try
@@ -102,11 +112,69 @@ API.es.refresh = (index, url) ->
   catch err
     return false
 
+API.es._reindexing = false
+API.es.reindex = (index, type, mapping=API.es._mapping, rename, del, fromurl=API.settings.es.url, tourl=API.settings.es.url) ->
+  fromurl = fromurl[Math.floor(Math.random()*fromurl.length)] if Array.isArray fromurl
+  tourl = tourl[Math.floor(Math.random()*fromurl.length)] if Array.isArray tourl
+  return false if not index? or not type?
+  # index names will be treated as specific
+  # and only handle indexes in the API.settings.es.index namespace - or allow move from others? handy for moving old systems to new
+  API.es._reindexing = index + '/' + type
+  toindex = if rename? then rename.split('/')[0] else index
+  totype = if rename? and rename.indexOf('/') isnt -1 then rename.split('/')[1] else type
+  processed = 0
+  #try
+  try pim = RetryHttp.call 'PUT', tourl + '/temp_reindex_' + toindex, {retry:API.es._retries}
+  pitm = RetryHttp.call 'PUT', tourl + '/temp_reindex_' + toindex + '/_mapping/' + totype, {data: mapping, retry:API.es._retries}
+  ret = RetryHttp.call 'POST', fromurl + '/' + index + '/' + type + '/_search?search_type=scan&scroll=1m', {data:{query: { match_all: {} }, size: 5000 }, retry:API.es._retries}
+  if ret.data?._scroll_id?
+    res = RetryHttp.call 'GET', fromurl + '/_search/scroll?scroll=1m&scroll_id=' + ret.data._scroll_id, {retry:API.es._retries}
+    while (res?.data?.hits?.hits? and res.data.hits.hits.length)
+      processed += res.data.hits.hits.length
+      pkg = ''
+      for row in res.data.hits.hits
+        pkg += JSON.stringify({"index": {"_index": 'temp_reindex_' + toindex, "_type": totype, "_id": row._source._id }}) + '\n'
+        pkg += JSON.stringify(row._source) + '\n'
+      hp = RetryHttp.call 'POST', tourl + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
+      pkg = ''
+      res = RetryHttp.call 'GET', fromurl + '/_search/scroll?scroll=1m&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
+  #catch err
+  #  API.log {msg: 'Reindex failed at copy step for ' + index + ' ' + type, level:'warn', notify:true, error: err}
+  #  processed = false
+  console.log processed
+  if processed isnt false
+    console.log del
+    if del isnt false
+      deleted_original = RetryHttp.call 'DELETE', fromurl + '/' + index + '/' + type, {retry:API.es._retries}
+    #try
+    try nim = RetryHttp.call 'PUT', tourl + '/' + toindex, {retry:API.es._retries}
+    nitm = RetryHttp.call 'PUT', tourl + '/' + toindex + '/_mapping/' + totype, {data: mapping, retry:API.es._retries}
+    ret = RetryHttp.call 'POST', tourl + '/temp_reindex_' + toindex + '/' + totype + '/_search?search_type=scan&scroll=1m', {data:{query: { match_all: {} }, size: 5000 }, retry:API.es._retries}
+    if ret.data?._scroll_id?
+      res = RetryHttp.call 'GET', tourl + '/_search/scroll?scroll=1m&scroll_id=' + ret.data._scroll_id, {retry:API.es._retries}
+      while (res?.data?.hits?.hits? and res.data.hits.hits.length)
+        pkg = ''
+        for row in res.data.hits.hits
+          pkg += JSON.stringify({"index": {"_index": toindex, "_type": totype, "_id": row._source._id }}) + '\n'
+          pkg += JSON.stringify(row._source) + '\n'
+        hp = RetryHttp.call 'POST', tourl + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
+        pkg = ''
+        res = RetryHttp.call 'GET', tourl + '/_search/scroll?scroll=1m&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
+    deleted_temp = RetryHttp.call 'DELETE', tourl + '/temp_reindex_' + toindex, {retry:API.es._retries}
+    try refreshed = RetryHttp.call 'POST', tourl + '/' + toindex + '/_refresh', {retry:API.es._retries}
+    API.log {msg: 'Reindexed ' + index + ' ' + type + ' with ' + processed + ' records', level:'warn', notify:true}
+    #catch err
+    #  processed = false
+    #  API.log {msg: 'Reindex failed at recreate step for ' + index + ' ' + type, level:'warn', notify:true, error: err}
+  API.es._reindexing = false
+  return processed
+
 API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url) ->
-  console.log('ES checking mapping for ' + index + (if API.settings.dev then '_dev') + ' ' + type) if API.settings.log?.level is 'debug'
+  url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
+  console.log('ES checking mapping for ' + index + (if API.settings.dev and index.indexOf('_dev') is -1 then '_dev') + ' ' + type) if API.settings.log?.level is 'debug'
   try
-    try RetryHttp.call 'PUT', url + '/' + index + (if API.settings.dev then '_dev'), {retry:API.es._retries}
-    maproute = index + (if API.settings.dev then '_dev') + '/_mapping/' + type
+    try RetryHttp.call 'PUT', url + '/' + index + (if API.settings.dev and index.indexOf('_dev') is -1 then '_dev'), {retry:API.es._retries}
+    maproute = index + (if API.settings.dev and index.indexOf('_dev') is -1 then '_dev') + '/_mapping/' + type
     try
       m = RetryHttp.call 'GET', url + '/' + maproute, {retry:API.es._retries}
       overwrite = true if _.isEmpty(m.data)
@@ -133,7 +201,7 @@ API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url) ->
         else
           try
             if API.settings.es.mappings.indexOf('http') is 0
-              mapping = RetryHttp.call('GET', API.settings.es.mapping, {retry:API.es._retries}).data
+              mapping = HTTP.call('GET', API.settings.es.mapping).data
             else
               mapping = JSON.parse fs.readFileSync(API.settings.es.mapping).toString()
       if not mapping?
@@ -153,15 +221,12 @@ API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url) ->
       console.log err
 
 API.es.mapping = (index, type, url=API.settings.es.url) ->
+  url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
   index += '_dev' if API.settings.dev and index.indexOf('_dev') is -1
   return API.es.call('GET', index + '/_mapping/' + type, undefined, undefined, undefined, undefined, undefined, url)[index].mappings[type]
 
 API.es.call = (action, route, data, refresh, versioned, scan, scroll='1m', url=API.settings.es.url) ->
-  if API.es._waiting
-    future = new Future()
-    Meteor.setTimeout (() -> future.return()), 100
-    future.wait()
-    API.es._waiting = false
+  url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
   route = '/' + route if route.indexOf('/') isnt 0
   return false if action is 'DELETE' and route.indexOf('/_all') is 0 # disallow delete all
   if API.settings.dev and route.indexOf('_dev') is -1 and route.indexOf('/_') isnt 0
@@ -169,6 +234,17 @@ API.es.call = (action, route, data, refresh, versioned, scan, scroll='1m', url=A
     rpd[1] += '_dev'
     route = rpd.join '/'
   routeparts = route.substring(1, route.length).split '/'
+
+  while routeparts[0] + '/' + routeparts[1] is API.es._reindexing
+    future = new Future()
+    Meteor.setTimeout (() -> future.return()), 5000
+    future.wait()
+  if API.es._waiting
+    future = new Future()
+    Meteor.setTimeout (() -> future.return()), Math.floor(Math.random()*601+300)
+    future.wait()
+  API.es._waiting = false
+
   # API.es.map(routeparts[0],routeparts[1],undefined,undefined,url) if route.indexOf('/_') is -1 and routeparts.length >= 1 and action in ['POST','PUT']
   opts = data:data
   route = API.es.random(route) if route.indexOf('source') isnt -1 and route.indexOf('random=true') isnt -1
@@ -234,6 +310,7 @@ API.es.random = (route) ->
     return route
 
 API.es.terms = (index, type, key, size=100, counts=true, qry, url=API.settings.es.url) ->
+  url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
   query = if typeof qry is 'object' then qry else { query: { "match_all": {} }, size: 0, facets: {} }
   query.query = { query_string: { query: qry } } if typeof qry is 'string'
   query.facets ?= {}
@@ -246,10 +323,14 @@ API.es.terms = (index, type, key, size=100, counts=true, qry, url=API.settings.e
     return []
 
 API.es.import = (index, type, data, bulk=50000, url=API.settings.es.url) ->
+  url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
   index += '_dev' if API.settings.dev and index.indexOf('_dev') is -1
   rows = if typeof data is 'object' and not Array.isArray(data) and data?.hits?.hits? then data.hits.hits else data
   rows = [rows] if not Array.isArray rows
-  API.log 'Doing bulk import of ' + rows.length + ' rows for ' + index + ' ' + type
+  if index.indexOf('_log') is -1
+    API.log 'Doing bulk import of ' + rows.length + ' rows for ' + index + ' ' + type
+  else if API.settings.log?.level in ['all','debug']
+    console.log 'Doing bulk import of ' + rows.length + ' rows for ' + index + ' ' + type
   counter = 0
   pkg = ''
   responses = []
@@ -291,19 +372,19 @@ API.es._mapping = {
     },
     "created_date": {
       "type": "date",
-      "format" : "yyyy-MM-dd mmss||date_optional_time"
+      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
     },
     "updated_date": {
       "type": "date",
-      "format" : "yyyy-MM-dd mmss||date_optional_time"
+      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
     },
     "createdAt": {
       "type": "date",
-      "format" : "yyyy-MM-dd mmss||date_optional_time"
+      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
     },
     "updatedAt": {
       "type": "date",
-      "format" : "yyyy-MM-dd mmss||date_optional_time"
+      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
     },
     "attachments":{
       "properties": {
@@ -319,7 +400,7 @@ API.es._mapping = {
       "followingdates": {
         "mapping": {
           "type": "date"
-          "format": "yyyy-MM-dd mmss||date_optional_time"
+          "format": "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
         },
         "path_match": "date*"
       }
@@ -328,7 +409,7 @@ API.es._mapping = {
       "leadingdates": {
         "mapping": {
           "type": "date",
-          "format": "yyyy-MM-dd mmss||date_optional_time"
+          "format": "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
         },
         "path_match": "*date"
       }

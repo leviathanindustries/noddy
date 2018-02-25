@@ -69,7 +69,6 @@ _nounget = (url,callback) ->
     null,
     (e, data, res) ->
       if e?
-        API.log(e)
         callback null, { status: 'error', data: 'noun project API error', error: e}
       else
         callback null, JSON.parse(data)

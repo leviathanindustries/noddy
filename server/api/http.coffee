@@ -64,51 +64,52 @@ API.add 'http/cache/:types/clear',
 
 
 
-_save = (lookup,type='cache',content) ->
+API.http._colls = {}
+API.http._save = (lookup,type='cache',content) ->
   return undefined if API.settings.cache is false
-  cc = new API.collection index: API.settings.es.index + "_cache", type: type
+  API.http._colls[type] ?= new API.collection index: API.settings.es.index + "_cache", type: type, mapping: API.http._mapping
   lookup = JSON.stringify(lookup) if typeof lookup not in ['string','number','boolean']
   lookup = encodeURIComponent lookup
   if typeof content is 'string'
     try
-      cc.insert lookup: lookup, string: content
+      API.http._colls[type].insert lookup: lookup, string: content
       return true
     catch
       return false
   else if typeof content is 'boolean'
     try
-      cc.insert lookup: lookup, bool: content
+      API.http._colls[type].insert lookup: lookup, bool: content
       return true
     catch
       return false
   else if typeof content is 'number'
     try
-      cc.insert lookup: lookup, number: content
+      API.http._colls[type].insert lookup: lookup, number: content
       return true
     catch
       return false
   else
     try
-      cc.insert lookup: lookup, content: content
+      API.http._colls[type].insert lookup: lookup, content: content
       return true
     catch
       try
-        cc.insert lookup: lookup, string: JSON.stringify(content)
+        API.http._colls[type].insert lookup: lookup, string: JSON.stringify(content)
         return true
       catch
         return false
 
 API.http.cache = (lookup,type='cache',content,refresh=0) ->
-  return _save(lookup, type, content) if content?
+  return API.http._save(lookup, type, content) if content?
   return undefined if API.settings.cache is false
-  cc = new API.collection index: API.settings.es.index + "_cache", type: type
+  API.http._colls[type] ?= new API.collection index: API.settings.es.index + "_cache", type: type, mapping: API.http._mapping
   try
     lookup = JSON.stringify(lookup) if typeof lookup not in ['string','number']
     fnd = 'lookup.exact:"' + encodeURIComponent(lookup) + '"'
     if typeof refresh is 'number' and refresh isnt 0
       d = new Date()
       fnd += ' AND createdAt:>' + d.setDate(d.getDate() - refresh)
-    res = cc.find fnd, true
+    res = API.http._colls[type].find fnd, true
     if res?.string?
       try
         parsed = JSON.parse res.string
@@ -237,3 +238,41 @@ _phantom = (url,delay=1000,callback) ->
     )
 
 API.http.phantom = Meteor.wrapAsync(_phantom)
+
+
+
+API.http._mapping = {
+  "properties": {
+    "created_date": {
+      "type": "date",
+      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
+    },
+    "updated_date": {
+      "type": "date",
+      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
+    },
+    "createdAt": {
+      "type": "date",
+      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
+    },
+    "updatedAt": {
+      "type": "date",
+      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
+    }
+  },
+  "date_detection": false,
+  "dynamic_templates" : [
+    {
+      "default" : {
+        "match" : "*",
+        "match_mapping_type": "string",
+        "mapping" : {
+          "type" : "string",
+          "fields" : {
+            "exact" : {"type" : "{dynamic_type}", "index" : "not_analyzed", "store" : "no"}
+          }
+        }
+      }
+    }
+  ]
+}

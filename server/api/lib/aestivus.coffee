@@ -279,7 +279,8 @@ class share.Route
     # Call the endpoint if authentication doesn't fail
     if API.settings.log.connections and endpointContext.request.method isnt 'OPTIONS'
       tu = endpointContext.request.url.split('?')[0].split('#')[0]
-      if tu.indexOf('_log') is -1 and tu.indexOf('/reload/') is -1
+      console.log tu
+      if tu.replace('/api','').indexOf('/log') is 0 and (tu.indexOf('_log') is -1 and tu.indexOf('/es') is -1) and tu.indexOf('/reload/') is -1
         API.log
           url: endpointContext.request.url.split('apikey=')[0], # TODO prob want to keep full URL with opts, or no opts, and remove apikey properly
           method: endpointContext.request.method,
@@ -344,7 +345,7 @@ class share.Route
       endpointContext.userId = auth.user._id
       rd = Date.now()
       if not auth.user.retrievedAt? or rd - auth.user.retrievedAt > 60000
-        Users.update auth.user._id, {retrievedAt:rd, retrieved_date:moment(rd, "x").format("YYYY-MM-DD HHmm")}
+        Users.update auth.user._id, {retrievedAt:rd, retrieved_date:moment(rd, "x").format("YYYY-MM-DD HHmm.ss")}
       true
     else if optional
       true
