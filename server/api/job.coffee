@@ -258,7 +258,7 @@ API.job.limit = (limitms,fn,args,group,refresh=86400000) -> # directly create a 
     fnd += ' AND createdAt:>' + Date.now() - refresh
   jr = job_result.find fnd, true
   if not jr?
-    rs = job_processing.find {'signature.exact':proc.signature}, true
+    rs = job_processing.find {'signature.exact':pr.signature}, true
     if rs?
       pr._id = rs._id
     else
