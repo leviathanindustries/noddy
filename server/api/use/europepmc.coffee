@@ -148,6 +148,13 @@ API.use.europepmc.indexed = (startdate,enddate,from,size,qrystr='') ->
 
 API.use.europepmc.licence = (pmcid,rec,fulltext,noui) ->
   API.log msg: 'Europepmc licence checking', pmcid: pmcid, rec: rec?, fulltext: fulltext?, noui: noui
+
+  if pmcid? or rec?.pmcid?
+    cached = API.http.cache (pmcid ? rec.pmcid), 'epmc_licence'
+    if cached?
+      cached.cache = true
+      return cached
+
   maybe_licence
   res = API.use.europepmc.search('PMC' + pmcid.toLowerCase().replace('pmc','')) if pmcid and not rec
   if res?.total > 0 or rec or fulltext
@@ -158,11 +165,13 @@ API.use.europepmc.licence = (pmcid,rec,fulltext,noui) ->
       licinperms = API.service.lantern.licence undefined,undefined,fulltext,'<permissions>','</permissions>'
       if licinperms.licence?
         licinperms.source = 'epmc_xml_permissions'
+        API.http.cache pmcid, 'epmc_licence', licinperms
         return licinperms
 
       licanywhere = API.service.lantern.licence undefined,undefined,fulltext
       if licanywhere.licence?
         licanywhere.source = 'epmc_xml_outside_permissions'
+        API.http.cache pmcid, 'epmc_licence', licanywhere
         return licanywhere
 
       if fulltext.indexOf('<permissions>') isnt -1
@@ -176,8 +185,10 @@ API.use.europepmc.licence = (pmcid,rec,fulltext,noui) ->
         licsplash = API.service.lantern.licence url, false, page
         if licsplash.licence?
           licsplash.source = 'epmc_html'
+          API.http.cache pmcid, 'epmc_licence', licsplash
           return licsplash
 
+    API.http.cache(pmcid, 'epmc_licence', maybe_licence) if maybe_licence?
     return maybe_licence ? false
   else
     return false
@@ -192,11 +203,14 @@ API.use.europepmc.authorManuscript = (pmcid,rec,fulltext,noui) ->
     if pmcid
       cached = API.http.cache pmcid, 'epmc_aam'
       if cached?
+        cached.cache = true
         return cached
       else
         fulltext = API.use.europepmc.xml pmcid
         if typeof fulltext is 'string' and fulltext.indexOf('pub-id-type=\'manuscript\'') isnt -1 and fulltext.indexOf('pub-id-type="manuscript"') isnt -1
-          return {aam:true,info:'fulltext'}
+          resp = {aam:true,info:'fulltext'}
+          API.http.cache pmcid, 'epmc_aam', resp
+          return resp
         else if not noui
           url = 'https://europepmc.org/articles/PMC' + pmcid.toLowerCase().replace('pmc','')
           try
@@ -208,16 +222,24 @@ API.use.europepmc.authorManuscript = (pmcid,rec,fulltext,noui) ->
               s3 = 'logo-nihpa.gif'
               s4 = 'logo-wtpa2.gif'
               if page.indexOf(s1) isnt -1 or page.indexOf(s2) isnt -1 or page.indexOf(s3) isnt -1 or page.indexOf(s4) isnt -1
-                API.http.cache pmcid, 'epmc_aam', {aam:true,info:'splashpage'}
-                return {aam:true,info:'splashpage'}
-          catch err
-            if err.response?.statusCode is 404
-              return {aam:false,info:'not in EPMC (404)'}
-            else if err.response?.statusCode is 403 and err.response?.content?.indexOf('block access') is 0
+                resp = {aam:true,info:'splashpage'}
+                API.http.cache pmcid, 'epmc_aam', resp
+                return resp
+              else
+                resp = {aam:false,info:'EPMC splashpage checked, no indicator found'}
+                API.http.cache pmcid, 'epmc_aam', resp
+                return resp
+            else if pg?.statusCode is 404
+              resp = {aam:false,info:'not in EPMC (404)'}
+              API.http.cache pmcid, 'epmc_aam', resp
+              return resp
+            else if pg?.statusCode is 403
               API.log 'EPMC blocking us on author manuscript lookup', pmcid: pmcid
               return {info: 'EPMC blocking access, AAM status unknown'}
-            else
-              return {info:'Unknown error accessing EPMC', error: err.toString(), code: err.response?.statusCode}
+            else if pg?
+              return {info: 'EPMC was accessed but aam could not be discerned'}
+          catch err
+            return {info:'Unknown error accessing EPMC', error: err.toString(), code: err.response?.statusCode}
   return {aam:false,info:''}
 
 API.use.europepmc.xml = (pmcid) ->

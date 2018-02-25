@@ -76,7 +76,7 @@ API.collection.prototype.history = (action, doc, uid) ->
 
 API.collection.prototype.get = (rid,versioned) ->
   # TODO is there any case for recording who has accessed certain documents?
-  if typeof rid is 'number' or (typeof rid is 'string' and rid.indexOf(' ') is -1 and rid.indexOf(':') is -1 and rid.indexOf('/') is -1)
+  if typeof rid is 'number' or (typeof rid is 'string' and rid.indexOf(' ') is -1 and rid.indexOf(':') is -1 and rid.indexOf('/') is -1 and rid.indexOf('*') is -1)
     check = API.es.call 'GET', this._route + '/' + rid
     return (if versioned then check else check._source) if check?.found isnt false and check?.status isnt 'error' and check?.statusCode isnt 404 and check?._source?
   return undefined

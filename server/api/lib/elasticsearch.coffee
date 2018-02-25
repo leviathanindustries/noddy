@@ -23,13 +23,6 @@ else
     console.log err
 API.settings.es.index ?= API.settings.name ? 'noddy'
 
-'''API.add 'es_reindex/:index/:type',
-  get:
-    authRequired: 'root'
-    action: () ->
-      Meteor.setTimeout (() -> API.es.reindex this.urlParams.index, this.urlParams.type, undefined, this.queryParams.rename, not this.queryParams.delete? ), 1
-      return true'''
-
 _esr = 'es'
 for r in [0,1,2]
   _esr += '/:r' + r
@@ -97,10 +90,11 @@ API.es._retries = {
   maxTimeout: 5000,
   times: 10,
   shouldRetry: (err,res,cb) ->
+    console.log(err?.response?.statusCode) if API.settings.dev
     rt = false
     try
       serr = err.toString()
-      rt = serr.indexOf('ECONNREFUSED') isnt -1 or serr.indexOf('ECONNRESET') isnt -1 or serr.indexOf('socket hang up') isnt -1 or (typeof err?.response?.statusCode is 'number' and err.response.statusCode >= 500)
+      rt = serr.indexOf('ECONNREFUSED') isnt -1 or serr.indexOf('ECONNRESET') isnt -1 or serr.indexOf('socket hang up') isnt -1 or (typeof err?.response?.statusCode is 'number' and err.response.statusCode > 500)
     catch
       rt = true
     if rt and API.settings.dev # cannot API.log because will already be hitting ES access problems
@@ -415,42 +409,23 @@ API.es._mapping = {
       "type": "date",
       "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
     },
-    "attachments":{
-      "properties": {
-        "attachment": {
-          "type": "attachment"
-        }
-      }
+    "attachment": {
+      "type": "attachment",
+      "index": "not_analyzed",
+      "store": "no"
     }
   },
   "date_detection": false,
   "dynamic_templates" : [
     {
-      "followingdates": {
-        "mapping": {
-          "type": "date"
-          "format": "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
-        },
-        "path_match": "date*"
-      }
-    },
-    {
-      "leadingdates": {
-        "mapping": {
-          "type": "date",
-          "format": "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
-        },
-        "path_match": "*date"
-      }
-    },
-    {
       "default" : {
         "match" : "*",
+        "unmatch": "_job_result",
         "match_mapping_type": "string",
         "mapping" : {
           "type" : "string",
           "fields" : {
-            "exact" : {"type" : "{dynamic_type}", "index" : "not_analyzed", "store" : "no"}
+            "exact" : {"type" : "{dynamic_type}", "index" : "not_analyzed", "store" : "no", "ignore_above": 1024} # ignore_above may not work in older ES...
           }
         }
       }

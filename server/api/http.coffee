@@ -67,7 +67,7 @@ API.add 'http/cache/:types/clear',
 API.http._colls = {}
 API.http._save = (lookup,type='cache',content) ->
   return undefined if API.settings.cache is false
-  API.http._colls[type] ?= new API.collection index: API.settings.es.index + "_cache", type: type, mapping: API.http._mapping
+  API.http._colls[type] ?= new API.collection index: API.settings.es.index + "_cache", type: type
   lookup = JSON.stringify(lookup) if typeof lookup not in ['string','number','boolean']
   lookup = encodeURIComponent lookup
   if typeof content is 'string'
@@ -102,7 +102,7 @@ API.http._save = (lookup,type='cache',content) ->
 API.http.cache = (lookup,type='cache',content,refresh=0) ->
   return API.http._save(lookup, type, content) if content?
   return undefined if API.settings.cache is false
-  API.http._colls[type] ?= new API.collection index: API.settings.es.index + "_cache", type: type, mapping: API.http._mapping
+  API.http._colls[type] ?= new API.collection index: API.settings.es.index + "_cache", type: type
   try
     lookup = JSON.stringify(lookup) if typeof lookup not in ['string','number']
     fnd = 'lookup.exact:"' + encodeURIComponent(lookup) + '"'
@@ -240,39 +240,3 @@ _phantom = (url,delay=1000,callback) ->
 API.http.phantom = Meteor.wrapAsync(_phantom)
 
 
-
-API.http._mapping = {
-  "properties": {
-    "created_date": {
-      "type": "date",
-      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
-    },
-    "updated_date": {
-      "type": "date",
-      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
-    },
-    "createdAt": {
-      "type": "date",
-      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
-    },
-    "updatedAt": {
-      "type": "date",
-      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
-    }
-  },
-  "date_detection": false,
-  "dynamic_templates" : [
-    {
-      "default" : {
-        "match" : "*",
-        "match_mapping_type": "string",
-        "mapping" : {
-          "type" : "string",
-          "fields" : {
-            "exact" : {"type" : "{dynamic_type}", "index" : "not_analyzed", "store" : "no"}
-          }
-        }
-      }
-    }
-  ]
-}

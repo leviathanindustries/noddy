@@ -6,11 +6,11 @@ import moment from 'moment'
 
 API.job = {}
 
-@job_job = new API.collection index: API.settings.es.index + "_job", type: "job", mapping: API.job._mapping
-@job_process = new API.collection index: API.settings.es.index + "_job", type: "process", mapping: API.job._mapping
-@job_processing = new API.collection index: API.settings.es.index + "_job", type: "processing", mapping: API.job._mapping
-@job_result = new API.collection index: API.settings.es.index + "_job", type: "result", mapping: API.job._mapping
-@job_limit = new API.collection index: API.settings.es.index + "_job", type: "limit", mapping: API.job._mapping
+@job_job = new API.collection index: API.settings.es.index + "_job", type: "job"
+@job_process = new API.collection index: API.settings.es.index + "_job", type: "process"
+@job_processing = new API.collection index: API.settings.es.index + "_job", type: "processing"
+@job_result = new API.collection index: API.settings.es.index + "_job", type: "result"
+@job_limit = new API.collection index: API.settings.es.index + "_job", type: "limit"
 
 API.add 'job',
   get: () -> return data: 'The job API'
@@ -220,7 +220,7 @@ API.job.create = (job) ->
       proc._id = Random.id()
       imports.push proc
     else
-      fnd = 'signature.exact:"' + proc.signature + '" AND NOT exists:"result.error"'
+      fnd = 'signature.exact:"' + proc.signature + '" AND NOT exists:"_job_result.error"'
       try
         if typeof job.refresh is 'number' and job.refresh isnt 0
           d = new Date()
@@ -253,7 +253,7 @@ API.job.create = (job) ->
 
 API.job.limit = (limitms,fn,args,group,refresh=86400000) -> # directly create a sync throttled process (will default re-use any result within 24 hrs
   pr = {priority:10000,_id:Random.id(),group:(group ? fn), function: fn, args: args, signature: encodeURIComponent(fn + '_' + args), limit: limitms}
-  fnd = 'signature.exact:"' + pr.signature + '" AND NOT exists:"result.error"'
+  fnd = 'signature.exact:"' + pr.signature + '" AND NOT exists:"_job_result.error"'
   if typeof refresh is 'number' and refresh isnt 0
     fnd += ' AND createdAt:>' + Date.now() - refresh
   jr = job_result.find fnd, true
@@ -268,7 +268,7 @@ API.job.limit = (limitms,fn,args,group,refresh=86400000) -> # directly create a 
       Meteor.setTimeout (() -> future.return()), limitms
       future.wait()
       jr = job_result.get pr._id
-  return jr.result?[fn]
+  return API.job.result jr
 
 API.job.process = (proc) ->
   proc = job_process.get(proc) if typeof proc isnt 'object'
@@ -282,7 +282,7 @@ API.job.process = (proc) ->
   fn = if proc.function.indexOf('API.') is 0 then API else global
   fn = fn[p] for p in proc.function.replace('API.','').split('.')
   try
-    proc.result = {}
+    proc._job_result = {}
     args = proc # default just send the whole process as the arg
     if proc.args?
       if typeof proc.args is 'string'
@@ -294,23 +294,30 @@ API.job.process = (proc) ->
         args = proc.args
     if typeof args is 'object' and typeof proc.args is 'string' and proc.args.indexOf('[') is 0
       # save results keyed by function, so assuming functions produce results of same shape, they fit in index
-      proc.result[proc.function] = fn.apply this, args
+      proc._job_result[proc.function] = fn.apply this, args
     else
-      proc.result[proc.function] = fn args
+      proc._job_result[proc.function] = fn args
   catch err
-    proc.result = {error: err.toString()}
+    proc._job_result = {error: err.toString()}
+    if err?
+      proc._job_result[proc.function] = if err.response? then err.response else err # catching the error response of a function is still technically a valid response
     API.log msg: 'Job process error', error: err, string: err.toString(), process: proc, level: 'debug'
-    if API.settings.log.level in ['debug','all']
-      console.log JSON.stringify err
-      console.log err.toString()
-      console.log proc
-  if not job_result.insert(proc)? # if this fails, we stringify and save that way
-    try
-      proc.result.string = JSON.stringify proc.result[proc.function] # try saving as string then change it back
-      delete proc.result[proc.function]
-      job_result.insert proc
-      proc.result[proc.function] = JSON.parse(proc.result.string)
-      delete proc.result.string
+    console.log(JSON.stringify err) if API.settings.log.level in ['debug','all']
+  try
+    if not job_result.insert(proc)? # if this fails, we stringify and save that way
+      prs = JSON.stringify proc._job_result[proc.function] # try saving as string then change it back
+      proc._job_result.string = prs
+      delete proc._job_result[proc.function]
+      strung = job_result.insert proc
+      delete proc._job_result.string
+      if not strung?
+        proc._job_result.attachment = new Buffer(prs).toString('base64')
+        attd = job_result.insert proc
+        delete proc._job_result.attachment
+        if not attd?
+          proc._job_result.error = 'Unable to save result'
+          job_result.insert proc
+      proc._job_result[proc.function] = JSON.parse prs
   job_processing.remove proc._id
   if proc.repeat
     proc.counter ?= 1
@@ -330,42 +337,36 @@ API.job.process = (proc) ->
   return proc
 
 API.job._ignores = {}
-API.job.next = (ignore=[]) ->
+API.job.next = () ->
   now = Date.now()
   for k, v of API.job._ignores
     if v <= now
       delete API.job._ignores[k]
-    else
-      ignore.push(k) if k not in ignore
-  if job_processing.get 'RELOAD'
-    job_processing.remove 'RELOAD'
-    API.job.reload()
-    # TODO is it worth doing job progress checks here? If so, for all not done jobs?
-  else if not job_processing.get('STOP')
-    if (API.settings.job?.concurrency ?= 1000000000) <= job_processing.count()
-      API.log {msg:'Not running more jobs, job max concurrency reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
-    else if (API.settings.job?.memory ? 1300000000) <= process.memoryUsage().rss
-      # TODO should check why this is happening, is it memory leak or just legit usage while running lots of jobs?
-      # and if legit and being hit on every available machine in the cluster, should trigger alert to start more cluster machines?
-      API.log {msg:'Not running more jobs, job max memory reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
-    else
-      API.log {msg:'Checking for jobs to run',ignore:ignore,function:'API.job.next',level:'all'}
-      match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
-      match.must_not.push term: 'group.exact':g for g in ignore
-      p = job_process.find match, {sort:{priority:{order:'desc'}}, random:true} # TODO check if random sorted wil work - may have to be more complex
-      if p and not job_processing.get(p._id)
-        if p.limit?
-          lm = job_limit.get p.group
-          if lm? and lm.last + p.limit > now
-            ignore.push p.group
+  if (API.settings.job?.concurrency ?= 1000000000) <= job_processing.count()
+    API.log {msg:'Not running more jobs, job max concurrency reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
+  else if (API.settings.job?.memory ? 1300000000) <= process.memoryUsage().rss
+    # TODO should check why this is happening, is it memory leak or just legit usage while running lots of jobs?
+    # and if legit and being hit on every available machine in the cluster, should trigger alert to start more cluster machines?
+    API.log {msg:'Not running more jobs, job max memory reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
+  else
+    API.log {msg:'Checking for jobs to run',ignore:API.job._ignores,function:'API.job.next',level:'all'}
+    match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
+    match.must_not.push({term: 'group.exact':g}) for g of API.job._ignores
+    #console.log(JSON.stringify match) if API.settings.dev
+    p = job_process.find match, {sort:{priority:{order:'desc'}}, random:true} # TODO check if random sort works - may have to be more complex
+    if p?
+      if p.limit?
+        lm = job_limit.get p.group
+        if lm? and lm.createdAt + p.limit > now
+          if not API.job._ignores[p.group]?
             API.job._ignores[p.group] = now + p.limit
-            return API.job.next ignore
-          else
-            job_limit.insert {group:lm.group,last:lm.last} if lm? and API.settings.dev # keep a history of limit counters until service restarts
-            jl = job_limit.insert {_id:p.group,group:p.group,last:now}
-            return API.job.process p
+            return API.job.next()
         else
+          job_limit.insert {group:lm.group,last:lm.createdAt} if lm? and API.settings.dev # keep a history of limit counters until service restarts
+          jl = job_limit.insert {_id:p.group,group:p.group}
           return API.job.process p
+      else
+        return API.job.process p
 
 API.job._iid
 API.job.start = (interval=API.settings.job?.interval ? 1000) ->
@@ -378,19 +379,17 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   job_result.remove [{function:'API.job.stuck'},{group:'PROGRESS'}]
   job_process.insert _id: 'STUCK', repeat: true, function: 'API.job.stuck', priority: 1, group: 'API.job.stuck', limit: 900000
   API.job._iid ?= Meteor.setInterval API.job.next,interval
-  job_processing.remove 'STOP'
-  if job_processing.count() and not job_processing.get 'RELOAD'
-    job_processing.insert _id:'RELOAD', createdAt:Date.now()
 
 API.job.start() if not API.job._iid? and API.settings.job?.startup
 
-API.job.running = () -> return API.job._iid? and not job_processing.get 'STOP'
+API.job.running = () -> return API.job._iid?
 
 API.job.stop = () ->
   # note that processes already processing will keep going, but no new ones will start
   if API.job._iid?
       Meteor.clearInterval API.job._iid
-      job_processing.insert _id:'STOP', createdAt:Date.now()
+      # TODO for this to work on cluster, need to send stop to URLs on each cluster machine API
+      # used to use STOP jobs for this, but is too clunky checking for the STOP job on every loop
 
 API.job.stuck = (p) ->
   job_job.each 'NOT done:true', (rec) -> API.job.progress(rec._id)
@@ -427,13 +426,14 @@ API.job.status = (filter='*') ->
 API.job.reload = (jobid) ->
   ret = 0
   job_processing.each (if jobid then 'job:'+jobid else '*'), ((proc) ->
-    if proc._id not in ['RELOAD','STOP'] and not job_process.get(proc._id) and not job_result.get(proc._id)
+    if not job_result.get(proc._id)
       proc.reloaded ?= []
       proc.reloaded.push proc.createdAt
       job_process.insert proc
       ret += 1
-    job_processing.remove proc._id
+    job_processing.remove(proc._id) if jobid?
   )
+  job_processing.remove('*') if not jobid?
   return ret
 
 API.job._progress = (jobid) ->
@@ -478,52 +478,27 @@ API.job.rerun = (jobid,uid) ->
   Meteor.setTimeout (() -> API.job.create job), 5
   return data: {job:job._id}
 
+API.job.result = (jr,full) ->
+  jr = job_result.get(jr) if typeof jr is 'string'
+  if full?
+    return jr ? {}
+  else
+    if jr?._job_result?[jr.function]?
+      return jr._job_result[jr.function]
+    else if jr?._job_result?.string?
+      return JSON.parse jr._job_result.string
+    else if jr?._job_result?.attachment?
+      dc = new Buffer(jr._job_result.attachment,'base64').toString('utf-8')
+      return JSON.parse dc
+    else if jr?._job_result?.error
+      return jr._job_result.error
+    else
+      return {}
+
 API.job.results = (jobid,full) ->
   results = []
   for ji in job_job.get(jobid)?.processes
-    jr = job_result.get(ji._id) ? {}
-    if full?
-      results.push jr
-    else
-      res = if jr?.result?.string? and not jr?.result?[jr.function]? then JSON.parse(jr.result.string) else jr.result[jr.function]
-      res ?= {}
-      results.push res
+    results.push API.job.result ji._id, full
   return results
 
 
-
-API.job._mapping = {
-  "properties": {
-    "created_date": {
-      "type": "date",
-      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
-    },
-    "updated_date": {
-      "type": "date",
-      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
-    },
-    "createdAt": {
-      "type": "date",
-      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
-    },
-    "updatedAt": {
-      "type": "date",
-      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
-    }
-  },
-  "date_detection": false,
-  "dynamic_templates" : [
-    {
-      "default" : {
-        "match" : "*",
-        "match_mapping_type": "string",
-        "mapping" : {
-          "type" : "string",
-          "fields" : {
-            "exact" : {"type" : "{dynamic_type}", "index" : "not_analyzed", "store" : "no"}
-          }
-        }
-      }
-    }
-  ]
-}
