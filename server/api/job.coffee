@@ -4,11 +4,11 @@ import { Random } from 'meteor/random'
 import Future from 'fibers/future'
 import moment from 'moment'
 
-@job_job = new API.collection index:"job", type:"job"
-@job_process = new API.collection index:"job", type: "process"
-@job_processing = new API.collection index:"job", type:"processing"
-@job_result = new API.collection index:"job", type:"result"
-@job_limit = new API.collection index:"job", type:"limit"
+@job_job = new API.collection index: API.settings.es.index + "_job", type: "job"
+@job_process = new API.collection index: API.settings.es.index + "_job", type: "process"
+@job_processing = new API.collection index: API.settings.es.index + "_job", type: "processing"
+@job_result = new API.collection index: API.settings.es.index + "_job", type: "result"
+@job_limit = new API.collection index: API.settings.es.index + "_job", type: "limit"
 
 API.job = {}
 

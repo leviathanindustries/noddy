@@ -27,7 +27,7 @@ API.add 'log/stack/flush',
       logged = _log_index.import _log_stack
       _log_stack = []
       _log_last = Date.now()
-      return ln
+      return {length:ln, logged: logged}
 
 API.add 'log/clear',
   get:
