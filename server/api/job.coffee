@@ -253,7 +253,7 @@ API.job.create = (job) ->
   return job
 
 API.job.limit = (limitms,fn,args,group) -> # a handy way to directly create a sync throttled process
-  pr = {priority:10000,_id:Random.id(),group:(group ? fn), function: fn, args: args, signature: encodeURIComponent(fn + '_' + args), limit: limitms, save: API.settings.dev}
+  pr = {priority:10000,_id:Random.id(),group:(group ? fn), function: fn, args: args, signature: encodeURIComponent(fn + '_' + args), limit: limitms}
   jp = job_process.insert pr
   jr = job_result.get pr._id
   while not jr?
