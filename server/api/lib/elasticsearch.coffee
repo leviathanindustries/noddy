@@ -148,7 +148,7 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, del, change, fro
               try
                 fn = if change.indexOf('API.') is 0 then API else global
                 fn = fn[f] for f in change.replace('API.','').split('.')
-                rec._source = fn.apply this, rec._source # or maybe just fn rec._source is enough?
+                rec._source = fn rec._source
           pkg += JSON.stringify(row._source) + '\n'
         hp = RetryHttp.call 'POST', tourl + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
         try refreshed = RetryHttp.call 'POST', tourl + '/temp_reindex_' + toindex + '/_refresh', {retry:API.es._retries}

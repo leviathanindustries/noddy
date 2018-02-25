@@ -279,8 +279,7 @@ class share.Route
     # Call the endpoint if authentication doesn't fail
     if API.settings.log.connections and endpointContext.request.method isnt 'OPTIONS'
       tu = endpointContext.request.url.split('?')[0].split('#')[0]
-      console.log tu
-      if tu.replace('/api','').indexOf('/log') is 0 and (tu.indexOf('_log') is -1 and tu.indexOf('/es') is -1) and tu.indexOf('/reload/') is -1
+      if tu.replace('/api','').indexOf('/log') isnt 0 and (tu.indexOf('_log') is -1 and tu.indexOf('/es') is -1) and tu.indexOf('/reload/') is -1
         API.log
           url: endpointContext.request.url.split('apikey=')[0], # TODO prob want to keep full URL with opts, or no opts, and remove apikey properly
           method: endpointContext.request.method,

@@ -4,13 +4,13 @@ import { Random } from 'meteor/random'
 import Future from 'fibers/future'
 import moment from 'moment'
 
-@job_job = new API.collection index: API.settings.es.index + "_job", type: "job"
-@job_process = new API.collection index: API.settings.es.index + "_job", type: "process"
-@job_processing = new API.collection index: API.settings.es.index + "_job", type: "processing"
-@job_result = new API.collection index: API.settings.es.index + "_job", type: "result"
-@job_limit = new API.collection index: API.settings.es.index + "_job", type: "limit"
-
 API.job = {}
+
+@job_job = new API.collection index: API.settings.es.index + "_job", type: "job", mapping: API.job._mapping
+@job_process = new API.collection index: API.settings.es.index + "_job", type: "process", mapping: API.job._mapping
+@job_processing = new API.collection index: API.settings.es.index + "_job", type: "processing", mapping: API.job._mapping
+@job_result = new API.collection index: API.settings.es.index + "_job", type: "result", mapping: API.job._mapping
+@job_limit = new API.collection index: API.settings.es.index + "_job", type: "limit", mapping: API.job._mapping
 
 API.add 'job',
   get: () -> return data: 'The job API'
@@ -226,10 +226,9 @@ API.job.create = (job) ->
           d = new Date()
           fnd += ' AND createdAt:>' + d.setDate(d.getDate() - job.refresh)
       rs = job_result.find fnd, true
-      ofnd = {'signature.exact':proc.signature,save:true}
+      ofnd = {'signature.exact':proc.signature}
       rs = job_processing.find(ofnd, true) if not rs?
-      ofnd.limit = proc.limit if proc.limit?
-      rs = job_process.find(ofnd, true) if not rs? # TODO check undefined limit does not show up as search term
+      rs = job_process.find(ofnd, true) if not rs?
       if rs
         proc._id = rs._id
       else
@@ -252,15 +251,23 @@ API.job.create = (job) ->
     job._id = job_job.insert job
   return job
 
-API.job.limit = (limitms,fn,args,group) -> # a handy way to directly create a sync throttled process
+API.job.limit = (limitms,fn,args,group,refresh=86400000) -> # directly create a sync throttled process (will default re-use any result within 24 hrs
   pr = {priority:10000,_id:Random.id(),group:(group ? fn), function: fn, args: args, signature: encodeURIComponent(fn + '_' + args), limit: limitms}
-  jp = job_process.insert pr
-  jr = job_result.get pr._id
-  while not jr?
-    future = new Future()
-    Meteor.setTimeout (() -> future.return()), limitms
-    future.wait()
-    jr = job_result.get pr._id
+  fnd = 'signature.exact:"' + pr.signature + '" AND NOT exists:"result.error"'
+  if typeof refresh is 'number' and refresh isnt 0
+    fnd += ' AND createdAt:>' + Date.now() - refresh
+  jr = job_result.find fnd, true
+  if not jr?
+    rs = job_processing.find {'signature.exact':proc.signature}, true
+    if rs?
+      pr._id = rs._id
+    else
+      jp = job_process.insert pr
+    while not jr?
+      future = new Future()
+      Meteor.setTimeout (() -> future.return()), limitms
+      future.wait()
+      jr = job_result.get pr._id
   return jr.result?[fn]
 
 API.job.process = (proc) ->
@@ -297,9 +304,7 @@ API.job.process = (proc) ->
       console.log JSON.stringify err
       console.log err.toString()
       console.log proc
-  try
-    job_result.insert proc # if this fails, we stringify and save that way
-  catch
+  if not job_result.insert(proc)? # if this fails, we stringify and save that way
     try
       proc.result.string = JSON.stringify proc.result[proc.function] # try saving as string then change it back
       delete proc.result[proc.function]
@@ -484,3 +489,41 @@ API.job.results = (jobid,full) ->
       res ?= {}
       results.push res
   return results
+
+
+
+API.job._mapping = {
+  "properties": {
+    "created_date": {
+      "type": "date",
+      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
+    },
+    "updated_date": {
+      "type": "date",
+      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
+    },
+    "createdAt": {
+      "type": "date",
+      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
+    },
+    "updatedAt": {
+      "type": "date",
+      "format" : "yyyy-MM-dd HHmm||yyyy-MM-dd HHmm.ss||date_optional_time"
+    }
+  },
+  "date_detection": false,
+  "dynamic_templates" : [
+    {
+      "default" : {
+        "match" : "*",
+        "match_mapping_type": "string",
+        "mapping" : {
+          "type" : "string",
+          "fields" : {
+            "exact" : {"type" : "{dynamic_type}", "index" : "not_analyzed", "store" : "no"}
+          }
+        }
+      }
+    }
+  ]
+}

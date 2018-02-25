@@ -168,12 +168,15 @@ API.use.europepmc.licence = (pmcid,rec,fulltext,noui) ->
       if fulltext.indexOf('<permissions>') isnt -1
         maybe_licence = {licence:'non-standard-licence',source:'epmc_xml_permissions'}
 
-    if pmcid and not noui
-      normalised_pmcid = 'PMC' + pmcid.toLowerCase().replace('pmc','')
-      licsplash = API.job.limit(5000,'API.service.lantern.licence',['https://europepmc.org/articles/' + normalised_pmcid],'EPMCUI')
-      if licsplash.licence?
-        licsplash.source = 'epmc_html'
-        return licsplash
+    if pmcid and not noui and API.service?.lantern?.licence?
+      url = 'https://europepmc.org/articles/PMC' + pmcid.toLowerCase().replace('pmc','')
+      pg = API.job.limit 5000, 'HTTP.call', ['GET',url], "EPMCUI"
+      if pg?.statusCode is 200
+        page = pg.content
+        licsplash = API.service.lantern.licence url, false, page
+        if licsplash.licence?
+          licsplash.source = 'epmc_html'
+          return licsplash
 
     return maybe_licence ? false
   else
@@ -199,7 +202,7 @@ API.use.europepmc.authorManuscript = (pmcid,rec,fulltext,noui) ->
           try
             pg = API.job.limit 5000, 'HTTP.call', ['GET',url], "EPMCUI"
             if pg?.statusCode is 200
-              page = pg.content if not page?
+              page = pg.content
               s1 = 'Author Manuscript; Accepted for publication in peer reviewed journal'
               s2 = 'Author manuscript; available in PMC'
               s3 = 'logo-nihpa.gif'
