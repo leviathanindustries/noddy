@@ -13,10 +13,11 @@ if not API.settings.es?
   console.log 'ES WARNING - ELASTICSEARCH SEEMS TO BE REQUIRED BUT SETTINGS HAVE NOT BEEN PROVIDED.'
 else
   try
-    s = HTTP.call 'GET', API.settings.es.url
+    API.settings.es.url = [API.settings.es.url] if typeof API.settings.es.url is 'string'
+    for url in API.settings.es.url
+      s = HTTP.call 'GET', url
     if API.settings.log?.level is 'debug'
       console.log 'ES confirmed ' + API.settings.es.url + ' is reachable'
-      console.log s.data
   catch err
     console.log 'ES FAILURE - INSTANCE AT ' + API.settings.es.url + ' APPEARS TO BE UNREACHABLE.'
     console.log err
