@@ -346,7 +346,7 @@ API.es.terms = (index, type, key, size=100, counts=true, qry, url=API.settings.e
   query.facets[key] = { terms: { field: key, size: size } }; # TODO need some way to decide if should check on .exact? - collection assumes it so far
   try
     ret = API.es.call 'POST', '/' + index + '/' + type + '/_search', query, undefined, undefined, undefined, undefined, url
-    return if counts then ret.facets[key].terms else _.pluck(ret.facets[key].terms,'term')
+    return if not ret?.facets? then [] else (if counts then ret.facets[key].terms else _.pluck(ret.facets[key].terms,'term'))
   catch err
     console.log(err) if API.settings.log?.level is 'debug'
     return []

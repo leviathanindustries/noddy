@@ -415,7 +415,7 @@ API.job.status = (filter='*') ->
       count: job_result.count(filter)
       oldest: {_id: jro._id, createdAt: jro.createdAt, created_date: jro.created_date} if jro = job_result.find(filter, {sort:{createdAt:{order:'asc'}}})
       newest: {_id: jrn._id, createdAt: jrn.createdAt, created_date: jrn.created_date} if jrn = job_result.find(filter, true)
-  groups = API.es.terms 'job' + (if API.settings.dev then '_dev' else ''), 'job_process,job_processing,job_result', 'group', 1000, true, filter
+  #groups = API.es.terms 'noddy_job' + (if API.settings.dev then '_dev' else ''), 'job_process,job_processing,job_result', 'group', 1000, true, filter
   res.limits = {}
   return res
 
