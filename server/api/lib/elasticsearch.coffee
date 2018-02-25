@@ -51,9 +51,10 @@ API.es.action = (uacc, action, urlp, params, data, refresh) ->
     return API.es.indexes()
   else if urlp.r1 is '_types'
     return API.es.types(urlp.r0)
-  else if urlp.r0 is '_reindex' and urlp.r1? and urlp.r2?
+  else if urlp.r0 is '_reindex' and urlp.r1?
     if API.accounts.auth 'root', uacc
-      Meteor.setTimeout (() -> API.es.reindex urlp.r1, urlp.r2, undefined, params?.rename, not params?.delete? ), 1
+      types = if urlp.r2? then [urlp.r2] else API.es.types urlp.r1
+      Meteor.setTimeout (() -> API.es.reindex(urlp.r1, type, undefined, params?.rename, not params?.delete?) for type in types ), 1
       return true
     else
       return 401
@@ -118,7 +119,7 @@ API.es.refresh = (index, url) ->
     return false
 
 API.es._reindexing = false
-API.es.reindex = (index, type, mapping=API.es._mapping, rename, del, fromurl=API.settings.es.url, tourl=API.settings.es.url) ->
+API.es.reindex = (index, type, mapping=API.es._mapping, rename, del, change, fromurl=API.settings.es.url, tourl=API.settings.es.url) ->
   fromurl = fromurl[Math.floor(Math.random()*fromurl.length)] if Array.isArray fromurl
   tourl = tourl[Math.floor(Math.random()*fromurl.length)] if Array.isArray tourl
   return false if not index? or not type?
@@ -139,16 +140,23 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, del, fromurl=API
         pkg = ''
         for row in res.data.hits.hits
           pkg += JSON.stringify({"index": {"_index": 'temp_reindex_' + toindex, "_type": totype, "_id": row._source._id }}) + '\n'
+          if change?
+            if typeof change is 'function'
+              try rec._source = change rec._source
+            else if typeof change is 'string'
+              try
+                fn = if change.indexOf('API.') is 0 then API else global
+                fn = fn[f] for f in change.replace('API.','').split('.')
+                rec._source = fn.apply this, rec._source # or maybe just fn rec._source is enough?
           pkg += JSON.stringify(row._source) + '\n'
         hp = RetryHttp.call 'POST', tourl + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
+        try refreshed = RetryHttp.call 'POST', tourl + '/temp_reindex_' + toindex + '/_refresh', {retry:API.es._retries}
         pkg = ''
         res = RetryHttp.call 'GET', fromurl + '/_search/scroll?scroll=1m&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
   catch err
     API.log {msg: 'Reindex failed at copy step for ' + index + ' ' + type, level:'warn', notify:true, error: err}
     processed = false
-  console.log processed
   if processed isnt false
-    console.log del
     if del isnt false
       deleted_original = RetryHttp.call 'DELETE', fromurl + '/' + index + '/' + type, {retry:API.es._retries}
     try
@@ -163,10 +171,10 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, del, fromurl=API
             pkg += JSON.stringify({"index": {"_index": toindex, "_type": totype, "_id": row._source._id }}) + '\n'
             pkg += JSON.stringify(row._source) + '\n'
           hp = RetryHttp.call 'POST', tourl + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
+          try refreshed = RetryHttp.call 'POST', tourl + '/' + toindex + '/_refresh', {retry:API.es._retries}
           pkg = ''
           res = RetryHttp.call 'GET', tourl + '/_search/scroll?scroll=1m&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
       deleted_temp = RetryHttp.call 'DELETE', tourl + '/temp_reindex_' + toindex, {retry:API.es._retries}
-      try refreshed = RetryHttp.call 'POST', tourl + '/' + toindex + '/_refresh', {retry:API.es._retries}
       API.log {msg: 'Reindexed ' + index + ' ' + type + ' with ' + processed + ' records', level:'warn', notify:true}
     catch err
       processed = false
