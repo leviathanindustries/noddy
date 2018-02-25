@@ -47,41 +47,46 @@ for r in [0,1,2]
       action: () -> return API.es.action this.user, 'DELETE', this.urlParams, this.queryParams, this.request.body
 
 API.es.action = (uacc, action, urlp, params, data, refresh) ->
-  if action is 'GET' and urlp.r0 is '_reindex' and urlp.r1? and urlp.r2?
+  if urlp.r0 is '_indexes'
+    return API.es.indexes()
+  else if urlp.r1 is '_types'
+    return API.es.types(urlp.r0)
+  else if urlp.r0 is '_reindex' and urlp.r1? and urlp.r2?
     if API.accounts.auth 'root', uacc
       Meteor.setTimeout (() -> API.es.reindex urlp.r1, urlp.r2, undefined, params?.rename, not params?.delete? ), 1
       return true
     else
       return 401
-  rt = ''
-  rt += '/' + urlp[up] for up of urlp
-  rt += '/_search' if action in ['GET','POST'] and rt.indexOf('/_') is -1 and rt.split('/').length <= 3
-  rt += '?'
-  rt += op + '=' + params[op] + '&' for op of params if params
-  auth = API.settings.es.auth
-  # if not dev and auth not explicitly set all true, then all access defaults false
-  # if in dev, then any query onto _dev indices will default true, unless auth is an object, and anything else is still false
-  allowed = if auth isnt true then (typeof auth isnt 'object' and urlp.r0.indexOf('_dev') isnt -1 and API.settings.dev) else false
-  if typeof auth is 'object' and urlp.r0 and auth[urlp.r0]?
-    auth = auth[urlp.r0]
-    if typeof auth is 'object' and urlp.r1 and auth[urlp.r1]?
-      auth = auth[urlp.r1]
-      if typeof auth is 'object' and urlp.r2 and auth[urlp.r2]?
-        auth = auth[urlp.r2]
-  allowed = true if auth is true
-  if not allowed # check if user has specific permissions
-    user = if typeof uacc is 'object' then uacc else API.accounts.retrieve uacc
-    allowed = user? and API.accounts.auth 'root', user # root gets access anyway
-    if not allowed
-      ort = urlp.r0
-      ort += '_' + urlp.r1 if urlp.r1
-      if (action is 'GET' or (action is 'POST' and urlp.r2 is '_search')) and API.accounts.auth ort + '.read', user
-        allowed = true
-      else if action in ['POST','PUT'] and API.accounts.auth ort + '.edit', user
-        allowed = true
-      else if action is 'DELETE' and API.accounts.auth ort + '.owner', user
-        allowed = true
-  return if allowed then API.es.call(action, rt, data, refresh) else 401
+  else
+    rt = ''
+    rt += '/' + urlp[up] for up of urlp
+    rt += '/_search' if action in ['GET','POST'] and rt.indexOf('/_') is -1 and rt.split('/').length <= 3
+    rt += '?'
+    rt += op + '=' + params[op] + '&' for op of params if params
+    auth = API.settings.es.auth
+    # if not dev and auth not explicitly set all true, then all access defaults false
+    # if in dev, then any query onto _dev indices will default true, unless auth is an object, and anything else is still false
+    allowed = if auth isnt true then (typeof auth isnt 'object' and urlp.r0.indexOf('_dev') isnt -1 and API.settings.dev) else false
+    if typeof auth is 'object' and urlp.r0 and auth[urlp.r0]?
+      auth = auth[urlp.r0]
+      if typeof auth is 'object' and urlp.r1 and auth[urlp.r1]?
+        auth = auth[urlp.r1]
+        if typeof auth is 'object' and urlp.r2 and auth[urlp.r2]?
+          auth = auth[urlp.r2]
+    allowed = true if auth is true
+    if not allowed # check if user has specific permissions
+      user = if typeof uacc is 'object' then uacc else API.accounts.retrieve uacc
+      allowed = user? and API.accounts.auth 'root', user # root gets access anyway
+      if not allowed
+        ort = urlp.r0
+        ort += '_' + urlp.r1 if urlp.r1
+        if (action is 'GET' or (action is 'POST' and urlp.r2 is '_search')) and API.accounts.auth ort + '.read', user
+          allowed = true
+        else if action in ['POST','PUT'] and API.accounts.auth ort + '.edit', user
+          allowed = true
+        else if action is 'DELETE' and API.accounts.auth ort + '.owner', user
+          allowed = true
+    return if allowed then API.es.call(action, rt, data, refresh) else 401
 
 # track if we are waiting on retry to connect http to ES (when it is busy it takes a while to respond)
 API.es._waiting = false
@@ -123,49 +128,49 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, del, fromurl=API
   toindex = if rename? then rename.split('/')[0] else index
   totype = if rename? and rename.indexOf('/') isnt -1 then rename.split('/')[1] else type
   processed = 0
-  #try
-  try pim = RetryHttp.call 'PUT', tourl + '/temp_reindex_' + toindex, {retry:API.es._retries}
-  pitm = RetryHttp.call 'PUT', tourl + '/temp_reindex_' + toindex + '/_mapping/' + totype, {data: mapping, retry:API.es._retries}
-  ret = RetryHttp.call 'POST', fromurl + '/' + index + '/' + type + '/_search?search_type=scan&scroll=1m', {data:{query: { match_all: {} }, size: 5000 }, retry:API.es._retries}
-  if ret.data?._scroll_id?
-    res = RetryHttp.call 'GET', fromurl + '/_search/scroll?scroll=1m&scroll_id=' + ret.data._scroll_id, {retry:API.es._retries}
-    while (res?.data?.hits?.hits? and res.data.hits.hits.length)
-      processed += res.data.hits.hits.length
-      pkg = ''
-      for row in res.data.hits.hits
-        pkg += JSON.stringify({"index": {"_index": 'temp_reindex_' + toindex, "_type": totype, "_id": row._source._id }}) + '\n'
-        pkg += JSON.stringify(row._source) + '\n'
-      hp = RetryHttp.call 'POST', tourl + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
-      pkg = ''
-      res = RetryHttp.call 'GET', fromurl + '/_search/scroll?scroll=1m&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
-  #catch err
-  #  API.log {msg: 'Reindex failed at copy step for ' + index + ' ' + type, level:'warn', notify:true, error: err}
-  #  processed = false
+  try
+    try pim = RetryHttp.call 'PUT', tourl + '/temp_reindex_' + toindex, {retry:API.es._retries}
+    pitm = RetryHttp.call 'PUT', tourl + '/temp_reindex_' + toindex + '/_mapping/' + totype, {data: mapping, retry:API.es._retries}
+    ret = RetryHttp.call 'POST', fromurl + '/' + index + '/' + type + '/_search?search_type=scan&scroll=1m', {data:{query: { match_all: {} }, size: 5000 }, retry:API.es._retries}
+    if ret.data?._scroll_id?
+      res = RetryHttp.call 'GET', fromurl + '/_search/scroll?scroll=1m&scroll_id=' + ret.data._scroll_id, {retry:API.es._retries}
+      while (res?.data?.hits?.hits? and res.data.hits.hits.length)
+        processed += res.data.hits.hits.length
+        pkg = ''
+        for row in res.data.hits.hits
+          pkg += JSON.stringify({"index": {"_index": 'temp_reindex_' + toindex, "_type": totype, "_id": row._source._id }}) + '\n'
+          pkg += JSON.stringify(row._source) + '\n'
+        hp = RetryHttp.call 'POST', tourl + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
+        pkg = ''
+        res = RetryHttp.call 'GET', fromurl + '/_search/scroll?scroll=1m&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
+  catch err
+    API.log {msg: 'Reindex failed at copy step for ' + index + ' ' + type, level:'warn', notify:true, error: err}
+    processed = false
   console.log processed
   if processed isnt false
     console.log del
     if del isnt false
       deleted_original = RetryHttp.call 'DELETE', fromurl + '/' + index + '/' + type, {retry:API.es._retries}
-    #try
-    try nim = RetryHttp.call 'PUT', tourl + '/' + toindex, {retry:API.es._retries}
-    nitm = RetryHttp.call 'PUT', tourl + '/' + toindex + '/_mapping/' + totype, {data: mapping, retry:API.es._retries}
-    ret = RetryHttp.call 'POST', tourl + '/temp_reindex_' + toindex + '/' + totype + '/_search?search_type=scan&scroll=1m', {data:{query: { match_all: {} }, size: 5000 }, retry:API.es._retries}
-    if ret.data?._scroll_id?
-      res = RetryHttp.call 'GET', tourl + '/_search/scroll?scroll=1m&scroll_id=' + ret.data._scroll_id, {retry:API.es._retries}
-      while (res?.data?.hits?.hits? and res.data.hits.hits.length)
-        pkg = ''
-        for row in res.data.hits.hits
-          pkg += JSON.stringify({"index": {"_index": toindex, "_type": totype, "_id": row._source._id }}) + '\n'
-          pkg += JSON.stringify(row._source) + '\n'
-        hp = RetryHttp.call 'POST', tourl + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
-        pkg = ''
-        res = RetryHttp.call 'GET', tourl + '/_search/scroll?scroll=1m&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
-    deleted_temp = RetryHttp.call 'DELETE', tourl + '/temp_reindex_' + toindex, {retry:API.es._retries}
-    try refreshed = RetryHttp.call 'POST', tourl + '/' + toindex + '/_refresh', {retry:API.es._retries}
-    API.log {msg: 'Reindexed ' + index + ' ' + type + ' with ' + processed + ' records', level:'warn', notify:true}
-    #catch err
-    #  processed = false
-    #  API.log {msg: 'Reindex failed at recreate step for ' + index + ' ' + type, level:'warn', notify:true, error: err}
+    try
+      try nim = RetryHttp.call 'PUT', tourl + '/' + toindex, {retry:API.es._retries}
+      nitm = RetryHttp.call 'PUT', tourl + '/' + toindex + '/_mapping/' + totype, {data: mapping, retry:API.es._retries}
+      ret = RetryHttp.call 'POST', tourl + '/temp_reindex_' + toindex + '/' + totype + '/_search?search_type=scan&scroll=1m', {data:{query: { match_all: {} }, size: 5000 }, retry:API.es._retries}
+      if ret.data?._scroll_id?
+        res = RetryHttp.call 'GET', tourl + '/_search/scroll?scroll=1m&scroll_id=' + ret.data._scroll_id, {retry:API.es._retries}
+        while (res?.data?.hits?.hits? and res.data.hits.hits.length)
+          pkg = ''
+          for row in res.data.hits.hits
+            pkg += JSON.stringify({"index": {"_index": toindex, "_type": totype, "_id": row._source._id }}) + '\n'
+            pkg += JSON.stringify(row._source) + '\n'
+          hp = RetryHttp.call 'POST', tourl + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
+          pkg = ''
+          res = RetryHttp.call 'GET', tourl + '/_search/scroll?scroll=1m&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
+      deleted_temp = RetryHttp.call 'DELETE', tourl + '/temp_reindex_' + toindex, {retry:API.es._retries}
+      try refreshed = RetryHttp.call 'POST', tourl + '/' + toindex + '/_refresh', {retry:API.es._retries}
+      API.log {msg: 'Reindexed ' + index + ' ' + type + ' with ' + processed + ' records', level:'warn', notify:true}
+    catch err
+      processed = false
+      API.log {msg: 'Reindex failed at recreate step for ' + index + ' ' + type, level:'warn', notify:true, error: err}
   API.es._reindexing = false
   return processed
 
@@ -220,10 +225,25 @@ API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url) ->
       console.log 'ES MAPPING ERROR'
       console.log err
 
-API.es.mapping = (index, type, url=API.settings.es.url) ->
+API.es.mapping = (index='', type='', url=API.settings.es.url) ->
+  index += '_dev' if index.length and API.settings.dev and index.indexOf('_dev') is -1
+  try
+    mp = API.es.call 'GET', index + '/_mapping/' + type, undefined, undefined, undefined, undefined, undefined, url
+    return if index.length then (if type.length then mp[index].mappings[type] else mp[index].mappings) else mp
+  catch
+    return {}
+
+API.es.indexes = (url=API.settings.es.url) ->
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
-  index += '_dev' if API.settings.dev and index.indexOf('_dev') is -1
-  return API.es.call('GET', index + '/_mapping/' + type, undefined, undefined, undefined, undefined, undefined, url)[index].mappings[type]
+  indexes = []
+  try indexes.push(m) for m of HTTP.call('GET', url +'/_mapping').data
+  return indexes
+
+API.es.types = (index,url=API.settings.es.url) ->
+  url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
+  types = []
+  try types.push(t) for t of HTTP.call('GET', url + '/' + index + '/_mapping').data[index].mappings
+  return types
 
 API.es.call = (action, route, data, refresh, versioned, scan, scroll='1m', url=API.settings.es.url) ->
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
