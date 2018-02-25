@@ -122,7 +122,7 @@ API.es.refresh = (index, url) ->
 API.es._reindexing = false
 API.es.reindex = (index, type, mapping=API.es._mapping, rename, del, change, fromurl=API.settings.es.url, tourl=API.settings.es.url) ->
   fromurl = fromurl[Math.floor(Math.random()*fromurl.length)] if Array.isArray fromurl
-  tourl = tourl[Math.floor(Math.random()*fromurl.length)] if Array.isArray tourl
+  tourl = tourl[Math.floor(Math.random()*tourl.length)] if Array.isArray tourl
   return false if not index? or not type?
   # index names will be treated as specific
   # and only handle indexes in the API.settings.es.index namespace - or allow move from others? handy for moving old systems to new
@@ -202,7 +202,7 @@ API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url) ->
         else
           try
             if API.settings.es.mappings.indexOf('http') is 0
-              maps = RetryHttp.call('GET', API.settings.es.mappings, {retry:API.es._retries}).data
+              maps = HTTP.call('GET', API.settings.es.mappings).data
             else
               maps = JSON.parse fs.readFileSync(API.settings.es.mappings).toString()
         if maps?[index]?[type]?
