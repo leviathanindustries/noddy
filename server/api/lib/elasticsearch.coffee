@@ -236,7 +236,7 @@ API.es.mapping = (index='', type='', url=API.settings.es.url) ->
 API.es.indexes = (url=API.settings.es.url) ->
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
   indexes = []
-  try indexes.push(m) for m of HTTP.call('GET', url +'/_mapping').data
+  try indexes.push(m) for m of HTTP.call('GET', url + '/_mapping').data
   return indexes
 
 API.es.types = (index,url=API.settings.es.url) ->
