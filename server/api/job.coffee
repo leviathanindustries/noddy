@@ -220,7 +220,7 @@ API.job.create = (job) ->
       proc._id = Random.id()
       imports.push proc
     else
-      match = {must:[{term:{'signature.exact':pr.signature}}], must_not:[{exists:{field:'_raw_result.error'}}]}
+      match = {must:[{term:{'signature.exact':proc.signature}}], must_not:[{exists:{field:'_raw_result.error'}}]}
       try
         if typeof job.refresh is 'number' and job.refresh isnt 0
           d = new Date()
