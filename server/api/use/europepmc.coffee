@@ -179,7 +179,7 @@ API.use.europepmc.licence = (pmcid,rec,fulltext,noui) ->
 
     if pmcid and not noui and API.service?.lantern?.licence?
       url = 'https://europepmc.org/articles/PMC' + pmcid.toLowerCase().replace('pmc','')
-      pg = API.job.limit 3500, 'API.httpphantom', [url], "EPMCUI", 86400000
+      pg = API.job.limit 3500, 'API.http.phantom', [url], "EPMCUI", 86400000
       if pg?.statusCode is 200
         page = pg.content
         licsplash = API.service.lantern.licence url, false, page

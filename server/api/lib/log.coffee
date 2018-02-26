@@ -82,7 +82,7 @@ API.log = (opts, fn, lvl='debug') ->
       if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
         API.settings.log.bulk = 5000 if API.settings.log.bulk is undefined
         API.settings.log.timeout ?= 300000
-        _log_stack.push opts
+        _log_stack.unshift opts
         if _log_stack.length >= API.settings.log.bulk or Date.now() - _log_last > API.settings.log.timeout
           logged = _log_index.import _log_stack
           _log_stack = []
