@@ -387,6 +387,10 @@ API.collection._translate = (q, opts) ->
             qry.query.filtered.filter.bool.must.push tobj
           else if typeof q[y] in ['number','boolean']
             qry.query.filtered.query.bool.must.push {query_string:{query:y + ':' + q[y]}}
+          else if typeof q[y] is 'object'
+            qobj = {}
+            qobj[y] = q[y]
+            qry.query.filtered.filter.bool.must.push q[y]
           else if q[y]?
             qry.query.filtered.filter.bool.must.push q[y]
   else if typeof q is 'string'
