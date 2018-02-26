@@ -22,11 +22,16 @@ API.add 'http/resolve', get: () -> return API.http.resolve this.queryParams.url
 
 API.add 'http/phantom',
   get: () ->
-    return
-      statusCode: 200
-      headers:
-        'Content-Type': 'text/' + this.queryParams.format ? 'plain'
-      body: API.http.phantom this.queryParams.url, this.queryParams.delay ? 1000
+    refresh = if this.queryParams.refresh? then (try(parseInt(this.queryParams.refresh))) else undefined
+    res = API.http.phantom this.queryParams.url, this.queryParams.delay ? 1000, refresh
+    if typeof res is 'number'
+      return res
+    else
+      return
+        statusCode: 200
+        headers:
+          'Content-Type': 'text/' + this.queryParams.format ? 'plain'
+        body: res
 
 API.add 'http/cache',
   get: () ->
@@ -93,8 +98,7 @@ API.http.cache = (lookup,type='cache',content,refresh=0) ->
     lookup = JSON.stringify(lookup) if typeof lookup not in ['string','number']
     fnd = 'lookup.exact:"' + encodeURIComponent(lookup) + '"'
     if typeof refresh is 'number' and refresh isnt 0
-      d = new Date()
-      fnd += ' AND createdAt:>' + d.setDate(d.getDate() - refresh)
+      fnd += ' AND createdAt:>' + (Date.now() - refresh)
     res = API.http._colls[type].find fnd, true
     if res?._raw_result?.string?
       API.log {msg:'Returning string result from cache', lookup:lookup, type:type}
@@ -147,79 +151,77 @@ API.http.resolve = (url) ->
 # here is an odd one that seems to stick forever:
 # https://kclpure.kcl.ac.uk/portal/en/publications/superior-temporal-activation-as-a-function-of-linguistic-knowledge-insights-from-deaf-native-signers-who-speechread(4a9db251-4c8e-4759-b0eb-396360dc897e).html
 
-_phantom = (url,delay=1000,callback) ->
+_phantom = (url,delay=1000,refresh=86400000,callback) ->
+  if typeof refresh is 'function'
+    callback = refresh
+    refresh = 86400000
   if typeof delay is 'function'
     callback = delay
     delay = 1000
   return callback(null,'') if not url? or typeof url isnt 'string'
+  cached = API.http.cache url, 'phantom_get', undefined, refresh
+  if cached?
+    return callback(null,cached)
   API.log('starting phantom retrieval of ' + url)
   url = 'http://' + url if url.indexOf('http') is -1
   _ph = undefined
   _page = undefined
-  _redirect = undefined
-  _fail = undefined
+  _info = {}
   ppath = if fs.existsSync('/usr/bin/phantomjs') then '/usr/bin/phantomjs' else '/usr/local/bin/phantomjs'
   phantom.create(['--ignore-ssl-errors=true','--load-images=false','--cookies-file=./cookies.txt'],{phantomPath:ppath})
     .then((ph) ->
       _ph = ph
-      #API.log('creating page')
       return ph.createPage()
     )
     .then((page) ->
       _page = page
-      page.setting('resourceTimeout',3000)
+      page.setting('resourceTimeout',4000)
       page.setting('loadImages',false)
       page.setting('userAgent','Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.120 Safari/537.36')
-      #API.log('retrieving page ' + url)
-      page.property('onResourceRequested',(requestData, request) ->
-        if (/http:\/\/.+?\.css/gi).test(requestData['url']) or requestData.headers['Content-Type'] is 'text/css'
-          API.log('not getting css at ' + requestData['url'])
-          request.abort()
-      )
-      page.property('onResourceReceived',(resource) ->
-        if url is resource.url and resource.redirectURL
-          _redirect = resource.redirectURL
-      )
+      page.on('onResourceRequested',true,(requestData, request) -> request.abort() if (/\/\/.+?\.css/gi).test(requestData['url']) or requestData.headers['Content-Type'] is 'text/css')
+      page.on('onResourceError',((err) -> _info.err = err))
+      page.on('onResourceReceived',((resource) -> _info.resource = resource)) # _info.redirect = resource.redirectURL if resource.url is url))
       return page.open(url)
     )
     .then((status) ->
-      if _redirect
-        #API.log('redirecting to ' + _redirect)
-        _page.close()
-        _ph.exit()
-        _phantom(_redirect,delay,callback)
-      else if status is 'fail'
-        _fail = true
-      else
-        #API.log('retrieving content');
-        future = new Future()
-        Meteor.setTimeout (() -> future.return()), delay
-        future.wait()
-        return _page.property('content')
+      future = new Future()
+      Meteor.setTimeout (() -> future.return()), delay
+      future.wait()
+      _info.status = status
+      return _page.property('content')
     )
     .then((content) ->
-      if _fail is true or not content.length?
-        API.log('could not get content, fail is ' + _fail + ' and content length is ' + content.length)
-        return callback(null,'')
-      else if content.length < 200 and delay <= 11000
+      _page.close()
+      _ph.exit()
+      _ph = undefined
+      _page = undefined
+      if _info?.resource?.redirectURL? and _info?._resource?.url is url
+        API.log('redirecting ' + url + ' to ' + _redirect)
+        ru = _info.resource.redirectURL
+        _info = {}
+        _phantom(ru,delay,callback)
+      else if _info.status is 'fail' or not content?.length? or _info.err?.status > 399
+        API.log('could not get content for ' + url + ', phantom status is ' + _info.status + ' and response status code is ' + _info.err?.status + ' and content length is ' + content.length)
+        sc = _info.err?.status ? 0
+        _info = {}
+        return callback(null,sc)
+      else if content?.length < 200 and delay <= 11000
+        API.log('trying ' + url + ' again with delay ' + delay)
         delay += 5000
-        _page.close()
-        _ph.exit()
-        redirector = undefined
-        #API.log('trying again with delay ' + delay)
-        _phantom(url,delay,callback)
+        _info = {}
+        _phantom(url,delay,refresh,callback)
       else
-        #API.log('got content')
-        _page.close()
-        _ph.exit()
-        _redirect = undefined
+        API.http.cache url, 'phantom_get', content
+        _info = {}
         return callback(null,content)
     )
     .catch((error) ->
-      API.log({msg:'phantom errored',error:error})
+      API.log({msg:'Phantom errorred for ' + url, error:error})
       _page.close()
       _ph.exit()
-      _redirect = undefined
+      _ph = undefined
+      _page = undefined
+      _info = {}
       return callback(null,'')
     )
 

@@ -10,7 +10,8 @@ API.http.phantom.test = (verbose,url='https://cottagelabs.com',find='cottage lab
 
   tests = [
     () ->
-      return API.http.phantom(url).toLowerCase().indexOf(find) isnt -1
+      rs = API.http.phantom(url)
+      return typeof rs isnt 'number' and rs.toLowerCase().indexOf(find) isnt -1
   ]
 
   (if (try tests[t]()) then (result.passed.push(t) if result.passed isnt false) else result.failed.push(t)) for t of tests

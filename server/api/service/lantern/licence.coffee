@@ -41,6 +41,7 @@ API.service.lantern.licence = (url,resolve=false,content,start,end) ->
     else
       resolved = API.http.resolve url
   content ?= API.http.phantom resolved
+  content = undefined if typeof content is 'number'
 
   lic = {}
   lic.url = url if url?

@@ -180,7 +180,7 @@ API.tdm.extract = (opts) ->
 
 	res = {matched:0,matches:[],matchers:opts.matchers}
 
-	if text
+	if text and typeof text isnt 'number'
 		for match in opts.matchers
 			mopts = 'g'
 			mopts += 'i' if opts.lowercase
