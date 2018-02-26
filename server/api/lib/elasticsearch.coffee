@@ -90,7 +90,7 @@ API.es._retries = {
   maxTimeout: 5000,
   times: 10,
   shouldRetry: (err,res,cb) ->
-    console.log(err?.response?.statusCode) if API.settings.dev
+    #console.log(err?.response?.statusCode) if API.settings.dev
     rt = false
     try
       serr = err.toString()
