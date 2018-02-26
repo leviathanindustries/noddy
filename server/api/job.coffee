@@ -251,14 +251,13 @@ API.job.create = (job) ->
     job._id = job_job.insert job
   return job
 
-API.job.limit = (limitms,fn,args,group,refresh=86400000) -> # directly create a sync throttled process (will default re-use any result within 24 hrs
+API.job.limit = (limitms,fn,args,group,refresh=0) -> # directly create a sync throttled process (will default re-use any result within 24 hrs
   pr = {priority:10000,_id:Random.id(),group:(group ? fn), function: fn, args: args, signature: encodeURIComponent(fn + '_' + args), limit: limitms}
-  fnd = 'signature.exact:"' + pr.signature + '" AND NOT exists:"_job_result.error"'
   if typeof refresh is 'number' and refresh isnt 0
-    fnd += ' AND createdAt:>' + Date.now() - refresh
-  jr = job_result.find fnd, true
+    fnd = 'signature.exact:"' + pr.signature + '" AND NOT exists:"_job_result.error" AND createdAt:>' + (Date.now() - refresh)
+    jr = job_result.find fnd, true
   if not jr?
-    rs = job_processing.find {'signature.exact':pr.signature}, true
+    rs = if typeof refresh is 'number' and refresh isnt 0 then job_processing.find({'signature.exact':pr.signature}, true)
     if rs?
       pr._id = rs._id
     else
@@ -338,6 +337,8 @@ API.job.process = (proc) ->
 
 API.job._ignores = {}
 API.job.next = () ->
+  if job_limit.get('PAUSE')?
+    return false
   now = Date.now()
   for k, v of API.job._ignores
     if v <= now
@@ -359,17 +360,24 @@ API.job.next = () ->
         lm = job_limit.get p.group
         if lm? and lm.createdAt + p.limit > now
           if not API.job._ignores[p.group]?
-            API.job._ignores[p.group] = now + p.limit
+            API.job._ignores[p.group] = lm.createdAt + p.limit
             return API.job.next()
+          else
+            return false
         else
           job_limit.insert {group:lm.group,last:lm.createdAt} if lm? and API.settings.dev # keep a history of limit counters until service restarts
           jl = job_limit.insert {_id:p.group,group:p.group}
           return API.job.process p
       else
         return API.job.process p
+    else
+      return false
 
 API.job._iid
 API.job.start = (interval=API.settings.job?.interval ? 1000) ->
+  future = new Future() # randomise start time so that cluster machines do not all start jobs at exactly the same time
+  Meteor.setTimeout (() -> future.return()), Math.floor(Math.random()*interval+1)
+  future.wait()
   API.log {msg: 'Starting job runner with interval ' + interval, _cid: process.env.CID, _appid: process.env.APP_ID, function: 'API.job.start', level: 'all'}
   # create a repeating limited stuck check process with id 'STUCK' so that it can check for stuck jobs
   # multiple clusters trying to create it wont matter because they will just overwrite each other, eventually only one process will run
@@ -382,19 +390,17 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
 
 API.job.start() if not API.job._iid? and API.settings.job?.startup
 
-API.job.running = () -> return API.job._iid?
+API.job.running = () -> return API.job._iid? and not job_limit.get('PAUSE')?
 
 API.job.stop = () ->
   # note that processes already processing will keep going, but no new ones will start
-  if API.job._iid?
-      Meteor.clearInterval API.job._iid
-      # TODO for this to work on cluster, need to send stop to URLs on each cluster machine API
-      # used to use STOP jobs for this, but is too clunky checking for the STOP job on every loop
+  job_limit.insert _id: 'PAUSE'
 
 API.job.stuck = (p) ->
   job_job.each 'NOT done:true', (rec) -> API.job.progress(rec._id)
   st = API.job.status()
-  # compare count, oldest and newest of processes and processing with p.result[function] if it exists
+  # check to see if paused
+  # compare count, oldest and newest of processes and processing with p._job_result[function] if it exists
   # if all the same, and if not having timeout after now, send a warning
   # also look for jobs still not done, and if nothing running, consider them stuck
   return st
@@ -463,12 +469,12 @@ API.job.progress = (jobid,limit) ->
     return {createdAt:job.createdAt, progress:(if job.done then 100 else 0), name:job.name, email:job.email, _id:job._id, new:job.new}
   else if job_processing.get job._id
     if checked = job_result.get job._id
-      return checked.result['API.job._progress']
+      return checked._job_result['API.job._progress']
     else
       return {createdAt:job.createdAt, progress:0, name:job.name, email:job.email, _id:job._id, new:false}
   else
     API.log msg: 'Checking job progress of ' + job._id, level: 'debug'
-    return API.job.process({_id: job._id, group: 'PROGRESS', limit: limit ? 5000, function: 'API.job._progress', args: job._id}).result['API.job._progress']
+    return API.job.process({_id: job._id, group: 'PROGRESS', limit: limit ? 5000, function: 'API.job._progress', args: job._id})._job_result['API.job._progress']
 
 API.job.rerun = (jobid,uid) ->
   job = job_job.get jobid
