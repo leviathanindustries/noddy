@@ -420,7 +420,7 @@ API.es._mapping = {
     {
       "default" : {
         "match" : "*",
-        "unmatch": "_job_result",
+        "unmatch": "_raw_result",
         "match_mapping_type": "string",
         "mapping" : {
           "type" : "string",

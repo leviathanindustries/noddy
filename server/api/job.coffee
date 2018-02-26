@@ -220,12 +220,12 @@ API.job.create = (job) ->
       proc._id = Random.id()
       imports.push proc
     else
-      fnd = 'signature.exact:"' + proc.signature + '" AND NOT exists:"_job_result.error"'
+      match = {must:[{term:{'signature.exact':pr.signature}}], must_not:[{exists:{field:'_raw_result.error'}}]}
       try
         if typeof job.refresh is 'number' and job.refresh isnt 0
           d = new Date()
-          fnd += ' AND createdAt:>' + d.setDate(d.getDate() - job.refresh)
-      rs = job_result.find fnd, true
+          match.must.push {range:{createdAt:{gt:d.setDate(d.getDate() - job.refresh)}}}
+      rs = job_result.find match, true
       ofnd = {'signature.exact':proc.signature}
       rs = job_processing.find(ofnd, true) if not rs?
       rs = job_process.find(ofnd, true) if not rs?
@@ -254,8 +254,8 @@ API.job.create = (job) ->
 API.job.limit = (limitms,fn,args,group,refresh=0) -> # directly create a sync throttled process (will default re-use any result within 24 hrs
   pr = {priority:10000,_id:Random.id(),group:(group ? fn), function: fn, args: args, signature: encodeURIComponent(fn + '_' + args), limit: limitms}
   if typeof refresh is 'number' and refresh isnt 0
-    fnd = 'signature.exact:"' + pr.signature + '" AND NOT exists:"_job_result.error" AND createdAt:>' + (Date.now() - refresh)
-    jr = job_result.find fnd, true
+    match = {must:[{term:{'signature.exact':pr.signature}},{range:{createdAt:{gt:Date.now() - refresh}}}], must_not:[{exists:{field:'_raw_result.error'}}]}
+    jr = job_result.find match, true
   if not jr?
     rs = if typeof refresh is 'number' and refresh isnt 0 then job_processing.find({'signature.exact':pr.signature}, true)
     if rs?
@@ -281,7 +281,7 @@ API.job.process = (proc) ->
   fn = if proc.function.indexOf('API.') is 0 then API else global
   fn = fn[p] for p in proc.function.replace('API.','').split('.')
   try
-    proc._job_result = {}
+    proc._raw_result = {}
     args = proc # default just send the whole process as the arg
     if proc.args?
       if typeof proc.args is 'string'
@@ -293,30 +293,30 @@ API.job.process = (proc) ->
         args = proc.args
     if typeof args is 'object' and typeof proc.args is 'string' and proc.args.indexOf('[') is 0
       # save results keyed by function, so assuming functions produce results of same shape, they fit in index
-      proc._job_result[proc.function] = fn.apply this, args
+      proc._raw_result[proc.function] = fn.apply this, args
     else
-      proc._job_result[proc.function] = fn args
+      proc._raw_result[proc.function] = fn args
   catch err
-    proc._job_result = {error: err.toString()}
+    proc._raw_result = {error: err.toString()}
     if err?
-      proc._job_result[proc.function] = if err.response? then err.response else err # catching the error response of a function is still technically a valid response
+      proc._raw_result[proc.function] = if err.response? then err.response else err # catching the error response of a function is still technically a valid response
     API.log msg: 'Job process error', error: err, string: err.toString(), process: proc, level: 'debug'
     console.log(JSON.stringify err) if API.settings.log.level in ['debug','all']
   try
     if not job_result.insert(proc)? # if this fails, we stringify and save that way
-      prs = JSON.stringify proc._job_result[proc.function] # try saving as string then change it back
-      proc._job_result.string = prs
-      delete proc._job_result[proc.function]
+      prs = JSON.stringify proc._raw_result[proc.function] # try saving as string then change it back
+      proc._raw_result.string = prs
+      delete proc._raw_result[proc.function]
       strung = job_result.insert proc
-      delete proc._job_result.string
+      delete proc._raw_result.string
       if not strung?
-        proc._job_result.attachment = new Buffer(prs).toString('base64')
+        proc._raw_result.attachment = new Buffer(prs).toString('base64')
         attd = job_result.insert proc
-        delete proc._job_result.attachment
+        delete proc._raw_result.attachment
         if not attd?
-          proc._job_result.error = 'Unable to save result'
+          proc._raw_result.error = 'Unable to save result'
           job_result.insert proc
-      proc._job_result[proc.function] = JSON.parse prs
+      proc._raw_result[proc.function] = JSON.parse prs
   job_processing.remove proc._id
   if proc.repeat
     proc.counter ?= 1
@@ -400,7 +400,7 @@ API.job.stuck = (p) ->
   job_job.each 'NOT done:true', (rec) -> API.job.progress(rec._id)
   st = API.job.status()
   # check to see if paused
-  # compare count, oldest and newest of processes and processing with p._job_result[function] if it exists
+  # compare count, oldest and newest of processes and processing with p._raw_result[function] if it exists
   # if all the same, and if not having timeout after now, send a warning
   # also look for jobs still not done, and if nothing running, consider them stuck
   return st
@@ -469,12 +469,12 @@ API.job.progress = (jobid,limit) ->
     return {createdAt:job.createdAt, progress:(if job.done then 100 else 0), name:job.name, email:job.email, _id:job._id, new:job.new}
   else if job_processing.get job._id
     if checked = job_result.get job._id
-      return checked._job_result['API.job._progress']
+      return checked._raw_result['API.job._progress']
     else
       return {createdAt:job.createdAt, progress:0, name:job.name, email:job.email, _id:job._id, new:false}
   else
     API.log msg: 'Checking job progress of ' + job._id, level: 'debug'
-    return API.job.process({_id: job._id, group: 'PROGRESS', limit: limit ? 5000, function: 'API.job._progress', args: job._id})._job_result['API.job._progress']
+    return API.job.process({_id: job._id, group: 'PROGRESS', limit: limit ? 5000, function: 'API.job._progress', args: job._id})._raw_result['API.job._progress']
 
 API.job.rerun = (jobid,uid) ->
   job = job_job.get jobid
@@ -489,15 +489,15 @@ API.job.result = (jr,full) ->
   if full?
     return jr ? {}
   else
-    if jr?._job_result?[jr.function]?
-      return jr._job_result[jr.function]
-    else if jr?._job_result?.string?
-      return JSON.parse jr._job_result.string
-    else if jr?._job_result?.attachment?
-      dc = new Buffer(jr._job_result.attachment,'base64').toString('utf-8')
+    if jr?._raw_result?[jr.function]?
+      return jr._raw_result[jr.function]
+    else if jr?._raw_result?.string?
+      return JSON.parse jr._raw_result.string
+    else if jr?._raw_result?.attachment?
+      dc = new Buffer(jr._raw_result.attachment,'base64').toString('utf-8')
       return JSON.parse dc
-    else if jr?._job_result?.error
-      return jr._job_result.error
+    else if jr?._raw_result?.error
+      return jr._raw_result.error
     else
       return {}
 

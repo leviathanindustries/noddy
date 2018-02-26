@@ -66,42 +66,28 @@ API.add 'http/cache/:types/clear',
 
 API.http._colls = {}
 API.http._save = (lookup,type='cache',content) ->
-  return undefined if API.settings.cache is false
   API.http._colls[type] ?= new API.collection index: API.settings.es.index + "_cache", type: type
   lookup = JSON.stringify(lookup) if typeof lookup not in ['string','number','boolean']
   lookup = encodeURIComponent lookup
+  sv = {lookup: lookup, _raw_result: {}}
   if typeof content is 'string'
-    try
-      API.http._colls[type].insert lookup: lookup, string: content
-      return true
-    catch
-      return false
+    sv._raw_result.string = content
   else if typeof content is 'boolean'
-    try
-      API.http._colls[type].insert lookup: lookup, bool: content
-      return true
-    catch
-      return false
+    sv._raw_result.bool = content
   else if typeof content is 'number'
-    try
-      API.http._colls[type].insert lookup: lookup, number: content
-      return true
-    catch
-      return false
+    sv._raw_result.number = content
   else
+    sv._raw_result.content = content
+  saved = API.http._colls[type].insert sv
+  if not saved?
     try
-      API.http._colls[type].insert lookup: lookup, content: content
-      return true
-    catch
-      try
-        API.http._colls[type].insert lookup: lookup, string: JSON.stringify(content)
-        return true
-      catch
-        return false
+      sv._raw_result = {stringify: JSON.stringify content}
+      saved = API.http._colls[type].insert sv
+  return saved
 
 API.http.cache = (lookup,type='cache',content,refresh=0) ->
-  return API.http._save(lookup, type, content) if content?
   return undefined if API.settings.cache is false
+  return API.http._save(lookup, type, content) if content?
   API.http._colls[type] ?= new API.collection index: API.settings.es.index + "_cache", type: type
   try
     lookup = JSON.stringify(lookup) if typeof lookup not in ['string','number']
@@ -110,23 +96,23 @@ API.http.cache = (lookup,type='cache',content,refresh=0) ->
       d = new Date()
       fnd += ' AND createdAt:>' + d.setDate(d.getDate() - refresh)
     res = API.http._colls[type].find fnd, true
-    if res?.string?
-      try
-        parsed = JSON.parse res.string
-        API.log {msg:'Returning parsed string result from cache', lookup:lookup, type:type}
-        return parsed
-      catch
-        API.log {msg:'Returning string result from cache', lookup:lookup, type:type}
-        return res.string
-    else if res?.bool?
+    if res?._raw_result?.string?
+      API.log {msg:'Returning string result from cache', lookup:lookup, type:type}
+      return res._raw_result.string
+    else if res?._raw_result?.bool?
       API.log {msg:'Returning object boolean result from cache', lookup:lookup, type:type}
-      return res.bool
-    else if res?.number?
+      return res._raw_result.bool
+    else if res?._raw_result?.number?
       API.log {msg:'Returning object number result from cache', lookup:lookup, type:type}
-      return res.number
-    else if res?.content?
+      return res._raw_result.number
+    else if res?._raw_result?.content?
       API.log {msg:'Returning object content result from cache', lookup:lookup, type:type}
       return res.content
+    else if res?._raw_result?.stringify
+      try
+        parsed = JSON.parse res._raw_result.stringify
+        API.log {msg:'Returning parsed stringified content result from cache', lookup:lookup, type:type}
+        return parsed
   return undefined
 
 API.http.resolve = (url) ->

@@ -372,26 +372,23 @@ API.collection._translate = (q, opts) ->
       if not opts?
         opts = q
         delete opts.q
-    else if q.must?
-      qry.query.filtered.filter.bool.must = q.must
-    else if q.should?
-      qry.query.filtered.filter.bool.should = q.should
-    else if q.must_not?
-      qry.query.filtered.filter.bool.must_not = q.must_not
     else
+      if q.must?
+        qry.query.filtered.filter.bool.must = q.must
+      if q.should?
+        qry.query.filtered.filter.bool.should = q.should
+      if q.must_not?
+        qry.query.filtered.filter.bool.must_not = q.must_not
       for y of q # an object where every key is assumed to be an AND term search if string, or a named search object to go in to ES
-        if typeof q[y] is 'string'
-          tobj = term:{}
-          tobj.term[y.replace('.exact','')+'.exact'] = q[y] # TODO is it worth checking mapping to see if .exact is used by it...
-          qry.query.filtered.filter.bool.must.push tobj
-        else if typeof q[y] in ['number','boolean']
-          qry.query.filtered.query.bool.must.push {query_string:{query:y + ':' + q[y]}}
-        else if typeof q[y] is 'object'
-          qobj = {}
-          qobj[y] = q[y]
-          qry.query.filtered.filter.bool.must.push qobj
-        else if q[y]?
-          qry.query.filtered.filter.bool.must.push q[y]
+        if y not in ['must','must_not','should']
+          if typeof q[y] is 'string'
+            tobj = term:{}
+            tobj.term[y.replace('.exact','')+'.exact'] = q[y] # TODO is it worth checking mapping to see if .exact is used by it...
+            qry.query.filtered.filter.bool.must.push tobj
+          else if typeof q[y] in ['number','boolean']
+            qry.query.filtered.query.bool.must.push {query_string:{query:y + ':' + q[y]}}
+          else if q[y]?
+            qry.query.filtered.filter.bool.must.push q[y]
   else if typeof q is 'string'
     if q.indexOf('?') is 0
       qry = q # assume URL query params and just use them as such?
