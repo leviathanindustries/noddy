@@ -51,7 +51,7 @@ API.add 'log/stack/length',
     authRequired: if API.settings.dev then undefined else 'root'
     action: () ->
       if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
-        return {length: _log_stack.length, last: moment(_log_last, "x").format("YYYY-MM-DD HHmm.ss")}
+        return {current: _lsp, a: _ls.a.length, b: _ls.b.length, last: moment(_log_last, "x").format("YYYY-MM-DD HHmm.ss")}
       else
         return {info: 'Log stack is not in use'}
 
