@@ -275,8 +275,10 @@ API.job.process = (proc) ->
   proc.args = JSON.stringify proc.args if proc.args? and typeof proc.args is 'object' # in case a process is passed directly with non-string args
   try proc._cid = process.env.CID
   try proc._appid = process.env.APP_ID
+  if proc._id? # should always be the case but check anyway
+    return false if job_processing.get(proc._id)? # puts extra load on ES but may catch unnecessary duplicates
+    job_process.remove proc._id
   proc._id = job_processing.insert proc # in case is a process with no ID, need to catch the ID
-  job_process.remove proc._id
   API.log {msg:'Processing ' + proc._id,process:proc,level:'debug',function:'API.job.process'}
   fn = if proc.function.indexOf('API.') is 0 then API else global
   fn = fn[p] for p in proc.function.replace('API.','').split('.')
@@ -335,14 +337,18 @@ API.job.process = (proc) ->
     cb null, proc # TODO should this go in timeout?
   return proc
 
-API.job._ignores = {}
+API.job._ignoregroups = {}
+API.job._ignoreids = {}
 API.job.next = () ->
   if job_limit.get('PAUSE')?
     return false
   now = Date.now()
-  for k, v of API.job._ignores
+  for k, v of API.job._ignoregroups
     if v <= now
-      delete API.job._ignores[k]
+      delete API.job._ignoregroups[k]
+  for s, t of API.job._ignoreids
+    if t <= now
+      delete API.job._ignoreids[s]
   if (API.settings.job?.concurrency ?= 1000000000) <= job_processing.count()
     API.log {msg:'Not running more jobs, job max concurrency reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
   else if (API.settings.job?.memory ? 1300000000) <= process.memoryUsage().rss
@@ -350,25 +356,31 @@ API.job.next = () ->
     # and if legit and being hit on every available machine in the cluster, should trigger alert to start more cluster machines?
     API.log {msg:'Not running more jobs, job max memory reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
   else
-    API.log {msg:'Checking for jobs to run',ignore:API.job._ignores,function:'API.job.next',level:'all'}
+    API.log {msg:'Checking for jobs to run',ignore:API.job._ignoregroups,function:'API.job.next',level:'all'}
     match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
-    match.must_not.push({term: 'group.exact':g}) for g of API.job._ignores
+    match.must_not.push({term: 'group.exact':g}) for g of API.job._ignoregroups
+    match.must_not.push({term: '_id.exact':m}) for m of API.job._ignoreids
     #console.log(JSON.stringify match) if API.settings.dev
     p = job_process.find match, {sort:{priority:{order:'desc'}}, random:true} # TODO check if random sort works - may have to be more complex
     if p?
-      if p.limit?
+      if job_processing.get(p._id)? # because job_process is searched, there can be a delay before it reflects deleted jobs, so accept this extra load on ES
+        API.job._ignoreids[p._id] = now + API.settings.job?.interval ? 1000
+        return API.job.next()
+      else if p.limit?
         lm = job_limit.get p.group
         if lm? and lm.createdAt + p.limit > now
-          if not API.job._ignores[p.group]?
-            API.job._ignores[p.group] = lm.createdAt + p.limit
+          if not API.job._ignoregroups[p.group]?
+            API.job._ignoregroups[p.group] = lm.createdAt + p.limit
             return API.job.next()
           else
             return false
         else
           job_limit.insert {group:lm.group,last:lm.createdAt} if lm? and API.settings.dev # keep a history of limit counters until service restarts
           jl = job_limit.insert {_id:p.group,group:p.group}
+          API.job._ignoreids[p._id] = now + API.settings.job?.interval ? 1000
           return API.job.process p
       else
+        API.job._ignoreids[p._id] = now + API.settings.job?.interval ? 1000
         return API.job.process p
     else
       return false

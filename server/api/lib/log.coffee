@@ -1,11 +1,35 @@
 
 import { Random } from 'meteor/random'
 import moment from 'moment'
+import Future from 'fibers/future'
+
 
 _log_today = moment(Date.now(), "x").format "YYYYMMDD"
 _log_index = new API.collection index: API.settings.es.index + '_log', type: _log_today
-_log_stack = []
 _log_last = Date.now()
+_ls = {a:[],b:[]}
+_lsp = "a"
+_log_stack = _ls[_lsp]
+_log_flush = () ->
+  _log_last = Date.now()
+  if _lsp is "a"
+    _log_stack = _ls.b
+    _lsp = "b"
+  else
+    _log_stack = _ls.a
+    _lsp = "a"
+  console.log('Switched log stack to ' + _lsp) if API.settings.dev
+  Meteor.setTimeout (() ->
+    _wl = if _lsp is "a" then "b" else "a"
+    imported = _log_index.import _ls[_wl]
+    _ls[_wl] = []
+    if API.settings.dev
+      console.log 'Flushed logs from stack ' + _wl
+      console.log imported
+      console.log 'Log stack lengths now a:' + _ls.a.length + ' b:' + _ls.b.length
+  ), 5
+
+
 
 API.add 'log',
   get:
@@ -17,22 +41,42 @@ API.add 'log/stack',
   get:
     authRequired: if API.settings.dev then undefined else 'root'
     action: () ->
-      return {length: _log_stack.length, last: _log_last, stack: _log_stack}
+      if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
+        return {length: _log_stack.length, last: moment(_log_last, "x").format("YYYY-MM-DD HHmm.ss"), bulk: API.settings.log.bulk, timeout: API.settings.log.timeout, current: _lsp, a: _ls.a, b: _ls.b}
+      else
+        return {info: 'Log stack is not in use'}
+
+API.add 'log/stack/length',
+  get:
+    authRequired: if API.settings.dev then undefined else 'root'
+    action: () ->
+      if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
+        return {length: _log_stack.length, last: moment(_log_last, "x").format("YYYY-MM-DD HHmm.ss")}
+      else
+        return {info: 'Log stack is not in use'}
 
 API.add 'log/stack/flush',
   get:
     authRequired: if API.settings.dev then undefined else 'root'
     action: () ->
-      ln = _log_stack.length
-      logged = _log_index.import _log_stack
-      _log_stack = []
-      _log_last = Date.now()
-      return {length:ln, logged: logged}
+      if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
+        _alt = if _lsp is "a" then "b" else "a"
+        ret = { from: { stack:_lsp, a:_ls.a.length, b:_ls.b.length } }
+        _log_flush()
+        future = new Future()
+        Meteor.setTimeout (() -> future.return()), 5000
+        future.wait()
+        ret.to = {stack:_lsp, a:_ls.a.length, b:_ls.b.length }
+        return true
+      else
+        return {info: 'Log stack is not in use'}
 
 API.add 'log/clear',
   get:
     authRequired: if API.settings.dev then undefined else 'root'
     action: () ->
+      _ls.a = []
+      _ls.b = []
       _log_index.remove '*'
       return true
 
@@ -40,6 +84,8 @@ API.add 'log/clear/_all',
   get:
     authRequired: if API.settings.dev then undefined else 'root'
     action: () ->
+      _ls.a = []
+      _ls.b = []
       API.es.call 'DELETE', API.settings.es.index + '_log'
       _log_today = moment(Date.now(), "x").format "YYYYMMDD"
       _log_index = new API.collection index: API.settings.es.index + '_log', type: _log_today
@@ -65,6 +111,11 @@ API.log = (opts, fn, lvl='debug') ->
 
       today = moment(opts.createdAt, "x").format "YYYYMMDD"
       if today isnt _log_today
+        if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
+          _log_flush()
+          future = new Future()
+          Meteor.setTimeout (() -> future.return()), 10
+          future.wait()
         _log_today = today
         _log_index = new API.collection index: API.settings.es.index + '_log', type: _log_today
 
@@ -85,10 +136,7 @@ API.log = (opts, fn, lvl='debug') ->
         opts._id = Random.id()
         _log_stack.unshift opts
         if _log_stack.length >= API.settings.log.bulk or Date.now() - _log_last > API.settings.log.timeout
-          ls = JSON.parse(JSON.stringify(_log_stack))
-          _log_stack = []
-          _log_last = Date.now()
-          Meteor.setTimeout (() -> _log_index.import ls), 1
+          _log_flush()
       else
         _log_index.insert opts
 
