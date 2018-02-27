@@ -211,16 +211,16 @@ API.service.lantern.process = (proc) ->
       result.confidence = 1 if not result.confidence
       result.publisher = crossref.publisher
       result.provenance.push 'Added publisher name from Crossref'
-      if not result.issn and crossref.ISSN and crossref.ISSN.length > 0
+      if not result.issn and crossref.ISSN? and crossref.ISSN.length > 0
         result.issn = crossref.ISSN[0]
         result.provenance.push 'Added ISSN from Crossref'
-      if not result.journal_title and crossref['container-title'] and crossref['container-title'].length > 0
+      if not result.journal_title and crossref['container-title']? and crossref['container-title'].length > 0
         result.journal_title = crossref['container-title'][0]
         result.provenance.push 'Added journal title from Crossref'
       if not result.authors and crossref.author
         result.authors = crossref.author
         result.provenance.push 'Added author list from Crossref'
-      if not result.title and crossref.title and crossref.title.length > 0
+      if not result.title and crossref.title? and crossref.title.length > 0
         result.title = crossref.title[0]
         result.provenance.push 'Added article title from Crossref'
     else
@@ -233,7 +233,7 @@ API.service.lantern.process = (proc) ->
       if not result.authors and core.authors
         result.authors = core.author
         result.provenance.push 'Added authors from CORE'
-      if core.repositories?.length > 0
+      if core.repositories? and core.repositories.length > 0
         for rep in core.repositories
           rc = {name:rep.name}
           rc.oai = rep.oai if rep.oai?
@@ -279,7 +279,7 @@ API.service.lantern.process = (proc) ->
       try
         domain = base.dclink.split('://')[1].split('/')[0]
         repo = API.use.opendoar.search domain
-        if repo.total is 1 and repo.data[0].url and repo.data[0].url.indexOf(domain) isnt -1
+        if repo.total is 1 and repo.data[0].url? and typeof repo.data[0].url is 'string' and repo.data[0].url.indexOf(domain) isnt -1
           result.repositories.push({
             fulltexts:[base.dclink],
             url: repo.data[0].url,
@@ -301,7 +301,7 @@ API.service.lantern.process = (proc) ->
   else
     result.provenance.push 'Not attempting Crossref / CORE / BASE lookups - do not have DOI for article.'
 
-  if result.grants.length > 0
+  if result.grants? and result.grants.length > 0
     grants = []
     for gr in result.grants
       if gr.grantId
@@ -343,8 +343,8 @@ API.service.lantern.process = (proc) ->
     if doaj.status isnt 'error'
       result.pure_oa = true
       result.provenance.push 'Confirmed journal is listed in DOAJ'
-      result.publisher ?= doaj.data.bibjson.publisher
-      result.journal_title ?= doaj.data.bibjson.title
+      result.publisher ?= doaj.bibjson.publisher
+      result.journal_title ?= doaj.bibjson.title
     else
       result.provenance.push 'Could not find journal in DOAJ'
 
@@ -353,13 +353,13 @@ API.service.lantern.process = (proc) ->
       try journal = romeo.journals[0].journal[0]
       try publisher = romeo.publishers[0].publisher[0]
       if not result.journal_title
-        if journal?.jtitle and journal.jtitle.length > 0
+        if journal?.jtitle? and journal.jtitle.length > 0
           result.journal_title = journal.jtitle[0]
           result.provenance.push 'Added journal title from Sherpa Romeo'
         else
           result.provenance.push 'Tried, but could not add journal title from Sherpa Romeo.'
       if not result.publisher
-        if publisher?.name and publisher.name.length > 0
+        if publisher?.name? and publisher.name.length > 0
           result.publisher = publisher.name[0]
           result.provenance.push 'Added publisher from Sherpa Romeo'
         else
@@ -391,7 +391,7 @@ API.service.lantern.process = (proc) ->
   if not result.licence or result.licence not in ['cc-by','cc-zero']
     publisher_licence_check_ran = true
     url = API.http.resolve('https://doi.org/'+result.doi) if result.doi
-    if url and url.indexOf('europepmc') is -1 # if it resolves to eupmc then it would already have been checked above
+    if url? and typeof url is 'string' and url.indexOf('europepmc') is -1 # if it resolves to eupmc then it would already have been checked above
       lic = API.service.lantern.licence url
       if lic.licence and lic.licence isnt 'unknown'
         result.licence = lic.licence
