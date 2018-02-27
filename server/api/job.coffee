@@ -45,7 +45,7 @@ API.add 'job/:job',
     roleRequired: 'job.user' # who if anyone can remove jobs?
     action: () -> return if not API.job.allowed(this.urlParams.job,this.user) then 401 else job_job.remove this.urlParams.job
 
-API.add 'job/:job/progress', get: () -> return if not job = job_job.get(this.urlParams.job) then 404 else API.job.progress job
+API.add 'job/:job/progress', get: () -> return if not job = job_job.get(this.urlParams.job) then 404 else API.job.progress job, this.queryParams.reload?
 
 API.add 'job/:job/results',
   get:
@@ -70,6 +70,11 @@ API.add 'job/:job/rerun',
   get:
     authOptional: true # TODO decide proper permissions for this and pass uid to job.rerun if suitable
     action: () -> return job: API.job.rerun(this.urlParams.job, this.userId)
+
+API.add 'job/:job/reload',
+  get:
+    authOptional: true # TODO decide proper permissions for this and pass uid to job.rerun if suitable
+    action: () -> return job: API.job.reload(this.urlParams.job)
 
 API.add 'job/jobs',
   get:
@@ -392,12 +397,12 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   future.wait()
   API.log {msg: 'Starting job runner with interval ' + interval, _cid: process.env.CID, _appid: process.env.APP_ID, function: 'API.job.start', level: 'all'}
   # create a repeating limited stuck check process with id 'STUCK' so that it can check for stuck jobs
-  # multiple clusters trying to create it wont matter because they will just overwrite each other, eventually only one process will run
+  # multiple machines trying to create it won't matter because they will just overwrite each other, eventually only one process will run
   job_limit.remove('*')
-  job_process.remove [{function:'API.job.stuck'},{group:'PROGRESS'}]
-  job_processing.remove [{function:'API.job.stuck'},{group:'PROGRESS'}]
-  job_result.remove [{function:'API.job.stuck'},{group:'PROGRESS'}]
-  job_process.insert _id: 'STUCK', repeat: true, function: 'API.job.stuck', priority: 1, group: 'API.job.stuck', limit: 900000
+  job_process.remove [{group:'STUCK'},{group:'PROGRESS'}]
+  job_processing.remove [{group:'STUCK'},{group:'PROGRESS'}]
+  job_result.remove [{group:'STUCK'},{group:'PROGRESS'}]
+  job_process.insert _id: 'STUCK', repeat: true, function: 'API.job.stuck', priority: 1, group: 'STUCK', limit: 900000
   API.job._iid ?= Meteor.setInterval API.job.next,interval
 
 API.job.start() if not API.job._iid? and API.settings.job?.startup
@@ -409,13 +414,13 @@ API.job.stop = () ->
   job_limit.insert _id: 'PAUSE'
 
 API.job.stuck = (p) ->
-  job_job.each 'NOT done:true', (rec) -> API.job.progress(rec._id)
-  st = API.job.status()
+  #job_job.each 'NOT done:true', (rec) -> API.job.progress(rec._id)
+  #st = API.job.status()
   # check to see if paused
   # compare count, oldest and newest of processes and processing with p._raw_result[function] if it exists
   # if all the same, and if not having timeout after now, send a warning
   # also look for jobs still not done, and if nothing running, consider them stuck
-  return st
+  return true
 
 API.job.status = (filter='*') ->
   res =
@@ -443,24 +448,51 @@ API.job.status = (filter='*') ->
 
 API.job.reload = (jobid) ->
   ret = 0
-  job_processing.each (if jobid then 'job:'+jobid else '*'), ((proc) ->
-    if not job_result.get(proc._id)
-      proc.reloaded ?= []
-      proc.reloaded.push proc.createdAt
-      job_process.insert proc
+  reloads = []
+  if jobid?
+    job = job_job.get jobid
+    if job?
+      for p in job.processes
+        proc = if p._id? then job_processing.get(p._id) else undefined
+        if proc?
+          ret += 1
+          job_processing.remove proc._id
+          if not job_result.get(proc._id)? and not job_process.get(proc._id)?
+            proc.reloaded ?= []
+            proc.reloaded.push proc.createdAt
+            reloads.push proc
+  else
+    job_processing.each '*', ((proc) ->
       ret += 1
-    job_processing.remove(proc._id) if jobid?
-  )
-  job_processing.remove('*') if not jobid?
+      if not job_result.get(proc._id)? and not job_process.get(proc._id)?
+        proc.reloaded ?= []
+        proc.reloaded.push proc.createdAt
+        reloads.push proc
+    )
+    job_processing.remove '*'
+  if reloads.length
+    job_process.import(reloads)
+    job_process.refresh()
   return ret
 
-API.job._progress = (jobid) ->
+API.job._progress = (jobid,reload=false) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
   job_result.remove job._id
   total = job.processes.length
   count = 0
-  for i in job.processes
-    count += 1 if job_result.get(i._id)?
+  job.processed ?= []
+  processed = []
+  if job.processed? and job.processed.length is total
+    count = job.processed.length
+  else
+    for i in job.processes
+      if job.processed.indexOf(i._id) isnt -1
+        count += 1
+      else if job_result.get(i._id)?
+        count += 1
+        processed.push i._id
+      else if reload? and not job_processing.get(i._id)? and not job_process.get(i._id)?
+        job_process.insert i
   p = count/total * 100
   if p is 100
     job_job.update job._id, {done:true}
@@ -473,9 +505,11 @@ API.job._progress = (jobid) ->
         text = 'Job ' + (if job.name then job.name else job._id) + ' is complete.'
         email = job.email ? job.user and API.accounts.retrieve(job.user)?.emails[0].address
         API.mail.send to:email, subject:text, text:text
+  else if processed.length
+    job_job.update job._id, {processed:job.processed.concat(processed)}
   return {createdAt:job.createdAt, progress:p, name:job.name, email:job.email, _id:job._id, new:job.new}
 
-API.job.progress = (jobid,limit) ->
+API.job.progress = (jobid,reload=false) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
   if job.new or job.done
     return {createdAt:job.createdAt, progress:(if job.done then 100 else 0), name:job.name, email:job.email, _id:job._id, new:job.new}
@@ -486,7 +520,7 @@ API.job.progress = (jobid,limit) ->
       return {createdAt:job.createdAt, progress:0, name:job.name, email:job.email, _id:job._id, new:false}
   else
     API.log msg: 'Checking job progress of ' + job._id, level: 'debug'
-    return API.job.process({_id: job._id, group: 'PROGRESS', limit: limit ? 5000, function: 'API.job._progress', args: job._id})._raw_result['API.job._progress']
+    return API.job.process({_id: job._id, priority: 9000, group: 'PROGRESS', limit: 10000, function: 'API.job._progress', args: [job._id,reload]})._raw_result['API.job._progress']
 
 API.job.rerun = (jobid,uid) ->
   job = job_job.get jobid

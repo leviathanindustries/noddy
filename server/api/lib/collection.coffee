@@ -110,7 +110,7 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned) ->
         API.collection._dot(rec,k,obj[k]) if k isnt '_id'
       rec.updatedAt = Date.now()
       rec.updated_date = moment(rec.updatedAt, "x").format "YYYY-MM-DD HHmm.ss"
-      API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, rec: rec, updateset: obj, level: 'debug' }) if this._route.indexOf('_log') is -1
+      API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, level: 'debug' }) if this._route.indexOf('_log') is -1
       if versioned
         rs = API.es.call 'POST', this._route + '/' + rec._id, rec, refresh, versioned
         versioned = rs._version
