@@ -17,24 +17,24 @@ module.exports = {
     }
   },
   meteor: {
-    name: 'noddy',
+    name: 'noddy3001',
     path: '.',
     docker: {
       image: 'abernix/meteord:node-8.4.0-base'
     },
     servers: {
       one: {
-        CID: 1
+        CID: 3
       },
       two: {
-        CID: 2
+        CID: 4
       }
     },
     buildOptions: {
       serverOnly: true
     },
     env: {
-      PORT: 3000,
+      PORT: 3001,
       ROOT_URL: 'https://api.cottagelabs.com',
       MONGO_URL: 'http://nowhere' // necessary to run a meteor app with no mongo
     },

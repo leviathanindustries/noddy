@@ -16,6 +16,10 @@ keepalive_timeout 600;
 # DEFINE A DEV UPSTREAM CL API
 upstream noddy_dev {
     server localhost:3002;
+    server 10.131.20.129:3000 max_fails=1 fail_timeout=60;
+    server 10.131.20.129:3001 max_fails=1 fail_timeout=60;
+    server 10.131.11.72:3000 max_fails=1 fail_timeout=60;
+    server 10.131.11.72:3001 max_fails=1 fail_timeout=60;
 }
 
 # DEFINE A LOCAL UPSTREAM CL API FOR SOME SERVICE
@@ -37,10 +41,6 @@ upstream noddy {
     #ip_hash;
     keepalive 16;
     server localhost:3333 max_fails=1 fail_timeout=60;
-    server 10.131.20.129:3000 max_fails=1 fail_timeout=60;
-    server 10.131.20.129:3001 max_fails=1 fail_timeout=60;
-    server 10.131.11.72:3000 max_fails=1 fail_timeout=60;
-    server 10.131.11.72:3001 max_fails=1 fail_timeout=60;
 }
 
 #REDIRECT PORT 80 TO PORT 443 FOR ANYTHING THAT SHOULD ONLY SERVE ON 443

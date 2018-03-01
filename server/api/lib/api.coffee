@@ -68,14 +68,29 @@ API.blacklist = (request) ->
     blacklist = API.use.google.sheets.feed API.settings.blacklist.sheet
     if request?
       for b in blacklist
-        check = if b.key and b.key isnt '*' then (request.headers[b.key] ? request.params[b.key]) else JSON.stringify(request.headers) + JSON.stringify(request.params)
-        if check and b.value and check.indexOf(b.value) isnt -1
-          try parseInt b.code
+        bad = false
+        routematch = not b.route or (b.route and b.route isnt '*' and request.url.toLowerCase().indexOf(b.route.toLowerCase()) isnt -1)
+        if b.key and b.value and routematch
+          blc = b.key.toLowerCase()
+          vlc = b.value.toLowerCase()
+          for h of request.headers
+            if (b is '*' or h.toLowerCase() is blc) and request.headers[h].toLowerCase().indexOf(vlc) isnt -1
+              bad = true
+              break
+          if bad is false
+            for p of request.params
+              if (p is '*' or p.toLowerCase() is blc) and request.params[p].toLowerCase().indexOf(vlc) isnt -1
+                bad = true
+                break
+        else if b.value and routematch
+          bad = (JSON.stringify(request.headers) + JSON.stringify(request.params)).toLowerCase().indexOf(b.value.toLowerCase()) isnt -1
+        else if b.route and routematch
+          bad = true
+        if bad
+          try b.code = parseInt b.code
           return
             statusCode: b.code ? 403
-            headers:
-              'Content-Type': 'text/plain'
-            body: b.msg ? b.value + ' is blacklisted.' + (if API.settings.blacklist.contact then ' Contact ' + API.settings.blacklist.contact + ' for further information.' else '')
+            body: {status:'error', error:'blacklisted', info: (b.msg ? b.value ? 'This request') + ' is blacklisted.', contact: API.settings.blacklist.contact}
     else
       return blacklist
   else

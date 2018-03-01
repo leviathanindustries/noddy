@@ -146,12 +146,11 @@ API.use.europepmc.indexed = (startdate,enddate,from,size,qrystr='') ->
   catch
     return { status: 'error', total: 0}
 
-API.use.europepmc.licence = (pmcid,rec,fulltext,noui) ->
+API.use.europepmc.licence = (pmcid,rec,fulltext,noui,cache,refresh=86400000) ->
   API.log msg: 'Europepmc licence checking', pmcid: pmcid, rec: rec?, fulltext: fulltext?, noui: noui
 
   if pmcid? or rec?.pmcid?
-    cached = API.http.cache (pmcid ? rec.pmcid), 'epmc_licence'
-    if cached?
+    if cache and cached = API.http.cache (pmcid ? rec.pmcid), 'epmc_licence'
       cached.cache = true
       return cached
 
@@ -179,10 +178,9 @@ API.use.europepmc.licence = (pmcid,rec,fulltext,noui) ->
 
     if pmcid and not noui and API.service?.lantern?.licence?
       url = 'https://europepmc.org/articles/PMC' + pmcid.toLowerCase().replace('pmc','')
-      pg = API.job.limit 3500, 'API.http.phantom', [url], "EPMCUI", 86400000
-      if pg?.statusCode is 200
-        page = pg.content
-        licsplash = API.service.lantern.licence url, false, page
+      pg = API.job.limit (API.settings.use?.europepmc?.limit ? 3000), 'API.http.phantom', [url,1000,refresh], "EPMCUI", limitcache
+      if typeof pg is 'string'
+        licsplash = API.service.lantern.licence url, false, pg
         if licsplash.licence?
           licsplash.source = 'epmc_html'
           API.http.cache pmcid, 'epmc_licence', licsplash
@@ -193,7 +191,7 @@ API.use.europepmc.licence = (pmcid,rec,fulltext,noui) ->
   else
     return false
 
-API.use.europepmc.authorManuscript = (pmcid,rec,fulltext,noui) ->
+API.use.europepmc.authorManuscript = (pmcid,rec,fulltext,noui,cache=true,refresh=86400000) ->
   if typeof fulltext is 'string' and fulltext.indexOf('pub-id-type=\'manuscript\'') isnt -1 and fulltext.indexOf('pub-id-type="manuscript"') isnt -1
     return {aam:true,info:'fulltext'}
   else
@@ -201,8 +199,7 @@ API.use.europepmc.authorManuscript = (pmcid,rec,fulltext,noui) ->
     #rec = API.use.europepmc.search('PMC' + pmcid.toLowerCase().replace('pmc',''))?.data?[0] if pmcid and not rec
     pmcid ?= rec?.pmcid
     if pmcid
-      cached = API.http.cache pmcid, 'epmc_aam'
-      if cached?
+      if cache and cached = API.http.cache pmcid, 'epmc_aam'
         cached.cache = true
         return cached
       else
@@ -213,33 +210,34 @@ API.use.europepmc.authorManuscript = (pmcid,rec,fulltext,noui) ->
           return resp
         else if not noui
           url = 'https://europepmc.org/articles/PMC' + pmcid.toLowerCase().replace('pmc','')
-          try
-            pg = API.job.limit 3500, 'API.http.phantom', [url], "EPMCUI", 86400000
-            if pg?.statusCode is 200
-              page = pg.content
-              s1 = 'Author Manuscript; Accepted for publication in peer reviewed journal'
-              s2 = 'Author manuscript; available in PMC'
-              s3 = 'logo-nihpa.gif'
-              s4 = 'logo-wtpa2.gif'
-              if page.indexOf(s1) isnt -1 or page.indexOf(s2) isnt -1 or page.indexOf(s3) isnt -1 or page.indexOf(s4) isnt -1
-                resp = {aam:true,info:'splashpage'}
-                API.http.cache pmcid, 'epmc_aam', resp
-                return resp
-              else
-                resp = {aam:false,info:'EPMC splashpage checked, no indicator found'}
-                API.http.cache pmcid, 'epmc_aam', resp
-                return resp
-            else if pg?.statusCode is 404
-              resp = {aam:false,info:'not in EPMC (404)'}
+          #try
+          pg = API.job.limit (API.settings.use?.europepmc?.limit ? 3000), 'API.http.phantom', [url,1000,refresh], "EPMCUI"
+          if pg is 404
+            resp = {aam:false,info:'not in EPMC (404)'}
+            API.http.cache pmcid, 'epmc_aam', resp
+            return resp
+          else if pg is 403
+            API.log 'EPMC blocking us on author manuscript lookup', pmcid: pmcid
+            return {info: 'EPMC blocking access, AAM status unknown'}
+          else if typeof pg is 'string'
+            s1 = 'Author Manuscript; Accepted for publication in peer reviewed journal'
+            s2 = 'Author manuscript; available in PMC'
+            s3 = 'logo-nihpa.gif'
+            s4 = 'logo-wtpa2.gif'
+            if pg.indexOf(s1) isnt -1 or pg.indexOf(s2) isnt -1 or pg.indexOf(s3) isnt -1 or pg.indexOf(s4) isnt -1
+              resp = {aam:true,info:'splashpage'}
               API.http.cache pmcid, 'epmc_aam', resp
               return resp
-            else if pg?.statusCode is 403
-              API.log 'EPMC blocking us on author manuscript lookup', pmcid: pmcid
-              return {info: 'EPMC blocking access, AAM status unknown'}
-            else if pg?
-              return {info: 'EPMC was accessed but aam could not be discerned'}
-          catch err
-            return {info:'Unknown error accessing EPMC', error: err.toString(), code: err.response?.statusCode}
+            else
+              resp = {aam:false,info:'EPMC splashpage checked, no indicator found'}
+              API.http.cache pmcid, 'epmc_aam', resp
+              return resp
+          else if pg?
+            return {info: 'EPMC was accessed but aam could not be decided from what was returned'}
+          else
+            return {info: 'EPMC was accessed nothing was returned, so aam check could not be performed'}
+          #catch err
+          #  return {info:'Unknown error accessing EPMC', error: err.toString(), code: err.response?.statusCode}
   return {aam:false,info:''}
 
 API.use.europepmc.xml = (pmcid) ->
@@ -272,34 +270,41 @@ API.use.europepmc.xmlAvailable = (pmcid) ->
 
 API.use.europepmc.status = () ->
   try
-    return true if HTTP.call 'GET', 'https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=*', {timeout:2000}
+    return true if HTTP.call 'GET', 'https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=*', {timeout: API.settings.use?.europepmc?.timeout ? API.settings.use?._timeout ? 4000}
   catch err
     return err.toString()
 
 API.use.europepmc.test = (verbose) ->
+  console.log('Starting europepmc test') if API.settings.dev
+
   result = {passed:[],failed:[]}
 
   tests = [
     () ->
-      result.eupmc = API.use.europepmc.pmc '3206455'
-      return _.isEqual result.eupmc, API.use.europepmc.test._examples.record
+      result.record = API.use.europepmc.pmc '3206455'
+      delete result.record.url
+      return false if not result.record.fullTextUrlList?
+      delete result.record.fullTextUrlList
+      return _.isEqual result.record, API.use.europepmc.test._examples.record
     () ->
-      result.aam = API.use.europepmc.authorManuscript '3206455'
+      result.aam = API.use.europepmc.authorManuscript '3206455', undefined, undefined, undefined, false, 60000
       return result.aam.aam is false
     () ->
-      result.licence = API.use.europepmc.licence '3206455'
+      result.licence = API.use.europepmc.licence '3206455', undefined, undefined, undefined, false, 60000
       return _.isEqual result.licence, API.use.europepmc.test._examples.licence
   ]
 
   (if (try tests[t]()) then (result.passed.push(t) if result.passed isnt false) else result.failed.push(t)) for t of tests
   result.passed = result.passed.length if result.passed isnt false and result.failed.length is 0
   result = {passed:result.passed} if result.failed.length is 0 and not verbose
+
+  console.log('Ending europepmc test') if API.settings.dev
+
   return result
 
 
 API.use.europepmc.test._examples = {
   "licence": {
-    "retrievable": true,
     "licence": "cc-by",
     "match": "This is an Open Access article distributed under the terms of the Creative Commons Attribution License",
     "matched": "thisisanopenaccessarticledistributedunderthetermsofthecreativecommonsattributionlicense",
@@ -397,10 +402,10 @@ API.use.europepmc.test._examples = {
       "journal": {
         "title": "Journal of Cheminformatics",
         "medlineAbbreviation": "J Cheminform",
-        "essn": "1758-2946",
-        "issn": "1758-2946",
         "isoabbreviation": "J Cheminform",
-        "nlmid": "101516718"
+        "nlmid": "101516718",
+        "essn": "1758-2946",
+        "issn": "1758-2946"
       }
     },
     "pubYear": "2011",
@@ -413,45 +418,6 @@ API.use.europepmc.test._examples = {
       "pubType": [
         "research-article",
         "Journal Article"
-      ]
-    },
-    "fullTextUrlList": {
-      "fullTextUrl": [
-        {
-          "availability": "Open access",
-          "availabilityCode": "OA",
-          "documentStyle": "pdf",
-          "site": "Europe_PMC",
-          "url": "https://europepmc.org/articles/PMC3206455?pdf=render"
-        },
-        {
-          "availability": "Open access",
-          "availabilityCode": "OA",
-          "documentStyle": "html",
-          "site": "Europe_PMC",
-          "url": "https://europepmc.org/articles/PMC3206455"
-        },
-        {
-          "availability": "Free",
-          "availabilityCode": "F",
-          "documentStyle": "pdf",
-          "site": "PubMedCentral",
-          "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/pmid/21999661/pdf/?tool=EBI"
-        },
-        {
-          "availability": "Free",
-          "availabilityCode": "F",
-          "documentStyle": "html",
-          "site": "PubMedCentral",
-          "url": "https://www.ncbi.nlm.nih.gov/pmc/articles/pmid/21999661/?tool=EBI"
-        },
-        {
-          "availability": "Subscription required",
-          "availabilityCode": "S",
-          "documentStyle": "doi",
-          "site": "DOI",
-          "url": "https://doi.org/10.1186/1758-2946-3-47"
-        }
       ]
     },
     "isOpenAccess": "Y",
@@ -477,3 +443,5 @@ API.use.europepmc.test._examples = {
     "firstPublicationDate": "2011-10-14"
   }
 }
+
+

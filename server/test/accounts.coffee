@@ -10,6 +10,8 @@ API.add 'accounts/test',
 API.accounts.test = (verbose) ->
   result = {passed:[],failed:[]}
 
+  console.log('Starting accounts test') if API.settings.dev
+
   temail = 'a_test_account@noddy.com'
   try
     if old = API.accounts.retrieve temail # clean up old test items
@@ -85,5 +87,7 @@ API.accounts.test = (verbose) ->
       API.accounts.remove acc._id
     Tokens.remove {service: 'TEST'}
     Tokens.remove {email: temail}
+
+  console.log('Ending accounts test') if API.settings.dev
 
   return result

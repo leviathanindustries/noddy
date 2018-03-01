@@ -31,6 +31,8 @@ API.use.grist.search = (qrystr,from,page) ->
 
 
 API.use.grist.test = (verbose) ->
+  console.log('Starting grist test') if API.settings.dev
+
   result = {passed:[],failed:[]}
 
   tests = [
@@ -42,6 +44,9 @@ API.use.grist.test = (verbose) ->
   (if (try tests[t]()) then (result.passed.push(t) if result.passed isnt false) else result.failed.push(t)) for t of tests
   result.passed = result.passed.length if result.passed isnt false and result.failed.length is 0
   result = {passed:result.passed} if result.failed.length is 0 and not verbose
+
+  console.log('Ending grist test') if API.settings.dev
+
   return result
 
 API.use.grist.test._examples = {

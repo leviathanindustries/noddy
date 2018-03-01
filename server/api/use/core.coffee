@@ -38,7 +38,7 @@ API.use.core.get = (qrystr) ->
     API.http.cache qrystr, 'core_get', res
   return res
 
-API.use.core.search = (qrystr,from,size=10,timeout=10000) ->
+API.use.core.search = (qrystr,from,size=10,timeout=API.settings.use?.core?.timeout ? API.settings.use?._timeout ? 10000) ->
   # assume incoming query string is of ES query string format
   # assume from and size are ES typical
   # but core only accepts certain field searches:
@@ -79,26 +79,29 @@ API.use.core.redirect = (record) ->
 
 
 API.use.core.status = () ->
-  s = API.use.core.search('doi:"10.1186/1758-2946-3-47"', undefined, undefined, 3000)
+  s = API.use.core.search('doi:"10.1186/1758-2946-3-47"')
   return if s.status isnt 'error' then true else s.error
 
 API.use.core.test = (verbose) ->
+  console.log('Starting core test') if API.settings.dev
+
   result = {passed:[],failed:[]}
   tests = [
     () ->
-      ret = API.use.core.search 'doi:"10.1186/1758-2946-3-47"'
-      if ret.total
-        res = ret.data[0]
-        for i in ret.data
-          if i.hasFullText is "true"
-            result.record = i
-            break
+      result.record = API.use.core.search 'doi:"10.1186/1758-2946-3-47"'
+      result.record = result.record.data[0] if result.record.total
+      try
+        # simplify the repos because they do sometimes return internal metadata that does not indicate failure but would not match
+        result.record.repositories = [{id:result.record.repositories[0].id,openDoarId:result.record.repositories[0].openDoarId,name:result.record.repositories[0].name}]
       return _.isEqual result.record, API.use.core.test._examples.record
   ]
 
   (if (try tests[t]()) then (result.passed.push(t) if result.passed isnt false) else result.failed.push(t)) for t of tests
   result.passed = result.passed.length if result.passed isnt false and result.failed.length is 0
   result = {passed:result.passed} if result.failed.length is 0 and not verbose
+
+  console.log('Ending core test') if API.settings.dev
+
   return result
 
 API.use.core.test._examples = {
@@ -127,61 +130,6 @@ API.use.core.test._examples = {
         "id": "2612",
         "openDoarId": 0,
         "name": "Springer - Publisher Connector",
-        "uri": null,
-        "uriJournals": null,
-        "physicalName": "noname",
-        "source": null,
-        "software": null,
-        "metadataFormat": null,
-        "description": null,
-        "journal": null,
-        "pdfStatus": null,
-        "nrUpdates": 0,
-        "disabled": false,
-        "lastUpdateTime": null,
-        "metadataRecordCount": 0,
-        "metadataDeletedRecordCount": 0,
-        "metadataLinkCount": 0,
-        "metadataSize": 0,
-        "journalMetadataSize": 0,
-        "metadataAge": null,
-        "journalMetadataAge": null,
-        "metadataInIndexCount": 0,
-        "metadataDeletedInIndexCount": 0,
-        "metadataAlloweInIndexCount": 0,
-        "metadataDisabledInIndexCount": 0,
-        "metadataExtractionDate": null,
-        "journalMetadataExtractionDate": null,
-        "databaseRecordCount": 0,
-        "databaseDeletedRecordCount": 0,
-        "databasePdfLinkCount": 0,
-        "databasePdfCount": 0,
-        "databaseDeletedPdfCount": 0,
-        "hardDrivePdfSize": 0,
-        "hardDrivePdfCount": 0,
-        "hardDriveDeletedPdfCount": 0,
-        "databaseTextCount": 0,
-        "databaseTextNotDeletedCount": 0,
-        "hardDriveTextCount": 0,
-        "hardDriveDeletedTextCount": 0,
-        "databaseIndexCount": 0,
-        "indexRecordCount": 0,
-        "indexJournalCount": 0,
-        "indexTextCount": 0,
-        "metadataOnlyIndex": 0,
-        "indexTextCountDB": 0,
-        "indexedPdfDB": 0,
-        "indexedDisabledDB": 0,
-        "indexTextNotDeletedCount": 0,
-        "hardDriveCitationFiles": 0,
-        "citationFilesDb": 0,
-        "crawlingLimit": 0,
-        "citationCount": 0,
-        "citationWithDocCount": 0,
-        "citationDoiCount": 0,
-        "documentDoiCount": 0,
-        "documentDoiWithFulltextCount": 0,
-        "repositoryLocation": null
       }
     ],
     "subjects": [
@@ -197,8 +145,9 @@ API.use.core.test._examples = {
     ],
     "fulltextIdentifier": "https://core.ac.uk/download/pdf/81869340.pdf",
     "doi": "10.1186/1758-2946-3-47",
-    "downloadUrl": "https://core.ac.uk/download/pdf/81869340.pdf",
-    "url": "https://core.ac.uk/download/pdf/81869340.pdf",
-    "redirect": "https://core.ac.uk/download/pdf/81869340.pdf"
+    "downloadUrl": "https://core.ac.uk/download/pdf/81869340.pdf"
   }
 }
+
+
+

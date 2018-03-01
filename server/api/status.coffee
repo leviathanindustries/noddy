@@ -12,7 +12,7 @@ API.status = (email=true) ->
       local: false
       cluster: false
       dev: false
-    memory: [{machine:'served', cid:process.env.CID, appid:process.env.APP_ID, memory:process.memoryUsage()}]
+    memory: []
     accounts:
       total: Users.count()
     job: false
@@ -32,25 +32,31 @@ API.status = (email=true) ->
   if dm?.data?
     dm.data.machine = 'dev'
     ret.memory.push dm.data
+  reported = false
   try
     HTTP.call 'HEAD','https://cluster.api.cottagelabs.com', {timeout:2000}
     ret.up.cluster = true
     if API.settings.cluster?.machines
-      cm = 0
+      ccount = 0
       for m in API.settings.cluster.machines
         try
-          cm = HTTP.call 'GET','http://' + m + '/api/memory', {timeout:2000}
+          cm = HTTP.call 'GET',(if m.indexOf('http') isnt 0 then 'http://' else '') + m + '/api/memory', {timeout:2000}
           cm.data.machine = m
+          if cm.data.appid is process.env.APP_ID
+            reported = true
+            cm.data.served = true
           ret.memory.push cm.data
-          cm += 1
-      ret.up.cluster = cm if cm isnt 0
-      ret.status = 'yellow' if cm isnt API.settings.cluster.machines.length
-  ret.status = 'red' if ret.up.cluster is false or ret.up.cluster is 0
+          ccount += 1
+      ret.up.cluster = ccount if ccount isnt 0
+      ret.status = 'yellow' if ccount isnt API.settings.cluster.machines.length
+  if not reported
+    ret.memory.push {served:true, cid:process.env.CID, appid:process.env.APP_ID, memory:process.memoryUsage()}
+  ret.status = 'red' if API.settings.cluster?.machines and API.settings.cluster.machines.length and (ret.up.cluster is false or ret.up.cluster is 0)
 
   try ret.job = API.job.status()
   try ret.index = API.es.status()
   ret.status = 'yellow' if ret.status isnt 'red' and (ret.job is false or ret.index is false)
-  ret.status = ret.index.cluster.status if ret.index isnt false and ret.status isnt 'red' and ret.index.cluster?.status in ['red','yellow']
+  ret.status = ret.index.cluster.status if ret.index isnt false and ret.status isnt 'red' and ret.index.cluster?.status not in (API.settings.es?.status ? ['green'])
 
   for s of API.service
     if typeof API.service[s].status is 'function'

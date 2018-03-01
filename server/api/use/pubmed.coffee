@@ -38,7 +38,7 @@ API.use.pubmed.pmid = (pmid) ->
             frec[ii.$.Name].push sio
       else
         frec[ii.$.Name] = ii._
-    return {data:frec}
+    return frec
   catch err
     return {status:'error', error: err.toString()}
 
@@ -51,14 +51,24 @@ API.use.pubmed.aheadofprint = (pmid) ->
     return false
 
 
+API.use.pubmed.status = () ->
+  try
+    return HTTP.call('GET', 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/epost.fcgi', {timeout: API.settings.use?.europepmc?.timeout ? API.settings.use?._timeout ? 4000}).statusCode is 200
+  catch err
+    return err.toString()
+
 
 API.use.pubmed.test = (verbose) ->
+  console.log('Starting pubmed test') if API.settings.dev
+
   result = {passed:[],failed:[]}
 
   tests = [
     () ->
-      result.pmid = API.use.pubmed.pmid '23908565'
-      return _.isEqual result.pmid, API.use.pubmed.test._examples.record
+      result.record = API.use.pubmed.pmid '23908565'
+      delete result.record.EPubDate # don't know what happens to these, so just remove them...
+      delete result.record.ELocationID
+      return _.isEqual result.record, API.use.pubmed.test._examples.record
     () ->
       result.aheadofprint = API.use.pubmed.aheadofprint '23908565'
       return result.aheadofprint is false # TODO add one that is true
@@ -67,79 +77,80 @@ API.use.pubmed.test = (verbose) ->
   (if (try tests[t]()) then (result.passed.push(t) if result.passed isnt false) else result.failed.push(t)) for t of tests
   result.passed = result.passed.length if result.passed isnt false and result.failed.length is 0
   result = {passed:result.passed} if result.failed.length is 0 and not verbose
+
+  console.log('Ending pubmed test') if API.settings.dev
+
   return result
 
 API.use.pubmed.test._examples = {
   record: {
-    "data": {
-      "id": "23908565",
-      "PubDate": "2012 Dec",
-      "Source": "Hist Human Sci",
-      "AuthorList": [
-        {
-          "Author": "Jackson M"
-        }
-      ],
-      "LastAuthor": "Jackson M",
-      "Title": "The pursuit of happiness: The social and scientific origins of Hans Selye's natural philosophy of life.",
-      "Volume": "25",
-      "Issue": "5",
-      "Pages": "13-29",
-      "LangList": [
-        {
-          "Lang": "English"
-        }
-      ],
-      "NlmUniqueID": "100967737",
-      "ISSN": "0952-6951",
-      "ESSN": "1461-720X",
-      "PubTypeList": [
-        {
-          "PubType": "Journal Article"
-        }
-      ],
-      "RecordStatus": "PubMed",
-      "PubStatus": "ppublish",
-      "ArticleIds": [
-        {
-          "pubmed": "23908565"
-        },
-        {
-          "doi": "10.1177/0952695112468526"
-        },
-        {
-          "pii": "10.1177_0952695112468526"
-        },
-        {
-          "pmc": "PMC3724273"
-        },
-        {
-          "rid": "23908565"
-        },
-        {
-          "eid": "23908565"
-        },
-        {
-          "pmcid": "pmc-id: PMC3724273;"
-        }
-      ],
-      "DOI": "10.1177/0952695112468526",
-      "History": [
-        {
-          "entrez": "2013/08/03 06:00"
-        },
-        {
-          "pubmed": "2013/08/03 06:00"
-        },
-        {
-          "medline": "2013/08/03 06:00"
-        }
-      ],
-      "References": [],
-      "HasAbstract": "1",
-      "PmcRefCount": "0",
-      "FullJournalName": "History of the human sciences",
-      "SO": "2012 Dec;25(5):13-29"
-    }
+    "id": "23908565",
+    "PubDate": "2012 Dec",
+    "Source": "Hist Human Sci",
+    "AuthorList": [
+      {
+        "Author": "Jackson M"
+      }
+    ],
+    "LastAuthor": "Jackson M",
+    "Title": "The pursuit of happiness: The social and scientific origins of Hans Selye's natural philosophy of life.",
+    "Volume": "25",
+    "Issue": "5",
+    "Pages": "13-29",
+    "LangList": [
+      {
+        "Lang": "English"
+      }
+    ],
+    "NlmUniqueID": "100967737",
+    "ISSN": "0952-6951",
+    "ESSN": "1461-720X",
+    "PubTypeList": [
+      {
+        "PubType": "Journal Article"
+      }
+    ],
+    "RecordStatus": "PubMed",
+    "PubStatus": "ppublish",
+    "ArticleIds": [
+      {
+        "pubmed": "23908565"
+      },
+      {
+        "doi": "10.1177/0952695112468526"
+      },
+      {
+        "pii": "10.1177_0952695112468526"
+      },
+      {
+        "pmc": "PMC3724273"
+      },
+      {
+        "rid": "23908565"
+      },
+      {
+        "eid": "23908565"
+      },
+      {
+        "pmcid": "pmc-id: PMC3724273;"
+      }
+    ],
+    "DOI": "10.1177/0952695112468526",
+    "History": [
+      {
+        "entrez": "2013/08/03 06:00"
+      },
+      {
+        "pubmed": "2013/08/03 06:00"
+      },
+      {
+        "medline": "2013/08/03 06:00"
+      }
+    ],
+    "References": [],
+    "HasAbstract": "1",
+    "PmcRefCount": "0",
+    "FullJournalName": "History of the human sciences",
+    "SO": "2012 Dec;25(5):13-29"
   }
 }

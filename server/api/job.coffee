@@ -256,7 +256,7 @@ API.job.create = (job) ->
     job._id = job_job.insert job
   return job
 
-API.job.limit = (limitms,fn,args,group,refresh=0) -> # directly create a sync throttled process (will default re-use any result within 24 hrs
+API.job.limit = (limitms,fn,args,group,refresh=0) -> # directly create a sync throttled process
   pr = {priority:10000,_id:Random.id(),group:(group ? fn), function: fn, args: args, signature: encodeURIComponent(fn + '_' + args), limit: limitms}
   if typeof refresh is 'number' and refresh isnt 0
     match = {must:[{term:{'signature.exact':pr.signature}},{range:{createdAt:{gt:Date.now() - refresh}}}], must_not:[{exists:{field:'_raw_result.error'}}]}
@@ -287,6 +287,7 @@ API.job.process = (proc) ->
   API.log {msg:'Processing ' + proc._id,process:proc,level:'debug',function:'API.job.process'}
   fn = if proc.function.indexOf('API.') is 0 then API else global
   fn = fn[p] for p in proc.function.replace('API.','').split('.')
+
   try
     proc._raw_result = {}
     args = proc # default just send the whole process as the arg
@@ -309,27 +310,40 @@ API.job.process = (proc) ->
       proc._raw_result[proc.function] = if err.response? then err.response else err # catching the error response of a function is still technically a valid response
     API.log msg: 'Job process error', error: err, string: err.toString(), process: proc, level: 'debug'
     console.log(JSON.stringify err) if API.settings.log.level in ['debug','all']
-  try
-    if not job_result.insert(proc)? # if this fails, we stringify and save that way
-      prs = JSON.stringify proc._raw_result[proc.function] # try saving as string then change it back
-      proc._raw_result.string = prs
-      delete proc._raw_result[proc.function]
-      strung = job_result.insert proc
-      delete proc._raw_result.string
-      if not strung?
-        proc._raw_result.attachment = new Buffer(prs).toString('base64')
-        attd = job_result.insert proc
-        delete proc._raw_result.attachment
-        if not attd?
-          proc._raw_result.error = 'Unable to save result'
-          job_result.insert proc
-      proc._raw_result[proc.function] = JSON.parse prs
+
+  if typeof proc._raw_result?[proc.function] is 'boolean'
+    proc._raw_result.bool = proc._raw_result[proc.function]
+    delete proc._raw_result[proc.function]
+  else if typeof proc._raw_result?[proc.function] is 'string'
+    proc._raw_result.string = proc._raw_result[proc.function]
+    delete proc._raw_result[proc.function]
+  else if typeof proc._raw_result?[proc.function] is 'number'
+    proc._raw_result.number = proc._raw_result[proc.function]
+    delete proc._raw_result[proc.function]
+  if not job_result.insert(proc)? and proc._raw_result?[proc.function]? # if this fails, stringify and save that way
+    _original = proc._raw_result[proc.function]
+    prs = JSON.stringify proc._raw_result[proc.function] # try saving as string then change it back
+    proc._raw_result.string = prs
+    delete proc._raw_result[proc.function]
+    strung = job_result.insert proc
+    delete proc._raw_result.string
+    if not strung?
+      proc._raw_result.attachment = new Buffer(prs).toString('base64')
+      attd = job_result.insert proc
+      delete proc._raw_result.attachment
+      if not attd?
+        proc._raw_result.error = 'Unable to save result'
+        job_result.insert proc
+    proc._raw_result[proc.function] = _original # put the original result back on, for return later
+
   job_processing.remove proc._id
   if proc.repeat
-    proc.counter ?= 1
     proc.original ?= proc._id
     pn = JSON.parse(JSON.stringify(proc))
-    pn.repeat -= 1 if pn.repeat isnt true
+    pn.previous = proc._id
+    delete pn._raw_result
+    pn.repeat -= 1 if pn.repeat? and typeof pn.repeat is 'number'
+    pn.counter ?= 1
     pn.counter += 1
     pn._id = Random.id()
     job_process.insert pn
@@ -381,7 +395,7 @@ API.job.next = () ->
             return false
         else
           job_limit.insert {group:lm.group,last:lm.createdAt} if lm? and API.settings.dev # keep a history of limit counters until service restarts
-          jl = job_limit.insert {_id:p.group,group:p.group}
+          jl = job_limit.insert {_id:p.group,group:p.group,limit:p.limit} # adding the limit here is just for info in status
           API.job._ignoreids[p._id] = now + API.settings.job?.interval ? 1000
           return API.job.process p
       else
@@ -399,10 +413,11 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   # create a repeating limited stuck check process with id 'STUCK' so that it can check for stuck jobs
   # multiple machines trying to create it won't matter because they will just overwrite each other, eventually only one process will run
   job_limit.remove('*')
-  job_process.remove [{group:'STUCK'},{group:'PROGRESS'}]
-  job_processing.remove [{group:'STUCK'},{group:'PROGRESS'}]
-  job_result.remove [{group:'STUCK'},{group:'PROGRESS'}]
-  job_process.insert _id: 'STUCK', repeat: true, function: 'API.job.stuck', priority: 1, group: 'STUCK', limit: 900000
+  job_process.remove [{group:'STUCK'},{group:'PROGRESS'},{group:'TEST'}]
+  job_processing.remove [{group:'STUCK'},{group:'PROGRESS'},{group:'TEST'}]
+  job_result.remove [{group:'STUCK'},{group:'PROGRESS'},{group:'TEST'}]
+  job_process.insert _id: 'STUCK', repeat: true, function: 'API.job.stuck', priority: 8000, group: 'STUCK', limit: 900000 # 15 mins stuck check
+  #job_process.insert _id: 'TEST', repeat: true, function: 'API.test', priority: 8000, group: 'TEST', limit: 86400000 # daily system test
   API.job._iid ?= Meteor.setInterval API.job.next,interval
 
 API.job.start() if not API.job._iid? and API.settings.job?.startup
@@ -414,17 +429,34 @@ API.job.stop = () ->
   job_limit.insert _id: 'PAUSE'
 
 API.job.stuck = (p) ->
-  #job_job.each 'NOT done:true', (rec) -> API.job.progress(rec._id)
-  #st = API.job.status()
-  # check to see if paused
-  # compare count, oldest and newest of processes and processing with p._raw_result[function] if it exists
-  # if all the same, and if not having timeout after now, send a warning
-  # also look for jobs still not done, and if nothing running, consider them stuck
-  return true
+  if p._id is 'STUCK' # the first stuck check after a system restart will have this as ID, so check for hung processes
+    if job_processing.find 'NOT _id:STUCK AND NOT _id:TEST AND createdAt:<' + p.createdAt
+      API.job.reload(if job_processing.find('NOT _id:STUCK AND NOT _id:TEST AND createdAt:>=' + p.createdAt) then 'createdAt:<' + p.createdAt else '*')
+  else if job_processing.count('*') is 0 and job_process.count('*') isnt 0
+    API.log {msg:'Job processing seems to be stuck, there are processes waiting but none running', notify:true, level:'WARN'}
+  st = API.job.status()
+  try
+    if p.previous and job_result.get p.previous
+      previous = API.job.result p.previous
+      if st.jobs.count isnt 0 and previous.jobs.count is st.jobs.count and previous.jobs.oldest?._id is st.jobs.oldest?._id and previous.jobs.newest?._id is st.jobs.newest?._id and previous.jobs.done is st.jobs.done and st.jobs.done isnt st.jobs.count
+        # if there are jobs, and previous jobs count matches current, and previous oldest and newest job IDs match current,
+        # and amount of jobs done is the same, and amount of jobs done is not all jobs, then something is wrong, send a warning
+        API.log {msg:'Job processing seems to be stuck, job amounts have not changed since last check', notify:true, level:'WARN'}
+      else if previous.processing.count is st.processing.count and previous.processing.oldest._id is st.processing.oldest._id and previous.processing.newest._id is st.processing.newest._id
+        API.log {msg:'Job processing seems to be stuck, processing amounts and oldest and newest have not changed since last check', notify:true, level:'WARN'}
+      else if st.jobs.done isnt st.jobs.count and st.processing.count is 0
+        API.log {msg:'Job processing seems to be stuck, there are jobs not done but no processes running', notify:true, level:'WARN'}
+  # TODO could trigger a reload if it seems processing jobs are just not getting done - can be done en masse or per job not done
+  return st
 
-API.job.status = (filter='*') ->
+API.job.status = (filter='NOT group:STUCK AND NOT group:PROGRESS AND NOT group:TEST') ->
   res =
     running: API.job.running()
+    jobs:
+      count: job_job.count('*')
+      oldest: {_id: jjo._id, createdAt: jjo.createdAt, created_date: jjo.created_date} if jjo = job_job.find('*', {sort:{createdAt:{order:'asc'}}})
+      newest: {_id: jjn._id, createdAt: jjn.createdAt, created_date: jjn.created_date} if jjn = job_job.find('*', true)
+      done: job_job.count done:true
     processes:
       count: job_process.count(filter)
       oldest: {_id: jpo._id, createdAt: jpo.createdAt, created_date: jpo.created_date} if jpo = job_process.find(filter, {sort:{createdAt:{order:'asc'}}})
@@ -433,43 +465,36 @@ API.job.status = (filter='*') ->
       count: job_processing.count(filter)
       oldest: {_id: jpro._id, createdAt: jpro.createdAt, created_date: jpro.created_date} if jpro = job_processing.find(filter, {sort:{createdAt:{order:'asc'}}})
       newest: {_id: jprn._id, createdAt: jprn.createdAt, created_date: jprn.created_date} if jprn = job_processing.find(filter, true)
-    jobs:
-      count: job_job.count(filter)
-      oldest: {_id: jjo._id, createdAt: jjo.createdAt, created_date: jjo.created_date} if jjo = job_job.find(filter, {sort:{createdAt:{order:'asc'}}})
-      newest: {_id: jjn._id, createdAt: jjn.createdAt, created_date: jjn.created_date} if jjn = job_job.find(filter, true)
-      done: job_job.count done:true # TODO if allowing a filter in, this will have to take account of possible types of filter query
     results:
       count: job_result.count(filter)
       oldest: {_id: jro._id, createdAt: jro.createdAt, created_date: jro.created_date} if jro = job_result.find(filter, {sort:{createdAt:{order:'asc'}}})
       newest: {_id: jrn._id, createdAt: jrn.createdAt, created_date: jrn.created_date} if jrn = job_result.find(filter, true)
-  #groups = API.es.terms 'noddy_job' + (if API.settings.dev then '_dev' else ''), 'job_process,job_processing,job_result', 'group', 1000, true, filter
-  res.limits = {}
+  res.limits = {} # may not be worth reporting on limit index in new structure
+  job_limit.each 'NOT last:*', (lm) -> res.limits[lm.group] = {date:lm.created_date,limit:lm.limit}
   return res
 
-API.job.reload = (jobid) ->
+API.job.reload = (q='*') ->
   ret = 0
   reloads = []
-  if jobid?
-    job = job_job.get jobid
-    if job?
-      for p in job.processes
-        proc = if p._id? then job_processing.get(p._id) else undefined
-        if proc?
-          ret += 1
-          job_processing.remove proc._id
-          if not job_result.get(proc._id)? and not job_process.get(proc._id)?
-            proc.reloaded ?= []
-            proc.reloaded.push proc.createdAt
-            reloads.push proc
+  if q isnt '*' and job = job_job.get q
+    for p in job.processes
+      proc = if p._id? then job_processing.get(p._id) else undefined
+      if proc?
+        ret += 1
+        job_processing.remove proc._id
+        if not job_result.get(proc._id)? and not job_process.get(proc._id)?
+          proc.reloaded ?= []
+          proc.reloaded.push proc.createdAt
+          reloads.push proc
   else
-    job_processing.each '*', ((proc) ->
+    job_processing.each q, ((proc) ->
       ret += 1
-      if not job_result.get(proc._id)? and not job_process.get(proc._id)?
+      if proc.group isnt 'STUCK' and proc.group isnt 'PROGRESS' and not job_result.get(proc._id)? and not job_process.get(proc._id)?
         proc.reloaded ?= []
         proc.reloaded.push proc.createdAt
         reloads.push proc
     )
-    job_processing.remove '*'
+    job_processing.remove q
   if reloads.length
     job_process.import(reloads)
     job_process.refresh()
@@ -538,7 +563,14 @@ API.job.result = (jr,full) ->
     if jr?._raw_result?[jr.function]?
       return jr._raw_result[jr.function]
     else if jr?._raw_result?.string?
-      return JSON.parse jr._raw_result.string
+      if jr._raw_result.string.indexOf('[') is 0 or jr._raw_result.string.indexOf('{') is 0
+        try
+          return JSON.parse jr._raw_result.string
+      return jr._raw_result.string
+    else if jr?._raw_result?.bool?
+      return jr._raw_result.bool
+    else if jr?._raw_result?.number?
+      return jr._raw_result.number
     else if jr?._raw_result?.attachment?
       dc = new Buffer(jr._raw_result.attachment,'base64').toString('utf-8')
       return JSON.parse dc

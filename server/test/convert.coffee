@@ -7,6 +7,9 @@ API.add 'convert/test',
 
 
 API.convert.test = (fixtures) ->
+
+  console.log('Starting convert test') if API.settings.dev
+
   if (fixtures === undefined && API.settings.fixtures && API.settings.fixtures.url) fixtures = API.settings.fixtures.url;
   if (fixtures === undefined) return {passed: false, failed: [], NOTE: 'fixtures.url MUST BE PROVIDED IN SETTINGS FOR THIS TEST TO RUN, and must point to a folder containing files called test in csv, html, pdf, xml and json format'}
 
@@ -31,6 +34,9 @@ API.convert.test = (fixtures) ->
   result.json2json = API.convert.run(fixtures + 'test.json','json','json');
 
   result.passed = result.passed isnt false and result.failed.length is 0
+  
+  console.log('Ending collection test') if API.settings.dev
+
   return result
 
 

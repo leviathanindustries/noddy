@@ -106,8 +106,12 @@ API.log = (opts, fn, lvl='debug') ->
     loglevels = ['all', 'trace', 'debug', 'info', 'warn', 'error', 'fatal', 'off']
     loglevel = API.settings.log?.level ? 'all';
     if loglevels.indexOf(loglevel) <= loglevels.indexOf opts.level
-      if opts.notify and API.settings.log.notify
-        Meteor.setTimeout (() -> API.notify opts), 100
+      if opts.notify and API.settings.log?.notify
+        try
+          os = JSON.parse(JSON.stringify(opts))
+        catch
+          os = opts
+        Meteor.setTimeout (() -> API.notify os), 100
 
       today = moment(opts.createdAt, "x").format "YYYYMMDD"
       if today isnt _log_today
@@ -123,12 +127,13 @@ API.log = (opts, fn, lvl='debug') ->
         if not opts[o]?
           delete opts[o]
         else if typeof opts[o] isnt 'string'
-          if o is 'error' and typeof opts[o] is 'object'
+          try
+            opts[o] = JSON.stringify opts[o]
+          catch
             try
               opts[o] = opts[o].toString()
             catch
-              opts[o] = JSON.stringify opts[o]
-          opts[o] = JSON.stringify opts[o]
+              delete opts[o]
 
       if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
         API.settings.log.bulk = 5000 if API.settings.log.bulk is undefined
@@ -161,8 +166,8 @@ API.notify = (opts) ->
       note.msg ?= opts.msg
       note.text ?= opts.text
       note.subject ?= API.settings.name ? 'API log message'
-      note.from ?= API.settings.log.from ? 'alert@cottagelabs.com'
-      note.to ?= API.settings.log.to ? 'mark@cottagelabs.com'
+      note.from ?= API.settings.log?.from ? 'alert@cottagelabs.com'
+      note.to ?= API.settings.log?.to ? 'mark@cottagelabs.com'
       API.mail.send note
 
   catch err

@@ -123,7 +123,7 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned) ->
     return this.each q, ((res) -> this.update res._id, obj, uid )
 
 API.collection.prototype.remove = (q, uid) ->
-  if typeof q is 'string' and this.get q
+  if typeof q is 'string' or typeof q is 'number' and this.get q
     this.history('remove', q, uid) if this._history
     API.es.call 'DELETE', this._route + '/' + q
     return true
@@ -390,7 +390,7 @@ API.collection._translate = (q, opts) ->
           else if typeof q[y] is 'object'
             qobj = {}
             qobj[y] = q[y]
-            qry.query.filtered.filter.bool.must.push q[y]
+            qry.query.filtered.filter.bool.must.push qobj
           else if q[y]?
             qry.query.filtered.filter.bool.must.push q[y]
   else if typeof q is 'string'

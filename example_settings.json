@@ -23,7 +23,13 @@
     "index": "noddy - this will default to settings.name if not provided",
     "mappings": "OPTIONAL OBJECT WITH NAME KEYS OF INDEXES CONTAINING TYPE OR JUST TYPES AS TOP LEVEL KEYS, POINTING TO MAPPING OBJECTS FOR THAT TYPE OR INDEXTYPE".
     "mapping": "OPTIONAL A MAPPING OBJECT TO BE USED GENERALLY FOR ALL TYPES, OR A STRING URL TO REMOTE MAPPING LOCATION, OR STRING LOCAL FILE LOCATION - ONLY CHECKED IF MAPPINGS IS NOT PRESENT. IF NEITHER ARE PRESENT, A DEFAULT MAPPING FROM THE PUBLIC FOLDER WILL BE USED, EITHER NAMED mapping.json FOR ES < 5 OR mapping5.json FOR ES >= 5. IF THAT IS ALSO NOT PRESENT, AN ATTEMPT TO GET SUCH DEFAULT MAPPINGS FROM https://static.cottagelabs.com WILL OCCUR",
+    "status": ["optional list of status colours that are acceptable e.g may want to allow green and yellow, if wanting to accept an ES cluster with only one machine, which ES would always report as yellow. Otherwise status checks default to only accepting green"],
     "auth": {}
+  },
+  "cluster": {
+    "machines": [
+      "so far only used by the status API, should be a list of cluster machine IP addresses. These will be used to check cluster status"
+    ]
   },
   "accounts": {
     "xsrf": "true/false if true any POST to change user account data has to first request and receive an xsrf token, which it then provides in the POST"
@@ -74,6 +80,7 @@
     }
   },
   "use": {
+    "_timeout": "it is common for a use endpoint to have an HTTP timeout, and a default one for all use endpoints can also be set here, in ms",
     "EXAMPLE": "a use endpoint can have various settings listed for it here, in a key-named object",
     "google": {
       "serverkey": "YOUR-SERVER-KEY (note this means you are likely to have very secret info in here, do not share it)"

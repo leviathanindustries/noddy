@@ -175,7 +175,7 @@ _phantom = (url,delay=1000,refresh=86400000,callback) ->
     )
     .then((page) ->
       _page = page
-      page.setting('resourceTimeout',4000)
+      page.setting('resourceTimeout',5000)
       page.setting('loadImages',false)
       page.setting('userAgent','Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/37.0.2062.120 Safari/537.36')
       page.on('onResourceRequested',true,(requestData, request) -> request.abort() if (/\/\/.+?\.css/gi).test(requestData['url']) or requestData.headers['Content-Type'] is 'text/css')

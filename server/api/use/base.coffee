@@ -40,7 +40,7 @@ API.use.base.get = (qry) ->
 	res.redirect = API.service.oab.redirect(res.url) if res?.url? and API.service.oab?
 	return res
 
-API.use.base.search = (qry='*',from,size,timeout=10000) ->
+API.use.base.search = (qry='*',from,size,timeout=API.settings.use?.base?.timeout ? API.settings.use?._timeout ? 5000) ->
 	# it uses offset and hits (default 10) for from and size, and accepts solr query syntax
 	# string terms, "" to be next to each other, otherwise ANDed, can accept OR, and * or ? wildcards, brackets to group, - to negate
 	proxy = API.settings.proxy # need to route through the proxy so requests come from registered IP
@@ -61,10 +61,12 @@ API.use.base.search = (qry='*',from,size,timeout=10000) ->
 
 
 API.use.base.status = () ->
-  res = API.use.base.search(undefined,undefined,undefined,3000)
+  res = API.use.base.search()
   return if res.status isnt 'error' then true else res.error
 
 API.use.base.test = (verbose) ->
+  console.log('Starting base test') if API.settings.dev
+
   result = {passed:[],failed:[]}
   tests = [
     () ->
@@ -75,6 +77,9 @@ API.use.base.test = (verbose) ->
   (if (try tests[t]()) then (result.passed.push(t) if result.passed isnt false) else result.failed.push(t)) for t of tests
   result.passed = result.passed.length if result.passed isnt false and result.failed.length is 0
   result = {passed:result.passed} if result.failed.length is 0 and not verbose
+
+  console.log('Ending base test') if API.settings.dev
+
   return result
 
 API.use.base.test._examples = {

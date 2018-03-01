@@ -74,28 +74,37 @@ API.use.doaj.articles.redirect = (record) ->
 
 API.use.doaj.status = () ->
   try
-    return true if HTTP.call 'GET', 'https://doaj.org/api/v1/search/articles/_search', {timeout:2000}
+    return true if HTTP.call 'GET', 'https://doaj.org/api/v1/search/articles/_search', {timeout: API.settings.use?.doaj?.timeout ? API.settings.use?._timeout ? 2000}
   catch err
     return err.toString()
 
 API.use.doaj.test = (verbose) ->
+  console.log('Starting doaj test') if API.settings.dev
+
   result = {passed:[],failed:[]}
   tests = [
     () ->
-      result.record = HTTP.call('GET', 'https://doaj.org/api/v1/search/articles/doi:10.1186/1758-2946-3-47').data.results[0]
+      result.record = HTTP.call('GET', 'https://doaj.org/api/v1/search/articles/doi:10.1186/1758-2946-3-47')
+      result.record = result.record.data.results[0] if result.record?.data?.results?
+      delete result.record.last_updated # remove things that could change for good reason
+      delete result.record.created_date
+      return false if not result.record.bibjson.subject?
+      delete result.record.bibjson.subject
       return _.isEqual result.record, API.use.doaj.test._examples.record
   ]
 
   (if (try tests[t]()) then (result.passed.push(t) if result.passed isnt false) else result.failed.push(t)) for t of tests
   result.passed = result.passed.length if result.passed isnt false and result.failed.length is 0
   result = {passed:result.passed} if result.failed.length is 0 and not verbose
+
+  console.log('Ending doaj test') if API.settings.dev
+
   return result
 
 
 
 API.use.doaj.test._examples = {
   record: {
-    "last_updated": "2017-05-02T08:28:48Z",
     "id": "616925712973412d8c8678b40269dfe5",
     "bibjson": {
       "start_page": "47",
@@ -130,15 +139,8 @@ API.use.doaj.test._examples = {
         {"type": "doi", "id": "10.1186/1758-2946-3-47"},
         {"type": "pissn", "id": "1758-2946"}
       ],
-      "abstract": "<p>Abstract</p> <p>The concept of Open Bibliography in science, technology and medicine (STM) is introduced as a combination of Open Source tools, Open specifications and Open bibliographic data. An Openly searchable and navigable network of bibliographic information and associated knowledge representations, a Bibliographic Knowledge Network, across all branches of Science, Technology and Medicine, has been designed and initiated. For this large scale endeavour, the engagement and cooperation of the multiple stakeholders in STM publishing - authors, librarians, publishers and administrators - is sought.</p> ",
-      "subject": [
-        {"scheme": "LCC", "term": "Chemistry", "code": "QD1-999"},
-        {"scheme": "LCC", "term": "Science", "code": "Q"},
-        {"term": "Chemistry (General)", "scheme": "DOAJ"},
-        {"term": "Chemistry", "scheme": "DOAJ"},
-        {"scheme": "LCC", "term": "Information technology", "code": "T58.5-58.64"}
-      ]
-    },
-    "created_date": "2013-03-12T11:12:48Z"
+      "abstract": "<p>Abstract</p> <p>The concept of Open Bibliography in science, technology and medicine (STM) is introduced as a combination of Open Source tools, Open specifications and Open bibliographic data. An Openly searchable and navigable network of bibliographic information and associated knowledge representations, a Bibliographic Knowledge Network, across all branches of Science, Technology and Medicine, has been designed and initiated. For this large scale endeavour, the engagement and cooperation of the multiple stakeholders in STM publishing - authors, librarians, publishers and administrators - is sought.</p> "
+    }
   }
 }
+

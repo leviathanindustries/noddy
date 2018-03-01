@@ -34,7 +34,7 @@ API.use.sherpa.romeo.search = (params) ->
 API.use.sherpa.romeo.colour = (issn) ->
 	resp = API.use.sherpa.romeo.search {issn:issn}
 	try
-		return resp.data.publishers[0].publisher[0].romeocolour[0]
+		return resp.publishers[0].publisher[0].romeocolour[0]
 	catch err
 		return { status: 'error', data: resp, error: err}
 
@@ -68,6 +68,8 @@ API.use.sherpa.romeo.index = () ->
 
 
 API.use.sherpa.test = (verbose) ->
+  console.log('Starting sherpa test') if API.settings.dev
+
   result = {passed:[],failed:[]}
 
   tests = [
@@ -76,12 +78,15 @@ API.use.sherpa.test = (verbose) ->
       return _.isEqual result.sherpa, API.use.sherpa.test._examples.record
     () ->
       result.colour = API.use.sherpa.romeo.colour '1748-4995'
-      return result.color is 'green'
+      return result.colour is 'green'
   ]
 
   (if (try tests[t]()) then (result.passed.push(t) if result.passed isnt false) else result.failed.push(t)) for t of tests
   result.passed = result.passed.length if result.passed isnt false and result.failed.length is 0
   result = {passed:result.passed} if result.failed.length is 0 and not verbose
+
+  console.log('Ending sherpa test') if API.settings.dev
+
   return result
 
 API.use.sherpa.test._examples = {

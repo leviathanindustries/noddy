@@ -18,6 +18,8 @@ API.job._test = {
     API.job._test.counter += 1
 }
 API.job.test = (verbose,cleanup=true) ->
+  console.log('Starting job test') if API.settings.dev
+
   result = {passed:[],failed:[]}
 
   job_limit.remove group: 'JOBTEST'
@@ -107,6 +109,8 @@ API.job.test = (verbose,cleanup=true) ->
     job_processing.remove group: 'JOBTEST'
     job_result.remove group: 'JOBTEST'
     job_limit.remove group: 'JOBTEST'
+
+  console.log('Ending job test') if API.settings.dev
 
   return result
 

@@ -123,38 +123,37 @@ API.use.crossref.works.indexed = (startdate,enddate,from,size,filter) ->
 
 API.use.crossref.status = () ->
   try
-    res = HTTP.call 'GET', 'https://api.crossref.org/works/10.1186/1758-2946-3-47', {timeout:2000}
+    res = HTTP.call 'GET', 'https://api.crossref.org/works/10.1186/1758-2946-3-47', {timeout: API.settings.use?.crossref?.timeout ? API.settings.use?._timeout ? 4000}
     return if res.statusCode is 200 and res.data.status is 'ok' then true else res.data
   catch err
     return err.toString()
 
 API.use.crossref.test = (verbose) ->
+  console.log('Starting crossref test') if API.settings.dev
+
   result = {passed:[],failed:[]}
   tests = [
     () ->
-      result.record = API.use.crossref.works.search('10.1186/1758-2946-3-47').data[0]
+      result.record = HTTP.call 'GET', 'https://api.crossref.org/works/10.1186/1758-2946-3-47'
+      if result.record.data?
+        result.record = result.record.data.message
+        delete result.record.indexed # remove some stuff that is irrelevant to the match
+        delete result.record['reference-count']
+        delete result.record['is-referenced-by-count']
+        delete result.record['references-count']
       return _.isEqual result.record, API.use.crossref.test._examples.record
   ]
 
   (if (try tests[t]()) then (result.passed.push(t) if result.passed isnt false) else result.failed.push(t)) for t of tests
   result.passed = result.passed.length if result.passed isnt false and result.failed.length is 0
   result = {passed:result.passed} if result.failed.length is 0 and not verbose
+
+  console.log('Ending crossref test') if API.settings.dev
+
   return result
 
 API.use.crossref.test._examples = {
   record: {
-    "indexed": {
-      "date-parts": [
-        [
-          2017,
-          10,
-          26
-        ]
-      ],
-      "date-time": "2017-10-26T05:49:15Z",
-      "timestamp": 1508996955369
-    },
-    "reference-count": 0,
     "publisher": "Springer Nature",
     "issue": "1",
     "content-domain": {
@@ -187,7 +186,6 @@ API.use.crossref.test._examples = {
     },
     "page": "47",
     "source": "Crossref",
-    "is-referenced-by-count": 1,
     "title": [
       "Open Bibliography for Science, Technology, and Medicine"
     ],
@@ -256,7 +254,6 @@ API.use.crossref.test._examples = {
         ]
       ]
     },
-    "references-count": 0,
     "alternative-id": [
       "1758-2946-3-47"
     ],
@@ -279,3 +276,5 @@ API.use.crossref.test._examples = {
     ]
   }
 }
+
+
