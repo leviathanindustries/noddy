@@ -75,7 +75,7 @@ API.add 'scripts/2noddy/oab',
       API.es.reindex 'oab', 'request', API.es._mapping, undefined, false, _oab_requests_sherpa
 
       # oab_support is the same format so does not need reprocessing, but will need reindexing anyway to match new mapping
-      API.es.reindex 'oab', 'support'
+      #API.es.reindex 'oab', 'support'
 
       API.log {msg:'Scripting oab from oab into oab, but udpated and mapped for noddy, complete', level:'info', notify:true}
       return true
