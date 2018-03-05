@@ -146,9 +146,9 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
                 rec._source = fn rec._source
           pkg += JSON.stringify(row._source) + '\n'
         hp = RetryHttp.call 'POST', tourl + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
-        try refreshed = RetryHttp.call 'POST', tourl + '/' + intermediate + toindex + '/_refresh', {retry:API.es._retries}
         pkg = ''
         res = RetryHttp.call 'GET', fromurl + '/_search/scroll?scroll=1m&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
+      refreshed = RetryHttp.call 'POST', tourl + '/' + intermediate + toindex + '/_refresh', {retry:API.es._retries}
       if intermediate is ''
         API.log {msg: 'Reindexed ' + fromurl + '/' + index + '/' + type + ' with ' + processed + ' records, to ' + tourl + '/' + intermediate + toindex + '/' + totype + ', no copy phase needed', level:'warn', notify:true}
   catch err
@@ -161,7 +161,7 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
       try
         try nim = RetryHttp.call 'PUT', tourl + '/' + toindex, {retry:API.es._retries}
         nitm = RetryHttp.call 'PUT', tourl + '/' + toindex + '/_mapping/' + totype, {data: mapping, retry:API.es._retries}
-        ret = RetryHttp.call 'POST', tourl + '/' + intermediate + toindex + '/' + totype + '/_search?search_type=scan&scroll=1m', {data:{query: { match_all: {} }, size: 5000 }, retry:API.es._retries}
+        ret = RetryHttp.call 'POST', tourl + '/' + intermediate + toindex + '/' + totype + '/_search?search_type=scan&scroll=1m', {data:{query: { match_all: {} }, size: 10000 }, retry:API.es._retries}
         if ret.data?._scroll_id?
           res = RetryHttp.call 'GET', tourl + '/_search/scroll?scroll=1m&scroll_id=' + ret.data._scroll_id, {retry:API.es._retries}
           while (res?.data?.hits?.hits? and res.data.hits.hits.length)

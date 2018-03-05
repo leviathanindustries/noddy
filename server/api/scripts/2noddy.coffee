@@ -4,20 +4,22 @@ API.add 'scripts/2noddy/accounts',
     authRequired: 'root'
     action: () ->
       # clapi/accounts -> noddy/accounts
-      API.es.reindex 'clapi', 'accounts', API.es._mapping, 'noddy/users', false
-      API.log {msg:'Scripting accounts from clapi into noddy complete', level:'info', notify:true}
-      return true
+      #API.es.reindex 'clapi', 'accounts', API.es._mapping, 'noddy/users', false
+      #API.log {msg:'Scripting accounts from clapi into noddy complete', level:'info', notify:true}
+      #return true
+      return false
 
 API.add 'scripts/2noddy/bebejam',
   get:
     authRequired: 'root'
     action: () ->
       # noddy_dev/bebejam_* (copy the bebejam types to live noddy) (or separate bebejam, lantern, and other services into their own indexes?)
-      for tp in API.es.types 'noddy_dev'
-        if tp.indexOf('bebejam_') isnt -1
-          API.es.reindex 'noddy_dev', tp, API.es._mapping, 'bebejam/' + tp.replace('bebejam_','')
-      API.log {msg:'Scripting dev bebejam into its own index for noddy complete', level:'info', notify:true}
-      return true
+      #for tp in API.es.types 'noddy_dev'
+      #  if tp.indexOf('bebejam_') isnt -1
+      #    API.es.reindex 'noddy_dev', tp, API.es._mapping, 'bebejam/' + tp.replace('bebejam_','')
+      #API.log {msg:'Scripting dev bebejam into its own index for noddy complete', level:'info', notify:true}
+      #return true
+      return false
 
 _oab_requests_sherpa = (res) ->
   res._scripts ?= {}
