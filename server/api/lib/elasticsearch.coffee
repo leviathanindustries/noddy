@@ -123,12 +123,12 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
   API.es._reindexing = index + '/' + type
   toindex = if rename? then rename.split('/')[0] else index
   totype = if rename? then (if rename.indexOf('/') isnt -1 then rename.split('/')[1] else rename) else type
-  intermediate = if rename? or fromurl isnt tourl then '/temp_reindex_' + toindex else ''
+  intermediate = if not rename? and fromurl is tourl then '_temp_reindex_' + toindex else ''
   processed = 0
   try
     try pim = RetryHttp.call 'PUT', tourl + '/' + intermediate + toindex, {retry:API.es._retries}
     pitm = RetryHttp.call 'PUT', tourl + '/' + intermediate + toindex + '/_mapping/' + totype, {data: mapping, retry:API.es._retries}
-    ret = RetryHttp.call 'POST', fromurl + '/' + index + '/' + type + '/_search?search_type=scan&scroll=1m', {data:{query: { match_all: {} }, size: 5000 }, retry:API.es._retries}
+    ret = RetryHttp.call 'POST', fromurl + '/' + index + '/' + type + '/_search?search_type=scan&scroll=1m', {data:{query: { match_all: {} }, size: 10000 }, retry:API.es._retries}
     if ret.data?._scroll_id?
       res = RetryHttp.call 'GET', fromurl + '/_search/scroll?scroll=1m&scroll_id=' + ret.data._scroll_id, {retry:API.es._retries}
       while (res?.data?.hits?.hits? and res.data.hits.hits.length)
@@ -150,7 +150,7 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
         pkg = ''
         res = RetryHttp.call 'GET', fromurl + '/_search/scroll?scroll=1m&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
       if intermediate is ''
-        API.log {msg: 'Reindexed ' + index + ' ' + type + ' with ' + processed + ' records, no copy phase needed', level:'warn', notify:true}
+        API.log {msg: 'Reindexed ' + fromurl + '/' + index + '/' + type + ' with ' + processed + ' records, to ' + tourl + '/' + intermediate + toindex + '/' + totype + ', no copy phase needed', level:'warn', notify:true}
   catch err
     API.log {msg: 'Reindex failed at copy step for ' + index + ' ' + type, level:'warn', notify:true, error: err}
     processed = false
@@ -174,7 +174,7 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
             pkg = ''
             res = RetryHttp.call 'GET', tourl + '/_search/scroll?scroll=1m&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
         deleted_temp = RetryHttp.call 'DELETE', tourl + '/' + intermediate + toindex, {retry:API.es._retries}
-        API.log {msg: 'Reindexed ' + index + ' ' + type + ' with ' + processed + ' records', level:'warn', notify:true}
+        API.log {msg: 'Reindexed ' + index + ' ' + type + ' with ' + processed + ' records, to ' + tourl + '/' + intermediate + toindex + '/' + totype + ' with intermediate index at ' + intermediate + toindex, level:'warn', notify:true}
       catch err
         processed = false
         API.log {msg: 'Reindex failed at recreate step for ' + index + ' ' + type, level:'warn', notify:true, error: err}

@@ -4,8 +4,8 @@ API.add 'scripts/2noddy/accounts',
     authRequired: 'root'
     action: () ->
       # clapi/accounts -> noddy/accounts
-      API.es.reindex 'clapi', 'accounts', API.es._mapping, 'noddy/accounts', false
-      API.log {msg:'Scripting accounts from clapi into noddy complete', level:info, notify:true}
+      API.es.reindex 'clapi', 'accounts', API.es._mapping, 'noddy/users', false
+      API.log {msg:'Scripting accounts from clapi into noddy complete', level:'info', notify:true}
       return true
 
 API.add 'scripts/2noddy/bebejam',
@@ -16,7 +16,7 @@ API.add 'scripts/2noddy/bebejam',
       for tp in API.es.types 'noddy_dev'
         if tp.indexOf('bebejam_') isnt -1
           API.es.reindex 'noddy_dev', tp, API.es._mapping, 'bebejam/' + tp.replace('bebejam_','')
-      API.log {msg:'Scripting dev bebejam into its own index for noddy complete', level:info, notify:true}
+      API.log {msg:'Scripting dev bebejam into its own index for noddy complete', level:'info', notify:true}
       return true
 
 _oab_requests_sherpa = (res) ->
@@ -75,11 +75,11 @@ API.add 'scripts/2noddy/oab',
       # oab_support is the same format so does not need reprocessing, but will need reindexing anyway to match new mapping
       API.es.reindex 'oab', 'support'
 
-      API.log {msg:'Scripting oab from oab into oab, but udpated and mapped for noddy, complete', level:info, notify:true}
+      API.log {msg:'Scripting oab from oab into oab, but udpated and mapped for noddy, complete', level:'info', notify:true}
       return true
 
       # wipe history and availability, the oab index folder has been backed up
-      # add a note to stats page of how many availabilities we had before our update 
+      # add a note to stats page of how many availabilities we had before our update
       # (7243384) (1114919 without gsot.gbv.de) (from 27/10/2016 to 05/03/2018)
 
       # check file store capability for oabutton author request file upload

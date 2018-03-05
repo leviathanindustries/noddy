@@ -163,8 +163,7 @@ API.notify = (opts) ->
       # TODO otherwise should already be a dot notation string to an api setting or object
 
     if typeof note is 'object'
-      note.msg ?= opts.msg
-      note.text ?= opts.text
+      note.text ?= note.msg ? opts.msg
       note.subject ?= API.settings.name ? 'API log message'
       note.from ?= API.settings.log?.from ? 'alert@cottagelabs.com'
       note.to ?= API.settings.log?.to ? 'mark@cottagelabs.com'
