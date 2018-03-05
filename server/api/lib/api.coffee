@@ -45,7 +45,7 @@
               console.log('Auth by cookie ' + xid + ' ' + xapikey + ' ' + (if u then u._id)) if API.settings.log?.level is 'debug'
 
       if not this.authOptional
-        dets = msg: 'Login attempt by ' + (if xid then xid else 'unknown') + ' to ' + this.request.url + ' from ' + this.request.headers['x-forwarded-for'] + ' ' + this.request.headers['x-real-ip']
+        dets = msg: 'Login attempt by ' + (if xid then xid else 'unknown') + ' to ' + this.request.url.split('apikey=')[0] + ' from ' + this.request.headers['x-forwarded-for'] + ' ' + this.request.headers['x-real-ip']
         if xid and xapikey and API.settings.log.root and u?.roles?.__global_roles__? and 'root' in u.roles.__global_roles__
           dets.notify = subject: 'API root login ' + this.request.headers['x-real-ip']
           dets.msg = dets.msg.replace 'Login attempt ', 'ROOT login '

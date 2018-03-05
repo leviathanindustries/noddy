@@ -141,12 +141,12 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
           pkg += JSON.stringify({"index": {"_index": intermediate + toindex, "_type": totype, "_id": row._source._id }}) + '\n'
           if change?
             if typeof change is 'function'
-              try rec._source = change rec._source
+              try row._source = change row._source
             else if typeof change is 'string'
               try
                 fn = if change.indexOf('API.') is 0 then API else global
                 fn = fn[f] for f in change.replace('API.','').split('.')
-                rec._source = fn rec._source
+                row._source = fn row._source
           pkg += JSON.stringify(row._source) + '\n'
         hp = RetryHttp.call 'POST', tourl + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
         pkg = ''
@@ -165,9 +165,9 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
       try
         try nim = RetryHttp.call 'PUT', tourl + '/' + toindex, {retry:API.es._retries} # will fail if index still exists, but that is OK
         nitm = RetryHttp.call 'PUT', tourl + '/' + toindex + '/_mapping/' + totype, {data: mapping, retry:API.es._retries}
-        ret = RetryHttp.call 'POST', tourl + '/' + intermediate + toindex + '/' + totype + '/_search?search_type=scan&scroll=' + scroll, {data:{query: { match_all: {} }, size: sz }, retry:API.es._retries}
+        ret = RetryHttp.call 'POST', tourl + '/' + intermediate + toindex + '/' + totype + '/_search?search_type=scan&scroll=2m', {data:{query: { match_all: {} }, size: 5000 }, retry:API.es._retries}
         if ret.data?._scroll_id?
-          res = RetryHttp.call 'GET', tourl + '/_search/scroll?scroll=' + scroll + '&scroll_id=' + ret.data._scroll_id, {retry:API.es._retries}
+          res = RetryHttp.call 'GET', tourl + '/_search/scroll?scroll=2m&scroll_id=' + ret.data._scroll_id, {retry:API.es._retries}
           while (res?.data?.hits?.hits? and res.data.hits.hits.length)
             pkg = ''
             for row in res.data.hits.hits
@@ -176,7 +176,7 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
             hp = RetryHttp.call 'POST', tourl + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
             try refreshed = RetryHttp.call 'POST', tourl + '/' + toindex + '/_refresh', {retry:API.es._retries}
             pkg = ''
-            res = RetryHttp.call 'GET', tourl + '/_search/scroll?scroll=' + scroll + '&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
+            res = RetryHttp.call 'GET', tourl + '/_search/scroll?scroll=2m&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
         deleted_temp = RetryHttp.call 'DELETE', tourl + '/' + intermediate + toindex, {retry:API.es._retries}
         API.log {msg: 'Reindexed ' + index + ' ' + type + ' with ' + processed + ' records, to ' + tourl + '/' + toindex + '/' + totype + ' with intermediate index at ' + intermediate + toindex, level:'warn', notify:true}
       catch err
