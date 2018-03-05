@@ -123,7 +123,7 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
   API.es._reindexing = index + '/' + type
   toindex = if rename? then rename.split('/')[0] else index
   totype = if rename? then (if rename.indexOf('/') isnt -1 then rename.split('/')[1] else rename) else type
-  intermediate = if not rename? and fromurl is tourl then '_temp_reindex_' + toindex else ''
+  intermediate = if not rename? and fromurl is tourl then '_temp_reindex_' else ''
   processed = 0
   try
     try pim = RetryHttp.call 'PUT', tourl + '/' + intermediate + toindex, {retry:API.es._retries}
