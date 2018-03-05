@@ -155,7 +155,7 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
     API.log {msg: 'Reindex failed at copy step for ' + index + ' ' + type, level:'warn', notify:true, error: err}
     processed = false
   if processed isnt false
-    if dlt isnt false
+    if dlt isnt false or intermediate isnt ''
       deleted_original = RetryHttp.call 'DELETE', fromurl + '/' + index + '/' + type, {retry:API.es._retries}
     if intermediate isnt ''
       try
