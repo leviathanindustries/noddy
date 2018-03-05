@@ -126,8 +126,8 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
   totype = if rename? then (if rename.indexOf('/') isnt -1 then rename.split('/')[1] else rename) else type
   intermediate = if not rename? and fromurl is tourl then 'temp_reindex_' else ''
   processed = 0
-  scroll = if change? then '60m' else '5m'
-  sz = if change? then 500 else 5000
+  scroll = if change? then '120m' else '5m'
+  sz = if change? then 300 else 5000
   try
     try pim = RetryHttp.call 'PUT', tourl + '/' + intermediate + toindex, {retry:API.es._retries}
     pitm = RetryHttp.call 'PUT', tourl + '/' + intermediate + toindex + '/_mapping/' + totype, {data: mapping, retry:API.es._retries}
@@ -152,6 +152,7 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
         pkg = ''
         res = RetryHttp.call 'GET', fromurl + '/_search/scroll?scroll=' + scroll + '&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
       refreshed = RetryHttp.call 'POST', tourl + '/' + intermediate + toindex + '/_refresh', {retry:API.es._retries}
+      cleared = RetryHttp.call 'DELETE', fromurl + '/_search/scroll/_all', {retry:API.es._retries}
       if intermediate is ''
         API.log {msg: 'Reindexed ' + fromurl + '/' + index + '/' + type + ' with ' + processed + ' records, to ' + tourl + '/' + intermediate + toindex + '/' + totype + ', no copy phase needed', level:'warn', notify:true}
   catch err

@@ -45,7 +45,7 @@ _oab_requests_sherpa = (res) ->
           res.issn ?= cr.ISSN?[0]
           res.subject ?= cr.subject
           res.publisher ?= cr.publisher
-    if not res.journal and not res.doi and res.url
+    if not res.journal and not res.doi and res.url and res.url.indexOf('http') is 0
       processed.scrape = true
       try
         meta = API.service.oab.scrape res.url
