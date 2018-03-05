@@ -26,13 +26,19 @@ API.status = (email=true) ->
   try ret.up.live = true if HTTP.call 'HEAD', 'https://api.cottagelabs.com', {timeout:2000}
   try ret.up.local = true if lm = HTTP.call 'GET', 'https://local.api.cottagelabs.com/memory', {timeout:2000}
   try ret.up.dev = true if dm = HTTP.call 'GET', 'https://dev.api.cottagelabs.com/memory', {timeout:2000}
+  reported = false
   if lm?.data?
     lm.data.machine = 'local'
+    if lm.data.appid is process.env.APP_ID
+      reported = true
+      lm.data.served = true
     ret.memory.push lm.data
   if dm?.data?
     dm.data.machine = 'dev'
+    if dm.data.appid is process.env.APP_ID
+      reported = true
+      dm.data.served = true
     ret.memory.push dm.data
-  reported = false
   try
     HTTP.call 'HEAD','https://cluster.api.cottagelabs.com', {timeout:2000}
     ret.up.cluster = true
