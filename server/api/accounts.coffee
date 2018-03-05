@@ -94,6 +94,11 @@ API.add 'accounts/:id',
   post:
     authRequired: true
     action: () ->
+      try
+        st = JSON.stringify this.request.body
+        return 401 if st.indexOf('<script') isnt -1 or st.replace(' (','(').indexOf('function(') isnt -1
+      catch
+        return 401
       return if API.settings.accounts?.xsrf and not API.accounts.xsrf(this.userId, this.queryParams.xsrf) then 401 else API.accounts.update this.urlParams.id, this.request.body, this.user
   # TODO could add PUT as complete overwrite, but then who should have permissions to do that?
   delete:
