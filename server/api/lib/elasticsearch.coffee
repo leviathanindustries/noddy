@@ -114,8 +114,9 @@ API.es.refresh = (index, url) ->
     return false
 
 API.es._reindexing = false
-API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, change, fromurl=API.settings.es.url, tourl=API.settings.es.url) ->
+API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, change, fromurl=API.settings.es.url, tourl) ->
   fromurl = fromurl[Math.floor(Math.random()*fromurl.length)] if Array.isArray fromurl
+  tourl ?= fromurl # define here, not in the method signature, to ensure it matches fromurl when it should.
   tourl = tourl[Math.floor(Math.random()*tourl.length)] if Array.isArray tourl
   return false if not index? or not type?
   # index names will be treated as specific
@@ -123,7 +124,7 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
   API.es._reindexing = index + '/' + type
   toindex = if rename? then rename.split('/')[0] else index
   totype = if rename? then (if rename.indexOf('/') isnt -1 then rename.split('/')[1] else rename) else type
-  intermediate = if not rename? and fromurl is tourl then '_temp_reindex_' else ''
+  intermediate = if not rename? and fromurl is tourl then 'temp_reindex_' else ''
   processed = 0
   try
     try pim = RetryHttp.call 'PUT', tourl + '/' + intermediate + toindex, {retry:API.es._retries}
@@ -156,10 +157,11 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
     processed = false
   if processed isnt false
     if dlt isnt false or intermediate isnt ''
+      # can only delete original type, because the original index could have other types that should remain
       deleted_original = RetryHttp.call 'DELETE', fromurl + '/' + index + '/' + type, {retry:API.es._retries}
     if intermediate isnt ''
       try
-        try nim = RetryHttp.call 'PUT', tourl + '/' + toindex, {retry:API.es._retries}
+        try nim = RetryHttp.call 'PUT', tourl + '/' + toindex, {retry:API.es._retries} # will fail if index still exists, but that is OK
         nitm = RetryHttp.call 'PUT', tourl + '/' + toindex + '/_mapping/' + totype, {data: mapping, retry:API.es._retries}
         ret = RetryHttp.call 'POST', tourl + '/' + intermediate + toindex + '/' + totype + '/_search?search_type=scan&scroll=1m', {data:{query: { match_all: {} }, size: 10000 }, retry:API.es._retries}
         if ret.data?._scroll_id?
