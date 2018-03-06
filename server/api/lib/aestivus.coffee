@@ -97,7 +97,7 @@ JsonRoutes.Middleware.use (req, res, next) ->
         API.log msg: 'data length: ' + data.length, level: 'debug'
         buffers.push data
       file.on 'end', () ->
-        console.log msg: 'End of busboy file', level: 'debug'
+        API.log msg: 'End of busboy file', level: 'debug'
         uploadedFile.data = Buffer.concat buffers
         req.files.push uploadedFile
 
@@ -290,7 +290,7 @@ class share.Route
         console.log 'Not creating log for query on a log URL, but logging to console because log level is all'
         console.log endpointContext.request.url, endpointContext.request.method, endpointContext.request.query, endpointContext.request.originalUrl
 
-    if blacklisted = API.blacklist(endpointContext.request) isnt false
+    if endpointContext.request.url.indexOf('/blacklist/reload') is -1 and false isnt blacklisted = API.blacklist(endpointContext.request)
       return blacklisted
     else if @_authAccepted endpointContext, endpoint
       if @_roleAccepted endpointContext, endpoint
