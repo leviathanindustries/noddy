@@ -9,6 +9,11 @@ module.exports = {
       host: "10.131.20.129",
       username: "cloo",
       pem: "~/.ssh/id_dsa"
+    },
+    two: {
+      host: "10.131.11.72",
+      username: "cloo",
+      pem: "~/.ssh/id_dsa"
     }
   },
   meteor: {
@@ -20,6 +25,9 @@ module.exports = {
     servers: {
       one: {
         CID: 1
+      },
+      two: {
+        CID: 2
       }
     },
     buildOptions: {
