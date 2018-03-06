@@ -168,25 +168,30 @@ API.collection.prototype.find = (q, opts, versioned) ->
       API.log({ msg: 'Collection find threw error', q: q, level: 'error', error: err }) if this._route.indexOf('_log') is -1
       return undefined
 
-API.collection.prototype.each = (q, opts, fn) ->
+API.collection.prototype.each = (q, opts, fn, scroll) ->
   if fn is undefined and typeof opts is 'function'
     fn = opts
     opts = undefined
   opts ?= {}
   qy = API.collection._translate q, opts
   qy.from ?= 0
-  qy.size ?= 300
+  qy.size ?= if scroll then 300 else 1000
   res = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, true
   return 0 if not res?._scroll_id?
-  res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id
+  scrollids = []
+  scrollids.push(res._scroll_id) if scroll?
+  res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll
   return 0 if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
   processed = 0
   while (res.hits.hits.length)
+    scrollids.push(res._scroll_id) if scroll>
     processed += res.hits.hits.length
     for h in res.hits.hits
       fn = fn.bind this
       fn h._source ? h.fields
-    res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id
+    res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll
+  for sid in scrollids
+    try API.es.call 'DELETE', '_search/scroll', undefined, undefined, undefined, sid
   this.refresh()
   return processed
 

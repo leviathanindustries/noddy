@@ -134,7 +134,10 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
     ret = RetryHttp.call 'POST', fromurl + '/' + index + '/' + type + '/_search?search_type=scan&scroll=' + scroll, {data:{query: { match_all: {} }, size: sz }, retry:API.es._retries}
     if ret.data?._scroll_id?
       res = RetryHttp.call 'GET', fromurl + '/_search/scroll?scroll=' + scroll + '&scroll_id=' + ret.data._scroll_id, {retry:API.es._retries}
+      scrollids = []
+      scrollids.push(ret.data._scroll_id) if change?
       while (res?.data?.hits?.hits? and res.data.hits.hits.length)
+        scrollids.push(res.data._scroll_id) if change?
         processed += res.data.hits.hits.length
         pkg = ''
         for row in res.data.hits.hits
@@ -152,7 +155,8 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
         pkg = ''
         res = RetryHttp.call 'GET', fromurl + '/_search/scroll?scroll=' + scroll + '&scroll_id=' + res.data._scroll_id, {retry:API.es._retries}
       refreshed = RetryHttp.call 'POST', tourl + '/' + intermediate + toindex + '/_refresh', {retry:API.es._retries}
-      cleared = RetryHttp.call 'DELETE', fromurl + '/_search/scroll/_all', {retry:API.es._retries}
+      for sid in scrollids
+        try RetryHttp.call 'DELETE', fromurl + '/_search/scroll?scroll_id=' + sid, {retry:API.es._retries}
       if intermediate is ''
         API.log {msg: 'Reindexed ' + fromurl + '/' + index + '/' + type + ' with ' + processed + ' records, to ' + tourl + '/' + intermediate + toindex + '/' + totype + ', no copy phase needed', level:'warn', notify:true}
   catch err
@@ -186,12 +190,12 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
   API.es._reindexing = false
   return processed
 
-API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url) ->
+API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url,dev=API.settings.dev) ->
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
-  console.log('ES checking mapping for ' + index + (if API.settings.dev and index.indexOf('_dev') is -1 then '_dev') + ' ' + type) if API.settings.log?.level is 'debug'
+  console.log('ES checking mapping for ' + index + (if dev and index.indexOf('_dev') is -1 then '_dev') + ' ' + type) if API.settings.log?.level is 'debug'
   try
-    try RetryHttp.call 'PUT', url + '/' + index + (if API.settings.dev and index.indexOf('_dev') is -1 then '_dev'), {retry:API.es._retries}
-    maproute = index + (if API.settings.dev and index.indexOf('_dev') is -1 then '_dev') + '/_mapping/' + type
+    try RetryHttp.call 'PUT', url + '/' + index + (if dev and index.indexOf('_dev') is -1 then '_dev'), {retry:API.es._retries}
+    maproute = index + (if dev and index.indexOf('_dev') is -1 then '_dev') + '/_mapping/' + type
     try
       m = RetryHttp.call 'GET', url + '/' + maproute, {retry:API.es._retries}
       overwrite = true if _.isEmpty(m.data)
@@ -237,8 +241,8 @@ API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url) ->
       console.log 'ES MAPPING ERROR'
       console.log err
 
-API.es.mapping = (index='', type='', url=API.settings.es.url) ->
-  index += '_dev' if index.length and API.settings.dev and index.indexOf('_dev') is -1
+API.es.mapping = (index='', type='', url=API.settings.es.url, dev= API.settings.dev) ->
+  index += '_dev' if index.length and dev and index.indexOf('_dev') is -1
   try
     mp = API.es.call 'GET', index + '/_mapping/' + type, undefined, undefined, undefined, undefined, undefined, url
     return if index.length then (if type.length then mp[index].mappings[type] else mp[index].mappings) else mp
@@ -257,11 +261,12 @@ API.es.types = (index,url=API.settings.es.url) ->
   try types.push(t) for t of HTTP.call('GET', url + '/' + index + '/_mapping').data[index].mappings
   return types
 
-API.es.call = (action, route, data, refresh, versioned, scan, scroll='5m', url=API.settings.es.url) ->
+API.es.call = (action, route, data, refresh, versioned, scan, scroll='5m', url=API.settings.es.url, dev=API.settings.dev) ->
+  scroll = '120m' if scroll is true
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
   route = '/' + route if route.indexOf('/') isnt 0
   return false if action is 'DELETE' and route.indexOf('/_all') is 0 # disallow delete all
-  if API.settings.dev and route.indexOf('_dev') is -1 and route.indexOf('/_') isnt 0
+  if dev and route.indexOf('_dev') is -1 and route.indexOf('/_') isnt 0
     rpd = route.split '/'
     rpd[1] += '_dev'
     route = rpd.join '/'
@@ -284,7 +289,7 @@ API.es.call = (action, route, data, refresh, versioned, scan, scroll='5m', url=A
   if scan is true
     route += (if route.indexOf('?') is -1 then '?' else '&') + 'search_type=scan&scroll=' + scroll
   else if scan?
-    route = '/_search/scroll?scroll=' + scroll + '&scroll_id=' + scan
+    route = '/_search/scroll?scroll_id=' + scan + (if action isnt 'DELETE' then '&scroll=' + scroll else '')
   try
     try
       if action is 'POST' and data?.query? and data.sort? and routeparts.length > 1
@@ -354,9 +359,9 @@ API.es.terms = (index, type, key, size=100, counts=true, qry, url=API.settings.e
     console.log(err) if API.settings.log?.level is 'debug'
     return []
 
-API.es.import = (index, type, data, bulk=50000, url=API.settings.es.url) ->
+API.es.import = (index, type, data, bulk=50000, url=API.settings.es.url,dev=API.settings.dev) ->
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
-  index += '_dev' if API.settings.dev and index.indexOf('_dev') is -1
+  index += '_dev' if dev and index.indexOf('_dev') is -1
   rows = if typeof data is 'object' and not Array.isArray(data) and data?.hits?.hits? then data.hits.hits else data
   rows = [rows] if not Array.isArray rows
   if index.indexOf('_log') is -1
@@ -369,7 +374,7 @@ API.es.import = (index, type, data, bulk=50000, url=API.settings.es.url) ->
   for r of rows
     counter += 1
     row = rows[r]
-    row._index += '_dev' if row._index? and row._index.indexOf('_dev') is -1 and API.settings.dev
+    row._index += '_dev' if row._index? and row._index.indexOf('_dev') is -1 and dev
     meta = {"index": {"_index": (if row._index? then row._index else index), "_type": (if row._type? then row._type else type) }}
     meta.index._id = row._id if row._id?
     pkg += JSON.stringify(meta) + '\n'
