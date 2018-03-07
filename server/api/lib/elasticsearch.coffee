@@ -68,7 +68,7 @@ API.es.action = (uacc, action, urlp, params, data, refresh) ->
         auth = auth[urlp.r1]
         if typeof auth is 'object' and urlp.r2 and auth[urlp.r2]?
           auth = auth[urlp.r2]
-    allowed = true if auth is true
+    allowed = true if auth is true and rt.indexOf('_search') isnt -1 and action in ['GET','POST']
     if not allowed # check if user has specific permissions
       user = if typeof uacc is 'object' then uacc else API.accounts.retrieve uacc
       allowed = user? and API.accounts.auth 'root', user # root gets access anyway

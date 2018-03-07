@@ -51,16 +51,15 @@ API.add 'scripts/2noddy/catchup',
   get:
     authRequired: 'root'
     action: () ->
-      newusers = API.es.call 'GET', '/clapi/accounts?q=createdAt:>1520222891889&size=1000', undefined, undefined, undefined, undefined, undefined, undefined, false
+      newusers = API.es.call 'GET', '/clapi/accounts?q=createdAt:>1520222891889&size=10000', undefined, undefined, undefined, undefined, undefined, undefined, false
       for u in newusers.data.hits.hits
         rec = u._source
         API.es.call 'POST', '/noddy/users/' + rec._id, rec, undefined, undefined, undefined, undefined, undefined, false
-
-      #newoab = API.es.call 'GET', '/oab/request?q=createdAt:>1520248232218&size=10000', undefined, undefined, undefined, undefined, undefined, undefined, false
-      #for u in newoab.data.hits.hits
-      #  rec = _oab_requests_sherpa rec
-      #  API.es.call 'POST', '/oab/request/' + rec._id, rec, undefined, undefined, undefined, undefined, undefined, false
-      return newusers.data.hits.total
+      newoab = API.es.call 'GET', '/oab/request?q=createdAt:>1520248232218&size=10000', undefined, undefined, undefined, undefined, undefined, undefined, false
+      for u in newoab.data.hits.hits
+        rec = _oab_requests_sherpa u._source
+        API.es.call 'POST', '/oab/request/' + rec._id, rec, undefined, undefined, undefined, undefined, undefined, false
+      return {users: newusers.data.hits.total, requests: newoab.data.hits.total}
 
 API.add 'scripts/2noddy/accounts',
   get:
