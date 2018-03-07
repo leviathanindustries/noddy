@@ -57,7 +57,7 @@ API.es.action = (uacc, action, urlp, params={}, data, refresh) ->
     rt += '/' + urlp[up] for up of urlp
     rt += '/_search' if action in ['GET','POST'] and rt.indexOf('/_') is -1 and rt.split('/').length <= 3
     rt += '?'
-    rt += (if op in ['apikey','dev'] then '' else op + '=' + params[op] + '&') for op of params
+    rt += (if op in ['apikey','dev','callback','_'] then '' else op + '=' + params[op] + '&') for op of params
     dev = API.settings.dev # will be used to allow dev route override on query via dev api that specifically wants the non-dev index
     auth = API.settings.es.auth
     # if not dev and auth not explicitly set all true, then all access defaults false

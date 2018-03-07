@@ -348,6 +348,7 @@ API.collection._translate = (q, opts) ->
   if typeof q is 'object'
     delete q.apikey if q.apikey?
     delete q._ if q._?
+    delete q.callback if q.callback?
     if JSON.stringify(q).indexOf('[') is 0
       qry.query.filtered.filter.bool.should = []
       for m in q
