@@ -40,7 +40,7 @@ for r in [0,1,2]
       authRequired: true
       action: () -> return API.es.action this.user, 'DELETE', this.urlParams, this.queryParams, this.request.body
 
-API.es.action = (uacc, action, urlp, params, data, refresh) ->
+API.es.action = (uacc, action, urlp, params={}, data, refresh) ->
   if urlp.r0 is '_indexes'
     return API.es.indexes()
   else if urlp.r1 is '_types'
@@ -57,12 +57,14 @@ API.es.action = (uacc, action, urlp, params, data, refresh) ->
     rt += '/' + urlp[up] for up of urlp
     rt += '/_search' if action in ['GET','POST'] and rt.indexOf('/_') is -1 and rt.split('/').length <= 3
     rt += '?'
-    rt += op + '=' + params[op] + '&' for op of params if params
+    rt += (if op in ['apikey','dev'] then '' else op + '=' + params[op] + '&') for op of params
+    dev = API.settings.dev # will be used to allow dev route override on query via dev api that specifically wants the non-dev index
     auth = API.settings.es.auth
     # if not dev and auth not explicitly set all true, then all access defaults false
     # if in dev, then any query onto _dev indices will default true, unless auth is an object, and anything else is still false
     allowed = if auth isnt true then (typeof auth isnt 'object' and urlp.r0.indexOf('_dev') isnt -1 and API.settings.dev) else false
     if typeof auth is 'object' and urlp.r0 and auth[urlp.r0]?
+      dev = API.settings.dev and not params.dev?
       auth = auth[urlp.r0]
       if typeof auth is 'object' and urlp.r1 and auth[urlp.r1]?
         auth = auth[urlp.r1]
@@ -81,7 +83,8 @@ API.es.action = (uacc, action, urlp, params, data, refresh) ->
           allowed = true
         else if action is 'DELETE' and API.accounts.auth ort + '.owner', user
           allowed = true
-    return if allowed then API.es.call(action, rt, data, refresh) else 401
+    return if allowed then API.es.call(action, rt, data, refresh, undefined, undefined, undefined, undefined, dev) else 401
+
 
 # track if we are waiting on retry to connect http to ES (when it is busy it takes a while to respond)
 API.es._waiting = false
