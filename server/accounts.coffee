@@ -386,7 +386,8 @@ API.accounts.retrieve = (val) ->
     srch = if u? then ' get ID' else '_id:"' + val + '" OR username.exact:"' + val + '" OR emails.address.exact:"' + val + '"'
   u ?= Users.find srch
   if u
-    API.log msg: 'Retrieved account for val ' + JSON.stringify(val) + ' with ' + JSON.stringify(srch), retrieved: u._id if u
+    srch = 'apikey' if val.apikey?
+    API.log msg: 'Retrieved account by ' + JSON.stringify(srch), retrieved: u?._id
     return u
   else
     return undefined
