@@ -93,13 +93,16 @@ API.blacklist = (request,stale=3600000) ->
             bad = true
           if bad
             if API.settings.dev
-              # don't write logs cos if blacklisting due to bombardment, logs would put load on the system
+              # don't write proper logs by default cos if blacklisting due to bombardment, logs would put load on the system
               console.log 'Blacklisting'
               console.log request.headers
               console.log request.query
               console.log request.body
               console.log request.url
               console.log b
+            try
+              if b.log is true or b.log.toLowerCase() is "true"
+                API.log {msg: 'blacklisted', blacklisted:{headers:request.headers, query:request.query, body:request.body, url:request.url}}
             try
               parsed = parseInt b.code
               b.code = parsed if not isNaN parsed
