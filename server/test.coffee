@@ -1,4 +1,3 @@
-
 import moment from 'moment'
 
 test_results = new API.collection 'tests'

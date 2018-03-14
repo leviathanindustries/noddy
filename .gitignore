@@ -1,4 +1,4 @@
 node_modules/
 settings.json
 ./meteor/local
-server/api/service/untracked
+server/service/*
