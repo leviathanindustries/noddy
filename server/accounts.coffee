@@ -132,6 +132,9 @@ API.add 'accounts/:id/roles/:grouprole',
 
 
 API.accounts.token = (tok, send=true) ->
+  if tok.location? and tok.location.indexOf('openaccessbutton.org') isnt -1
+    delete tok.location
+    tok.service = 'openaccessbutton'
   settings = API.settings.service?[tok.service]?.accounts ? API.settings.accounts
   settings.cookie ?= API.settings.accounts?.cookie
   settings.timeout ?= 30
