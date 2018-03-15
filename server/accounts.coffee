@@ -132,9 +132,10 @@ API.add 'accounts/:id/roles/:grouprole',
 
 
 API.accounts.token = (tok, send=true) ->
-  if tok.location? and tok.location.indexOf('openaccessbutton.org') isnt -1
-    delete tok.location
-    tok.service = 'openaccessbutton'
+  try
+    if tok and typeof tok is 'object' and tok.location? and typeof tok.location is 'string' and tok.location.indexOf('openaccessbutton.org') isnt -1
+      delete tok.location
+      tok.service = 'openaccessbutton'
   settings = API.settings.service?[tok.service]?.accounts ? API.settings.accounts
   settings.cookie ?= API.settings.accounts?.cookie
   settings.timeout ?= 30
@@ -222,6 +223,10 @@ API.accounts.oauth = (creds,service,fingerprint) ->
 # login requires params.hash OR params.email and params.token OR params.timestamp and params.resume OR user
 # should provide url and service name too, and device fingerprint will be saved if provided
 API.accounts.login = (params, user, request) ->
+  try
+    if params and typeof params is 'object' and params.location? and typeof params.location is 'string' and params.location.indexOf('openaccessbutton.org') isnt -1
+      delete params.location
+      params.service = 'openaccessbutton'
   Tokens.remove 'timeout:<' + Date.now() # get rid of old tokens
   token
   user = API.accounts.retrieve(user) if typeof user is 'string'
