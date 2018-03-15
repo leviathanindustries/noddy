@@ -305,7 +305,7 @@ API.es.call = (action, route, data, refresh, versioned, scan, scroll='5m', url=A
     ld.hits?.NOTE = 'Results length reduced from ' + ld.hits.hits.length + ' to 1 for logging example, does not affect output'
     ld.hits?.hits = ld.hits?.hits.splice(0,1)
     if route.indexOf('_log') is -1
-      API.log msg:'ES query info', options:opts, result: ld, level: 'all'
+      API.log msg:'ES query info', options:opts, url: url, route: route, result: ld, level: 'all'
     else if API.settings.log?.level is 'all'
       console.log('ES SEARCH DEBUG INFO\n' + JSON.stringify(opts),'\n',JSON.stringify(ld),'\n')
     return ret.data

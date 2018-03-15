@@ -51,7 +51,7 @@ API.add 'scripts/2noddy/catchup',
   get:
     authRequired: 'root'
     action: () ->
-      newusers = API.es.call 'GET', '/clapi/accounts/_search?q=createdAt:>1520222891889&size=10000', undefined, undefined, undefined, undefined, undefined, undefined, false
+      newusers = API.es.call 'GET', '/clapi/accounts/_search?q=createdAt:>1521086044035&size=10000', undefined, undefined, undefined, undefined, undefined, undefined, false
       for u in newusers.hits.hits
         rec = u._source
         API.es.call 'POST', '/noddy/users/' + rec._id, rec, undefined, undefined, undefined, undefined, undefined, false

@@ -359,7 +359,7 @@ API.accounts.create = (email, fingerprint) ->
     api: keys: [{ key: apikey, hash: API.accounts.hash(apikey), name: 'default' }]
     emails: [{ address: email, verified: true }]
   first = Users.count() is 0
-  u._id = "0" if first
+  u._id = "0" if first and API.settings.dev
   u.roles = if first then __global_roles__: ['root'] else {}
   u.devices[API.accounts.hash(fingerprint)] = {action: 'create', createdAt: Date.now()} if fingerprint
   u._id = Users.insert u
@@ -372,7 +372,8 @@ API.accounts.retrieve = (val) ->
   if typeof val is 'object'
     if val.apikey?
       # a convenience for passing in apikey searches - these must be separate and specified, unlike id / email searches, otherwise putting an id as apikey would return a user object
-      srch = {'api.keys.hash.exact': API.accounts.hash(val.apikey)}
+      hashed = API.accounts.hash(val.apikey)
+      srch = [{'api.keys.hash.exact': hashed},{'api.keys.hashedToken.exact': hashed}] # old accounts have hashedToken instead of hash
     else if val.password?
       srch = {'password.exact': API.accounts.hash(val.password)}
     else
@@ -619,7 +620,7 @@ API.accounts.test = (verbose) ->
   (if (try tests[t]()) then (result.passed.push(t) if result.passed isnt false) else result.failed.push(t)) for t of tests
   result.passed = result.passed.length if result.passed isnt false and result.failed.length is 0
   result = {passed:result.passed} if result.failed.length is 0 and not verbose
-  
+
   try
     if acc = API.accounts.retrieve temail # clean up old test items
       API.accounts.remove acc._id
