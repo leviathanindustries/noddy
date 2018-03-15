@@ -59,7 +59,7 @@ API.add 'scripts/2noddy/catchup',
       #for u in newoab.hits.hits
       #  rec = _oab_requests_sherpa u._source
       #  API.es.call 'POST', '/oab/request/' + rec._id, rec, undefined, undefined, undefined, undefined, undefined, false
-      return {users: newusers.data.hits.total} #, requests: newoab.data.hits.total}
+      return {users: newusers.hits.total} #, requests: newoab.data.hits.total}
 
 API.add 'scripts/2noddy/accounts',
   get:

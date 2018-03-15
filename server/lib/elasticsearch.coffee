@@ -195,10 +195,10 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
 
 API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url,dev=API.settings.dev) ->
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
-  console.log('ES checking mapping for ' + index + (if dev and index.indexOf('_dev') is -1 then '_dev') + ' ' + type) if API.settings.log?.level is 'debug'
+  console.log('ES checking mapping for ' + index + (if dev and index.indexOf('_dev') is -1 then '_dev' else '') + ' ' + type) if API.settings.log?.level is 'debug'
   try
-    try RetryHttp.call 'PUT', url + '/' + index + (if dev and index.indexOf('_dev') is -1 then '_dev'), {retry:API.es._retries}
-    maproute = index + (if dev and index.indexOf('_dev') is -1 then '_dev') + '/_mapping/' + type
+    try RetryHttp.call 'PUT', url + '/' + index + (if dev and index.indexOf('_dev') is -1 then '_dev' else ''), {retry:API.es._retries}
+    maproute = index + (if dev and index.indexOf('_dev') is -1 then '_dev' else '') + '/_mapping/' + type
     try
       m = RetryHttp.call 'GET', url + '/' + maproute, {retry:API.es._retries}
       overwrite = true if _.isEmpty(m.data)
