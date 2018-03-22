@@ -116,10 +116,14 @@ API.store.allowed = (path, user, token, action='GET', security=store.get(path.re
   else
     return false
 
-API.store.exists = (path) -> return store.get(path.replace(/\//g,'_'))? or fs.existsSync(API.settings.store.folder + path) or fs.existsSync(API.settings.store.secure + path)
+API.store.exists = (path) ->
+  path = '/' + path if path.indexOf('/') isnt 0
+  return store.get(path.replace(/\//g,'_'))? or fs.existsSync(API.settings.store.folder + path) or fs.existsSync(API.settings.store.secure + path)
 
 API.store.list = (path=API.settings.store.folder, user, token) ->
   listing = []
+  if path.indexOf('/') isnt 0
+    path = API.settings.store.folder + '/' + path
   for l in fs.readdirSync path
     pt = path + '/' + l
     if fs.lstatSync(pt).isDirectory()
@@ -136,6 +140,7 @@ API.store.list = (path=API.settings.store.folder, user, token) ->
   # but if allowd something further down a path, do show a higher folder, to get to it
 
 API.store.create = (path, user, token, content, secure=false) ->
+  path = '/' + path if path.indexOf('/') isnt 0
   if API.settings.store.local and not fs.existsSync API.settings.store.folder
     API.log msg: 'Redirecting store create request to storage server', method: 'API.store.create'
     token = API.store.token('LOCAL') if not token? and not user?
@@ -157,24 +162,30 @@ API.store.create = (path, user, token, content, secure=false) ->
       catch
         return false
   else if API.store.allowed path, user, token, 'POST'
+    return false if path.indexOf('../') isnt -1 # naughty catcher
     API.log msg: 'Store handling create request on storage server for authorised user', uid: user?._id, method: 'API.store.create'
     # TODO should prob add a disk check and alert if it is too high
-    while fs.existsSync path
-      path = if path.indexOf('.') isnt -1 then path.split('.').splice(-1,0,Random.hexString(3)).join('.') else path + '-' + Random.hexString(3)
+    pt = if secure then API.settings.store.secure else API.settings.store.folder
+    while fs.existsSync pt + path
+      path = if path.indexOf('.') isnt -1 then path.replace('.','-'+Random.hexString(3)+'.') else path + '-' + Random.hexString(3)
     res = _id:path.replace(/\//g,'_'), path: path, secure: secure, uid: user?._id, token: token
     res.url = (if res.secure or not API.settings.store.url then API.settings.store.api else API.settings.store.url) + path
-    pt = if secure then API.settings.store.secure else API.settings.store.folder
     ipt = pt
     for p of parts = path.split('/')
       ipt += '/' + parts[p] if parts[p].length
       fs.mkdirSync(ipt) if parts.length > 1 and parseInt(p) isnt parts.length-1 and not fs.existsSync(ipt)
     path = pt + path
-    return false if path.indexOf('../') isnt -1 # naughty catcher
     if not content? and API.store.allowed path, user, token, 'PUT'
       fs.mkdirSync path
     else if typeof content is 'string' and content.indexOf('http') is 0
       try
-        request.get(content).pipe fs.createWriteStream path
+        stream = request.get(content).pipe fs.createWriteStream path
+        finished = false
+        stream.on 'finish', () -> finished = true
+        while finished is false
+          future = new Future();
+          Meteor.setTimeout (() -> future.return()), 500
+          future.wait()
         API.log msg: 'Store retrieving content for create from URL ' + content, method: 'API.store.create'
       catch
         API.log msg: 'Store failed to retrieve content for create from URL ' + content, method: 'API.store.create', level: 'error'
@@ -218,6 +229,7 @@ API.store.create = (path, user, token, content, secure=false) ->
 # if this returns a JSON list, it could be the content of the file that was a JSON list
 # BUT it could also be the directory listing, if what was requested turned out to be a directory
 API.store.retrieve = (path, user, token) ->
+  path = '/' + path if path.indexOf('/') isnt 0
   if API.settings.store.local and not fs.existsSync API.settings.store.folder
     API.log msg: 'Redirecting store retrieve request to storage server', method: 'API.store.retrieve'
     token = API.store.token('LOCAL') if not token? and not user?
@@ -230,15 +242,15 @@ API.store.retrieve = (path, user, token) ->
       request.get(API.settings.store.local + path + '?token=' + token + '&apikey=' + user?.api.keys[0].key).pipe str
       while not done
         future = new Future();
-        Meteor.setTimeout (() -> future.return()), 300
+        Meteor.setTimeout (() -> future.return()), 500
         future.wait()
       return fs.readFileSync fn
     catch
       return undefined # a 404 etc will result in an error from the http call, so return undefined to indicate that
   else if API.store.allowed path, user, token, 'GET'
+    return false if path.indexOf('../') isnt -1 # naughty catcher
     API.log msg: 'Store handling retrieve request on storage server for authorised user', uid: user?._id, method: 'API.store.retrieve'
     pt = if store.get path.replace(/\//g,'_')?.secure then API.settings.store.secure else API.settings.store.folder
-    return false if path.indexOf('../') isnt -1 # naughty catcher
     if not fs.existsSync pt + path
       return undefined # indicates not found
     else if fs.lstatSync(pt + path).isDirectory()
@@ -251,6 +263,8 @@ API.store.retrieve = (path, user, token) ->
     return false
 
 API.store.delete = (path, user, token) ->
+  path = '/' + path if path.indexOf('/') isnt 0
+
   deleteFolderRecursive = (path) ->
     if fs.existsSync path
       fs.readdirSync(path).forEach (file,index) ->

@@ -350,6 +350,8 @@ walk('./content', function(err, results) {
         }
       }
 
+      if (fl.indexOf('.md') !== -1 && content.indexOf('<markdown') === -1) content = '<markdown>' + content + '</markdown>';
+
       if (vars.header !== false && content.indexOf('<header') === -1) {
         if (vars.header === undefined && templates.indexOf('header') !== -1) vars.header = 'header';
         if (vars.header) content = '{{> ' + vars.header + ' }}' + '\n\n' + content;
@@ -412,14 +414,9 @@ walk('./content', function(err, results) {
 <![endif]-->\n');
       }
 
-      var marked;
-      if (fl.indexOf('.md') !== -1) {
-        console.log('Rendering markdown for file ' + fl);
-        marked = require('marked');
-        content = marked(content);
-      } else if (content.indexOf('<markdown>') !== -1) {
+      if (content.indexOf('<markdown>') !== -1) {
         console.log('Rendering markdown within file ' + fl);
-        marked = require('marked');
+        var marked = require('marked');
         var nc = '';
         var cp = content.split('<markdown>');
         for (var a in cp) {
@@ -431,6 +428,29 @@ walk('./content', function(err, results) {
           }
         }
         content = nc;
+      }
+
+      if (args.preload && vars.api && content.indexOf('<img') !== -1) {
+        var ic = '';
+        var icc = content.split('<img ');
+        for (var cc in icc) {
+          if (cc === '0') {
+            ic += icc[cc];
+          } else {
+            ic += '<img ';
+            var ics = icc[cc].split('>');
+            var ourl = ics[0].split('src')[1].split('=')[1].split('"')[1];
+            var nurl = '';
+            if (ourl.indexOf(vars.api + '/img') === 0) {
+              if (ourl.indexOf('?') === -1) ourl += '?';
+              nurl = ourl.replace('?','?preload=true&');
+            } else {
+              nurl = vars.api + '/img?preload=true&url=' + encodeURIComponent(ourl);
+            }
+            ic += ics[0].replace('src =','src=').replace('src= ','src=').replace(/src=".*?"/,'src="' + nurl + '"') + (ics[0].indexOf(' class') === -1 ? ' class="img img-thumbnail"' : '') + (ics[0].indexOf(' style') === -1 ? ' style="width:100%;"' : '') + ' onload="noddy_preload(this)">' + ics[1];
+          }
+        }
+        content = ic;
       }
 
       content = content.replace(/\<coffeescript\>/g, '<script type="text/coffeescript">');

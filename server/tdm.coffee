@@ -1,7 +1,7 @@
 
-
 import CryptoJS from 'crypto-js'
 import gramophone from 'gramophone'
+import kmeans from 'kmeansjs'
 
 API.tdm = {}
 
@@ -75,11 +75,11 @@ API.tdm.levenshtein = (a,b) ->
 		return x if x <= y and x <= z
 		return y if y <= x and y <= z
 		return z
-	
+
 	cost
 	m = a.length
 	n = b.length
-	
+
 	if m < n
 		c = a
 		a = b
@@ -87,13 +87,13 @@ API.tdm.levenshtein = (a,b) ->
 		o = m
 		m = n
 		n = o
-	
+
 	r = [[]]
 	c = 0
 	while c < n + 1
 		c++
 		r[0][c] = c
-	
+
 	i = 1
 	while i < m + 1
 		i++
@@ -103,7 +103,7 @@ API.tdm.levenshtein = (a,b) ->
 			j++
 			cost = if a.charAt( i - 1 ) is b.charAt( j - 1 ) then 0 else 1
 			r[i][j] = minimator( r[i-1][j] + 1, r[i][j-1] + 1, r[i-1][j-1] + cost )
-	
+
 	dist = r[ r.length - 1 ][ r[ r.length - 1 ].length - 1 ]
 	return distance:dist,detail:r
 
@@ -198,3 +198,18 @@ API.tdm.extract = (opts) ->
 				res.matches.push {matched:match,result:m}
 
 	return res
+
+API.tdm.kmeans = (vector,clusters=3) ->
+	_kmeans = Async.wrap (callback) ->
+		kmeans vector, clusters, (err, cluster, centroids) ->
+			sizes = []
+			cbs = {}
+			for cl of cluster
+				sizes.push cluster[cl].length
+				cbs[cluster[cl].length] = centroids[cl]
+			sizes.sort (a,b) -> return a - b
+			sortedcentroids = []
+			for sz in sizes
+				sortedcentroids.push cbs[sz]
+			return callback null, {centroids: sortedcentroids, sizes: sizes, cluster: cluster}
+	return _kmeans()
