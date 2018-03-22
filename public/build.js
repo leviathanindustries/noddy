@@ -221,7 +221,7 @@ var render = function(err,results) {
       if (coffee === undefined) coffee = require('coffeescript');
       newcontent = coffee.compile(fs.readFileSync(results[sr]).toString());
     }
-    if (newcontent === undefined) {
+    if (newcontent === undefined && (results[sr].indexOf('.css') !== -1 || results[sr].indexOf('.js') !== -1 || results[sr].indexOf('.html') !== -1 || results[sr].indexOf('.md') !== -1)) {
       try {
         var oldcontent = fs.readFileSync(results[sr]).toString();
         if (oldcontent.indexOf('{{') !== -1 && oldcontent.indexOf('}}') !== -1) newcontent = oldcontent;
