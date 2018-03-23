@@ -13,10 +13,13 @@ API.add 'convert',
   get: () ->
     if this.queryParams.url or this.queryParams.content or this.queryParams.es
       this.queryParams.fields = this.queryParams.fields.split(',') if this.queryParams.fields
+      this.queryParams.from = 'txt' if this.queryParams.from is 'text'
+      this.queryParams.to = 'txt' if this.queryParams.to is 'text'
       to = 'text/plain'
       to = 'text/csv' if this.queryParams.to is 'csv'
       to = 'application/' + this.queryParams.to if this.queryParams.to is 'json' or this.queryParams.to is 'xml'
       out = API.convert.run this.queryParams.url, this.queryParams.from, this.queryParams.to, this.queryParams.content, this.queryParams
+      to = 'application/json' if typeof out is 'object'
       try return out if out.statusCode is 401
       return
         statusCode: 200
@@ -27,14 +30,19 @@ API.add 'convert',
       return {data: 'Accepts URLs of content files and converts them. from csv to json,txt. from html to txt. from xml to txt, json. from pdf to txt. from file to txt. For json to csv a subset param can be provided, giving dot notation to the part of the json object that should be converted.'}
   post: () ->
     this.queryParams.fields = this.queryParams.fields.split(',') if this.queryParams.fields
+    this.queryParams.from = 'txt' if this.queryParams.from is 'text'
+    this.queryParams.to = 'txt' if this.queryParams.to is 'text'
     to = 'text/plain'
     to = 'text/csv' if this.queryParams.to is 'csv'
     to = 'application/' + this.queryParams.to if this.queryParams.to is 'json' or this.queryParams.to is 'xml'
+    out = API.convert.run undefined, this.queryParams.from, this.queryParams.to, this.request.body, this.queryParams
+    to = 'application/json' if typeof out is 'object'
+    try return out if out.statusCode is 401
     return
       statusCode: 200
       headers:
         'Content-Type': to
-      body: API.convert.run undefined, this.queryParams.from, this.queryParams.to, this.request.body, this.queryParams
+      body: out
 
 
 API.convert.run = (url,from,to,content,opts) ->
@@ -97,6 +105,12 @@ API.convert.run = (url,from,to,content,opts) ->
     return output
 
 API.convert.csv2json = Async.wrap (url,content,opts,callback) ->
+  if typeof content is 'function'
+    callback = content
+    content = undefined
+  if typeof opts isnt 'object'
+    callback = opts
+    opts = {}
   converter
   if not content?
     converter = new Converter({constructResult:false})
@@ -159,20 +173,39 @@ API.convert.html2txt = (url,content) ->
   return text
 
 API.convert.file2txt = Async.wrap (url, content, opts={}, callback) ->
-  # NOTE for this to work, see textract on npm - requires other things installed. May not be useful
+  if typeof content is 'function'
+    callback = content
+    content = undefined
+  if typeof opts isnt 'object'
+    callback = opts
+    opts = {}
+  # NOTE for this to work, see textract on npm - requires other things (antiword for word docs) installed. May not be useful. 
   from = opts.from ? 'application/msword'
   delete opts.from
   content = new Buffer (if url? then HTTP.call('GET',url,{npmRequestOptions:{encoding:null}}).content else content)
-  textract.fromBufferWithMime from, content, opts, ( err, result ) -> return callback(null,result)
+  textract.fromBufferWithMime from, content, opts, ( err, result ) ->
+    return callback(null,result)
 
-API.convert.pdf2txt = Async.wrap (url,content,callback) ->
-  pdfParser = new PDFParser()
+API.convert.pdf2txt = Async.wrap (url, content, opts={}, callback) ->
+  if typeof content is 'function'
+    callback = content
+    content = undefined
+  if typeof opts isnt 'object'
+    callback = opts
+    opts = {}
+  pdfParser = new PDFParser(this,1)
   pdfParser.on "pdfParser_dataReady", (pdfData) ->
     return callback(null,pdfParser.getRawTextContent())
   content = new Buffer (if url? then HTTP.call('GET',url,{npmRequestOptions:{encoding:null}}).content else content)
   pdfParser.parseBuffer(content)
 
-API.convert.pdf2json = Async.wrap (url,content,callback) ->
+API.convert.pdf2json = Async.wrap (url, content, opts={}, callback) ->
+  if typeof content is 'function'
+    callback = content
+    content = undefined
+  if typeof opts isnt 'object'
+    callback = opts
+    opts = {}
   pdfParser = new PDFParser();
   pdfParser.on "pdfParser_dataReady", (pdfData) ->
     return callback(null,pdfData)
@@ -183,12 +216,21 @@ API.convert.xml2txt = (url,content) ->
   return API.convert.file2txt(url,content,{from:'application/xml'})
 
 API.convert.xml2json = Async.wrap (url, content, callback) ->
+  if typeof content is 'function'
+    callback = content
+    content = undefined
   content = HTTP.call('GET', url).content if url?
   parser = new xml2js.Parser()
   parser.parseString content, (err, result) -> return callback(null,result)
 
 # using meteorhacks:async and Async.wrap seems to work better than using Meteor.wrapAsync
 API.convert.json2csv = Async.wrap (opts={}, url, content, callback) ->
+  if typeof url is 'function'
+    content = url
+    url = undefined
+  if typeof content is 'function'
+    callback = content
+    content = undefined
   console.log(content.length) if content # KEEP THIS HERE - oddly, having this here stops endpoints throwing a write before end error and crashing the app when they try to serve out the csv, so just keep this here
   content = JSON.parse(HTTP.call('GET', url).content) if url?
   if opts.subset
@@ -262,7 +304,7 @@ API.convert.test = (fixtures) ->
   result.json2json = API.convert.run(fixtures + 'test.json','json','json');
 
   result.passed = result.passed isnt false and result.failed.length is 0
-  
+
   console.log('Ending collection test') if API.settings.dev
 
   return result

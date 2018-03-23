@@ -6,47 +6,68 @@ import kmeans from 'kmeansjs'
 API.tdm = {}
 
 API.add 'tdm/levenshtein',
-  get: () ->
-    if this.queryParams.a and this.queryParams.b
-      return API.tdm.levenshtein this.queryParams.a, this.queryParams.b
-    else
-      return {data:'provide two query params called a and b which should be strings, get back the levenshtein distance'}
+	get: () ->
+		if this.queryParams.a and this.queryParams.b
+			return API.tdm.levenshtein this.queryParams.a, this.queryParams.b
+		else
+			return {data:'provide two query params called a and b which should be strings, get back the levenshtein distance'}
 
 API.add 'tdm/categorise',
-  get: () ->
-    if this.queryParams.entity
-      return API.tdm.categorise this.queryParams.entity
-    else
-      return {data: 'entity url param required'}
+	get: () ->
+		if this.queryParams.entity
+			return API.tdm.categorise this.queryParams.entity
+		else
+			return {data: 'entity url param required'}
 
 API.add 'tdm/keywords',
-  get: () ->
-    content = this.queryParams.content
-    if this.queryParams.url
-      url = this.queryParams.url
-      url = 'http://' + url if url.indexOf('http') is -1
-      if this.queryParams.format is 'text'
-        content = HTTP.call('GET',url).content
-      else if this.queryParams.format is 'pdf'
-        content = API.convert.file2txt url
-      else
-        content = API.convert.xml2txt url
-    return if content? then API.tdm.keywords(content) else {}
+	get: () ->
+		content = this.queryParams.content
+		if this.queryParams.url
+			url = this.queryParams.url
+			url = 'http://' + url if url.indexOf('http') is -1
+			if this.queryParams.format is 'text'
+				content = HTTP.call('GET',url).content
+			else if this.queryParams.format is 'pdf' or url.toLowerCase().indexOf('.pdf') isnt -1
+				content = API.convert.pdf2txt url
+			else
+				content = API.convert.xml2txt url
+		opts = {
+			score: this.queryParams.score, # include frequency scores, or just list of terms, default false
+			cutoff: this.queryParams.cutoff, # number between 0 and 1, bigger number means words inside sentences less likely to appear separately, default 0.5
+			limit: this.queryParams.limit, # max number of terms to return, default unlimited
+			stem: this.queryParams.stem, # do stemming first or not, default false
+			min: this.queryParams.min, # min number of occurrences to be included, default 2
+			len: this.queryParams.len, # shortest string to allow in answers, default 2
+			flatten: this.queryParams.flatten # flatten results list, useful for feeding in to tf-idf later, default false
+		}
+		if this.queryParams.stopWords?
+			opts.stopWords = this.queryParams.stopWords.split(',') # add stop words to the standard list
+		opts.stopWords ?= ['s']
+		opts.stopWords.push('s') if 's' not in opts.stopWords # analysis splits on things like word's, where ' becomes a space, leading to s as a word. So always ignore that
+		if this.queryParams.ngrams
+			if this.queryParams.ngrams.indexOf(',') isnt -1
+				opts.ngrams = this.queryParams.ngrams.split(',')
+				ngrams = []
+				ngrams.push(parseInt(n)) for n in opts.ngrams
+				opts.ngrams = ngrams
+			else
+				opts.ngrams = parseInt(this.queryParams.ngrams)
+		return if content? then API.tdm.keywords(content,opts) else {}
 
 API.add 'tdm/extract',
-  get: () ->
-    params = this.bodyParams
-    params.url ?= this.queryParams.url
-    params.url = 'http://' + params.url if params.url.indexOf('http') is -1
-    if this.queryParams.match
-      dm = decodeURIComponent(this.queryParams.match)
-      params.matchers = if dm.indexOf(',') isnt -1 then dm.split(',') else [dm]
-    params.lowercase = this.queryParams.lowercase?
-    params.ascii = this.queryParams.ascii?
-    params.convert ?= this.queryParams.convert
-    params.start ?= this.queryParams.start
-    params.end ?= this.queryParams.end
-    return API.tdm.extract params
+	get: () ->
+		params = this.bodyParams
+		params.url ?= this.queryParams.url
+		params.url = 'http://' + params.url if params.url.indexOf('http') is -1
+		if this.queryParams.match
+			dm = decodeURIComponent(this.queryParams.match)
+			params.matchers = if dm.indexOf(',') isnt -1 then dm.split(',') else [dm]
+		params.lowercase = this.queryParams.lowercase?
+		params.ascii = this.queryParams.ascii?
+		params.convert ?= this.queryParams.convert
+		params.start ?= this.queryParams.start
+		params.end ?= this.queryParams.end
+		return API.tdm.extract params
 
 API.add 'tdm/difference/:str',
 	get: () ->
@@ -128,15 +149,15 @@ API.tdm.categorise = (entity) ->
 		cutoff: 0
 	keywords = []
 	for a in tdm
-		if keywords.length < 20 and tdm[a].replace(/[^ ]/g,'').length <= 2 and keywords.indexOf(tdm[a]) is -1 and tdm[a].length > 1
+		if keywords.length < 20 and a.replace(/[^ ]/g,'').length <= 2 and keywords.indexOf(a) is -1 and a.length > 1
 			replace = false
 			for kk of keywords
-				if keywords[kk].indexOf(tdm[a]) is 0
+				if keywords[kk].indexOf(a) is 0
 					replace = kk
 			if replace is false
-				keywords.push tdm[a]
+				keywords.push a
 			else
-				keywords[replace] = tdm[a]
+				keywords[replace] = a
 
 	url = 'https://en.wikipedia.org/wiki/' + rec.data.title.replace(/ /g,'_')
 	if rec.data.pageprops
@@ -149,16 +170,18 @@ API.tdm.categorise = (entity) ->
 		wikidata = if wikibase then 'https://www.wikidata.org/wiki/' + wikibase else undefined
 	return {url:url,img:img,title:rec.data.title,wikibase:wikibase,wikidata:wikidata,keywords:keywords}
 
-API.tdm.keywords = (content,opts) ->
-  keywords = gramophone.extract content, opts
-  res = []
-  if opts
-    for i in keywords
-      str = if opts.score then i.term else i
-      res.push i if (not opts.len or str.length >= opts.len) and (not opts.max or i < opts.max)
-  else
-    res = keywords
-  return res
+API.tdm.keywords = (content,opts={}) ->
+	opts.len ?= 2
+	try opts.cutoff = (opts.cutoff*100000)/100000 if opts.cutoff? and typeof opts.cutoff isnt 'number'
+	keywords = gramophone.extract content, opts
+	res = []
+	if opts
+		for i in keywords
+			str = if opts.score then i.term else i
+			res.push i if (not opts.len or str.length >= opts.len) and (not opts.max or str.length <= opts.max)
+	else
+		res = keywords
+	return res
 
 API.tdm.extract = (opts) ->
 	# opts expects url,content,matchers (a list, or singular "match" string),start,end,convert,format,lowercase,ascii
