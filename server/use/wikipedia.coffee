@@ -25,10 +25,13 @@ API.use.wikinews.about = (entity) ->
   return
 
 API.use.wikidata.retrieve = (qid,all) ->
-  u = 'https://www.wikidata.org/wiki/Special:EntityData/' + qid + '.json'
-  res = HTTP.call 'GET',u
+  if not all
+    exists = API.http.cache qid, 'wikidata_retrieve'
+    return exists if exists
   try
-    r = if all then res.data.entities[qid] else{}
+    u = 'https://www.wikidata.org/wiki/Special:EntityData/' + qid + '.json'
+    res = HTTP.call 'GET',u
+    r = if all then res.data.entities[qid] else {}
     r.type = res.data.entities[qid].type
     r.qid = res.data.entities[qid].id
     r.label = res.data.entities[qid].labels?.en?.value
@@ -44,6 +47,7 @@ API.use.wikidata.retrieve = (qid,all) ->
       r.infokeys.push wdp
       #for s in claim, do something...
       r.info[wdp] = claim
+    API.http.cache qid, 'wikidata_retrieve', r
     return r
   catch err
     return {}

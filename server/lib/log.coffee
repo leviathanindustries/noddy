@@ -44,7 +44,7 @@ API.add 'log/stack',
       if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
         return {length: _log_stack.length, last: moment(_log_last, "x").format("YYYY-MM-DD HHmm.ss"), bulk: API.settings.log.bulk, timeout: API.settings.log.timeout, current: _lsp, a: _ls.a, b: _ls.b}
       else
-        return {info: 'Log stack is not in use'}
+        return {status: 'error', info: 'Log stack is not in use'}
 
 API.add 'log/stack/length',
   get:

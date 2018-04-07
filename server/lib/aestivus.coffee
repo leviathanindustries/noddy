@@ -248,7 +248,7 @@ class share.Route
   ###
   _configureEndpoints: ->
     _.each @endpoints, (endpoint, method) ->
-      if method isnt 'options'
+      if method not in ['options','desc']
         # Configure acceptable roles
         if not @options?.roleRequired
           @options.roleRequired = []

@@ -3,13 +3,28 @@
 import { Converter } from 'csvtojson'
 import json2csv from 'json2csv'
 import html2txt from 'html-to-text'
-import textract from 'textract'
+import textract from 'textract' # note this requires installs on the server for most conversions
 import xml2js from 'xml2js'
 import PDFParser from 'pdf2json'
+
+import canvg from 'canvg'
+import atob from 'atob'
+import Canvas from 'canvas' # not canvas requires sudo apt-get install libcairo2-dev libjpeg-dev libpango1.0-dev libgif-dev build-essential g++
+
+import Future from 'fibers/future'
+
+
 
 API.convert = {}
 
 API.add 'convert',
+  desc: 'Convert files from one format to another. Provide content to convert as either "url" or "content" query param, or POST content as request body.
+        Also provide "from" and "to" query params to identify the formats to convert from and to. It is also possible to provide a
+        comma-separated list of "fields", which when converting from JSON will result in only those fields being used in the output (does
+        not handle deep nesting). The currently available conversions are: svg to png. table to json or csv. csv to json or text.
+        html to text. json to csv or text (or json again, which with "fields" can simplify json data). xml to text or json.
+        pdf to text or json (which provides content and metadata). More conversions are possible, but require additional installations
+        on the API machine, which are not turned on by default.'
   get: () ->
     if this.queryParams.url or this.queryParams.content or this.queryParams.es
       this.queryParams.fields = this.queryParams.fields.split(',') if this.queryParams.fields
@@ -17,6 +32,7 @@ API.add 'convert',
       this.queryParams.to = 'txt' if this.queryParams.to is 'text'
       to = 'text/plain'
       to = 'text/csv' if this.queryParams.to is 'csv'
+      to = 'image/png' if this.queryParams.to is 'png'
       to = 'application/' + this.queryParams.to if this.queryParams.to is 'json' or this.queryParams.to is 'xml'
       out = API.convert.run this.queryParams.url, this.queryParams.from, this.queryParams.to, this.queryParams.content, this.queryParams
       to = 'application/json' if typeof out is 'object'
@@ -34,6 +50,7 @@ API.add 'convert',
     this.queryParams.to = 'txt' if this.queryParams.to is 'text'
     to = 'text/plain'
     to = 'text/csv' if this.queryParams.to is 'csv'
+    to = 'image/png' if this.queryParams.to is 'png'
     to = 'application/' + this.queryParams.to if this.queryParams.to is 'json' or this.queryParams.to is 'xml'
     out = API.convert.run undefined, this.queryParams.from, this.queryParams.to, this.request.body, this.queryParams
     to = 'application/json' if typeof out is 'object'
@@ -48,7 +65,10 @@ API.add 'convert',
 API.convert.run = (url,from,to,content,opts) ->
   from ?= opts.from
   to ?= opts.to
-  if from is 'table'
+  if from is 'svg'
+    if to is 'png'
+      output = API.convert.svg2png(url,content,opts)
+  else if from is 'table'
     if to.indexOf('json') isnt -1
       output = API.convert.table2json(url,content,opts)
     else if to.indexOf('csv') isnt -1
@@ -103,6 +123,25 @@ API.convert.run = (url,from,to,content,opts) ->
     return {status: 'error', data: 'conversion from ' + from + ' to ' + to + ' is not currently possible.'}
   else
     return output
+
+
+
+API.convert.svg2png = (url,content,opts) ->
+  content = if url? then HTTP.call('GET',url,{npmRequestOptions:{encoding:null}}).content else content
+  content = content.toString('utf-8') if Buffer.isBuffer content
+  content = atob(content.substring('data:image/svg+xml;base64,'.length)) if content.indexOf('data:image/svg+xml;base64,') >= 0
+  canvas = new Canvas()
+  canvg canvas, content, { ignoreMouse: true, ignoreAnimation: true, ImageClass: Canvas.Image }
+  stream = canvas.pngStream()
+  data = []
+  done = false
+  stream.on 'data', (chunk) -> data.push chunk
+  stream.on 'end', () -> done = true
+  while not done
+    future = new Future()
+    Meteor.setTimeout (() -> future.return()), 500
+    future.wait()
+  return Buffer.concat data
 
 API.convert.csv2json = Async.wrap (url,content,opts,callback) ->
   if typeof content is 'function'
@@ -179,7 +218,7 @@ API.convert.file2txt = Async.wrap (url, content, opts={}, callback) ->
   if typeof opts isnt 'object'
     callback = opts
     opts = {}
-  # NOTE for this to work, see textract on npm - requires other things (antiword for word docs) installed. May not be useful. 
+  # NOTE for this to work, see textract on npm - requires other things (antiword for word docs) installed. May not be useful.
   from = opts.from ? 'application/msword'
   delete opts.from
   content = new Buffer (if url? then HTTP.call('GET',url,{npmRequestOptions:{encoding:null}}).content else content)

@@ -1,5 +1,5 @@
 
-
+import crypto from 'crypto'
 import fs from 'fs'
 # docs:
 # https://developers.google.com/places/web-service/autocomplete
@@ -84,9 +84,11 @@ API.add 'use/google/clear',
 # https://developers.google.com/knowledge-graph/
 # https://developers.google.com/knowledge-graph/reference/rest/v1/
 API.use.google.knowledge.retrieve = (mid,types,wikidata) ->
+	exists = API.http.cache {mid:mid,types:types,wikidata:wikidata}, 'google_knowledge_retrieve'
+	return exists if exists
 	u = 'https://kgsearch.googleapis.com/v1/entities:search?key=' + API.settings.use.google.serverkey + '&limit=1&ids=' + mid
 	if types
-		types = types.join('&types=') if typeof types isnt string # are multiple types done by comma separation or key repetition?
+		types = types.join('&types=') if typeof types isnt 'string' # are multiple types done by comma separation or key repetition?
 		u += '&types=' + types
 	ret = {}
 	try
@@ -95,13 +97,17 @@ API.use.google.knowledge.retrieve = (mid,types,wikidata) ->
 		ret.score = res.data.itemListElement[0].resultScore
 		if wikidata
 			ret.wikidata = API.use.google.knowledge.wikidata ret["@id"].replace('kg:',''), ret.detailedDescription.url
+	if not _.isEmpty ret
+		API.http.cache {mid:mid,types:types,wikidata:wikidata}, 'google_knowledge_retrieve', ret
 	return ret
 
 API.use.google.knowledge.search = (qry,limit=10) ->
+	# don't cache searches because result sets should change over time - so most of below is not cached either
 	u = 'https://kgsearch.googleapis.com/v1/entities:search?key=' + API.settings.use.google.serverkey + '&limit=' + limit + '&query=' + qry
 	return HTTP.call('GET',u).data
 
 API.use.google.knowledge.wikidata = (mid,wurl) ->
+	# don't cache this, wikidata is cached
 	if mid and not wurl
 		k = API.use.google.knowledge.retrieve mid
 		wurl = k.detailedDescription?.url
@@ -113,6 +119,10 @@ API.use.google.knowledge.wikidata = (mid,wurl) ->
 API.use.google.cloud.language = (content, actions=['entities','sentiment'], auth) ->
 	actions = actions.split(',') if typeof actions is 'string'
 	return {} if not content?
+	checksum = crypto.createHash('md5').update(content, 'utf8').digest('base64')
+	exists = API.http.cache actions.join(',')+','+checksum, 'google_language'
+	return exists if exists
+
 	lurl = 'https://language.googleapis.com/v1/documents:analyzeEntities?key=' + API.settings.use.google.serverkey
 	document = {document: {type: "PLAIN_TEXT",content:content},encodingType:"UTF8"}
 	result = {}
@@ -120,8 +130,9 @@ API.use.google.cloud.language = (content, actions=['entities','sentiment'], auth
 		result.entities = HTTP.call('POST',lurl,{data:document,headers:{'Content-Type':'application/json'}}).data.entities
 	if 'sentiment' in actions
 		result.sentiment = HTTP.call('POST',lurl.replace('analyzeEntities','analyzeSentiment'),{data:document,headers:{'Content-Type':'application/json'}}).data
+	API.http.cache actions.join(',')+','+checksum, 'google_language', result
 	return result
-	
+
 API.use.google.places.autocomplete = (qry,location,radius) ->
 	url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json?input=' + qry + '&key=' + API.settings.use.google.serverkey
 	url += '&location=' + location + '&radius=' + (radius ? '10000') if location?

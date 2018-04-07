@@ -72,8 +72,6 @@ API.add 'http/cache/:types/clear',
 API.http._colls = {}
 API.http._save = (lookup,type='cache',content) ->
   API.http._colls[type] ?= new API.collection index: API.settings.es.index + "_cache", type: type
-  lookup = JSON.stringify(lookup) if typeof lookup not in ['string','number','boolean']
-  lookup = encodeURIComponent lookup
   sv = {lookup: lookup, _raw_result: {}}
   if typeof content is 'string'
     sv._raw_result.string = content
@@ -92,11 +90,24 @@ API.http._save = (lookup,type='cache',content) ->
 
 API.http.cache = (lookup,type='cache',content,refresh=0) ->
   return undefined if API.settings.cache is false
+  try
+    if Array.isArray lookup
+      lookup = JSON.stringify lookup.sort()
+    else if typeof lookup is 'object'
+      lk = ''
+      keys = _.keys lookup
+      keys.sort()
+      for k in keys
+        lk += '_' + k + '_' + if typeof lookup[k] is 'object' then JSON.stringify(lookup[k]) else lookup[k]
+      lookup = lk
+    lookup = encodeURIComponent(lookup)
+  catch
+    return undefined
+  return undefined if typeof lookup isnt 'string'
   return API.http._save(lookup, type, content) if content?
   API.http._colls[type] ?= new API.collection index: API.settings.es.index + "_cache", type: type
   try
-    lookup = JSON.stringify(lookup) if typeof lookup not in ['string','number']
-    fnd = 'lookup.exact:"' + encodeURIComponent(lookup) + '"'
+    fnd = 'lookup.exact:"' + lookup + '"'
     if typeof refresh is 'number' and refresh isnt 0
       fnd += ' AND createdAt:>' + (Date.now() - refresh)
     res = API.http._colls[type].find fnd, true

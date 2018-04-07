@@ -24,7 +24,7 @@ API.add 'accounts',
 
 API.add 'accounts/xsrf', post: authRequired: true, action: () -> return API.accounts.xsrf this.userId
 
-API.add 'accounts/cutter',
+API.add 'accounts/cookie',
   get:
     authRequired: true
     action: () ->
@@ -238,7 +238,6 @@ API.accounts.login = (params, user, request) ->
       API.log 'Found login token with email and token' if token
     if token
       params.email ?= token.email
-      Tokens.remove token._id # token can only be used once
       user = API.accounts.retrieve params.email
       API.log 'Found user for login with token' if user
       if not user #still no user, create a new one - unless service requires registration, in which case do what?
@@ -251,6 +250,7 @@ API.accounts.login = (params, user, request) ->
   settings.cookie ?= API.settings.accounts?.cookie
 
   if params.service and user?.service?[params.service]?.removed is true
+    try Tokens.remove token._id # token can only be tried once
     API.log 'An already removed user ' + user._id + ' tried to access ' + params.service
     return if request then 401 else false
   else if user
@@ -260,11 +260,22 @@ API.accounts.login = (params, user, request) ->
     if request and API.settings.log.root and user.roles?.__global_roles__? and 'root' in user.roles?.__global_roles__
       API.log msg: 'Root login', notify: subject: 'root user login from ' + request.headers['x-real-ip'], text: 'root user logged in\n\n' + token?.url ? params.url + '\n\n' + request.headers['x-real-ip'] + '\n\n' + request.headers['x-forwarded-for'] + '\n\n'
 
-    _rs = Random.hexString 30
-    nt = uid: user._id, action: 'resume', resume: API.accounts.hash(_rs), timestamp: Date.now(), timeout: Date.now() + (settings.cookie?.timeout ? 259200) * 60 * 1000
-    nt.fingerprint = API.accounts.hash(params.fingerprint) if params.fingerprint
-    nt.timeout_date = moment(nt.timeout, "x").format "YYYY-MM-DD HHmm.ss"
-    Tokens.insert nt
+    _rs = params.resume
+    try 
+      # a user that gets auth from the main API will already be set, so the above checks for token etc will not run
+      # so check to see if the auth'd user already has a valid resume token (which they should)
+      if params.resume and params.timestamp
+        token = Tokens.find resume: API.accounts.hash(params.resume), timestamp: params.timestamp, action: 'resume'
+        API.log 'Authorised user already has a still-valid resume token' if token
+    if not token or token.timeout < Date.now() or token.action isnt 'resume'
+      try Tokens.remove token._id # get rid of old token
+      _rs = Random.hexString 30
+      nt = uid: user._id, action: 'resume', resume: API.accounts.hash(_rs), timestamp: Date.now(), timeout: Date.now() + (settings.cookie?.timeout ? 259200) * 60 * 1000
+      nt.fingerprint = API.accounts.hash(params.fingerprint) if params.fingerprint
+      nt.timeout_date = moment(nt.timeout, "x").format "YYYY-MM-DD HHmm.ss"
+      Tokens.insert nt
+    else
+      nt = token
     services = {}
     services[s] = _.omit(user.service[s], 'private') for s of user.service
     return

@@ -1,6 +1,12 @@
 
+import cpustat from 'cpu-stat'
+import diskspace from 'diskspace'
 
-API.add 'memory', get: () -> return {cid:process.env.CID, appid:process.env.APP_ID, memory:process.memoryUsage()}
+API.add 'stats',
+  get: () ->
+    cpu = Meteor.wrapAsync((callback) -> cpustat.usagePercent((err, percent, seconds) -> console.log(err); return callback(null, percent)))()
+    disk = Meteor.wrapAsync((callback) -> diskspace.check('/', (err, result) -> console.log(err); return callback(null, result)))()
+    return {cid:process.env.CID, appid:process.env.APP_ID, memory:process.memoryUsage(), cpu: cpu, disk: disk}
 
 API.add 'status', get: () -> return API.status(false)
 
@@ -24,8 +30,8 @@ API.status = (email=true) ->
   ret.status = 'red' if ret.accounts.total is 0
 
   try ret.up.live = true if HTTP.call 'HEAD', 'https://api.cottagelabs.com', {timeout:2000}
-  try ret.up.local = true if lm = HTTP.call 'GET', 'https://local.api.cottagelabs.com/memory', {timeout:2000}
-  try ret.up.dev = true if dm = HTTP.call 'GET', 'https://dev.api.cottagelabs.com/memory', {timeout:2000}
+  try ret.up.local = true if lm = HTTP.call 'GET', 'https://local.api.cottagelabs.com/stats', {timeout:2000}
+  try ret.up.dev = true if dm = HTTP.call 'GET', 'https://dev.api.cottagelabs.com/stats', {timeout:2000}
   reported = false
   if lm?.data?
     lm.data.machine = 'local'
@@ -46,7 +52,7 @@ API.status = (email=true) ->
       ccount = 0
       for m in API.settings.cluster.machines
         try
-          cm = HTTP.call 'GET',(if m.indexOf('http') isnt 0 then 'http://' else '') + m + '/api/memory', {timeout:2000}
+          cm = HTTP.call 'GET',(if m.indexOf('http') isnt 0 then 'http://' else '') + m + '/api/stats', {timeout:2000}
           cm.data.machine = m
           if cm.data.appid is process.env.APP_ID
             reported = true

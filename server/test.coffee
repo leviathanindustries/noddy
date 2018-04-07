@@ -9,13 +9,13 @@ API.add 'test',
 
 API.add 'test/last',
   get: () ->
-    #try
-    res = API.es.call 'GET', '/' + API.settings.es.index + '_log/' + moment(Date.now(), "x").format("YYYYMMDD") + '/_search?sort=createdAt:desc&q=function:"API.test"'
-    if not res?
-      API.es.call 'GET', '/' + API.settings.es.index + '_log/' + moment(Date.now() - 86400000 , "x").format("YYYYMMDD") + '/_search?sort=createdAt:desc&q=function:"API.test"'
-    return JSON.parse res.hits.hits[0]._source.tests
-    #catch
-    #  return {}
+    try
+      res = API.es.call 'GET', '/' + API.settings.es.index + '_log/' + moment(Date.now(), "x").format("YYYYMMDD") + '/_search?sort=createdAt:desc&q=function:"API.test"'
+      if not res?
+        API.es.call 'GET', '/' + API.settings.es.index + '_log/' + moment(Date.now() - 86400000 , "x").format("YYYYMMDD") + '/_search?sort=createdAt:desc&q=function:"API.test"'
+      return JSON.parse res.hits.hits[0]._source
+    catch
+      return {}
 
 API.test = (verbose,ignore=['settings','es','log'],run=[]) ->
   ignore = ignore.split(',') if typeof ignore is 'string'
