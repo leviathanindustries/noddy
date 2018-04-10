@@ -195,7 +195,7 @@ API.tdm.keywords = (content,opts={}) ->
 
 API.tdm.extract = (opts) ->
 	# opts expects url,content,matchers (a list, or singular "match" string),start,end,convert,format,lowercase,ascii
-	opts.content = API.http.phantom(opts.url) if opts.url and not opts.content
+	opts.content = API.http.phantom(opts.url, undefined, true) if opts.url and not opts.content
 
 	text
 	try

@@ -170,9 +170,10 @@ _phantom = (url,delay=1000,refresh=86400000,callback) ->
     callback = delay
     delay = 1000
   return callback(null,'') if not url? or typeof url isnt 'string'
-  cached = API.http.cache url, 'phantom_get', undefined, refresh
-  if cached?
-    return callback(null,cached)
+  if refresh isnt true and refresh isnt 0
+    cached = API.http.cache url, 'phantom_get', undefined, refresh
+    if cached?
+      return callback(null,cached)
   API.log('starting phantom retrieval of ' + url)
   url = 'http://' + url if url.indexOf('http') is -1
   _ph = undefined
