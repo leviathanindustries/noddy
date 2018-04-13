@@ -36,12 +36,20 @@ API.add 'convert',
       to = 'application/' + this.queryParams.to if this.queryParams.to is 'json' or this.queryParams.to is 'xml'
       out = API.convert.run this.queryParams.url, this.queryParams.from, this.queryParams.to, this.queryParams.content, this.queryParams
       to = 'application/json' if typeof out is 'object'
-      try return out if out.statusCode is 401
-      return
-        statusCode: 200
-        headers:
-          'Content-Type': to
-        body: out
+      try return out if out.statusCode is 401 or out.status is 'error'
+      if to is 'text/csv'
+        this.response.writeHead 200,
+          'Content-disposition': "attachment; filename=convert.csv"
+          'Content-type': to + '; charset=UTF-8'
+          'Content-Encoding': 'UTF-8'
+        this.response.end out
+        this.done()
+      else
+        return
+          statusCode: 200
+          headers:
+            'Content-Type': to
+          body: out
     else
       return {data: 'Accepts URLs of content files and converts them. from csv to json,txt. from html to txt. from xml to txt, json. from pdf to txt. from file to txt. For json to csv a subset param can be provided, giving dot notation to the part of the json object that should be converted.'}
   post: () ->
@@ -55,12 +63,20 @@ API.add 'convert',
     out = API.convert.run undefined, this.queryParams.from, this.queryParams.to, this.request.body, this.queryParams
     to = 'application/json' if typeof out is 'object'
     try return out if out.statusCode is 401
-    return
-      statusCode: 200
-      headers:
-        'Content-Type': to
-      body: out
-
+    if to is 'text/csv'
+      this.response.writeHead 200,
+        'Content-disposition': "attachment; filename=convert.csv"
+        'Content-type': to + '; charset=UTF-8'
+        'Content-Encoding': 'UTF-8'
+      this.response.end out
+      this.done()
+    else
+      return
+        statusCode: 200
+        headers:
+          'Content-Type': to
+        body: out
+  
 
 API.convert.run = (url,from,to,content,opts) ->
   from ?= opts.from

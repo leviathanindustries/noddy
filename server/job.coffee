@@ -45,7 +45,7 @@ API.add 'job/:job',
     roleRequired: 'job.user' # who if anyone can remove jobs?
     action: () -> return if not API.job.allowed(this.urlParams.job,this.user) then 401 else job_job.remove this.urlParams.job
 
-API.add 'job/:job/progress', get: () -> return if not job = job_job.get(this.urlParams.job) then 404 else API.job.progress job, this.queryParams.reload?
+API.add 'job/:job/progress', get: () -> return if not job = job_job.get(this.urlParams.job) then 404 else API.job.progress job, undefined, this.queryParams.reload?
 
 API.add 'job/:job/results',
   get:
@@ -349,7 +349,11 @@ API.job.process = (proc) ->
     job_process.insert pn
   else if proc.order
     job_process.update {job: proc.job, order: proc.order+1}, {available:true}
-  # TODO trigger a job progress check in a way that does not cause memory creep
+
+  try
+    job_job.each 'processes._id.exact:' + proc._id, (job) ->
+      if not job_processing.find(job._id) and not job_process.find job._id
+        API.job.progress job, 30000
   if proc.callback
     cb = API
     cb = cb[c] for c in proc.callback.replace('API.','').split('.')
@@ -502,6 +506,9 @@ API.job.reload = (q='*') ->
 
 API.job._progress = (jobid,reload=false) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
+  if job.new or job.done
+    return {createdAt:job.createdAt, progress:(if job.done then 100 else 0), name:job.name, email:job.email, _id:job._id, new:job.new}
+  API.log msg: 'Checking job progress of ' + job._id, level: 'debug'
   job_result.remove job._id
   total = job.processes.length
   count = 0
@@ -520,6 +527,7 @@ API.job._progress = (jobid,reload=false) ->
         job_process.insert i
   p = count/total * 100
   if p is 100
+    try job_process.remove job._id
     job_job.update job._id, {done:true}
     try
       fn = if job.complete.indexOf('API.') is 0 then API else global
@@ -534,7 +542,7 @@ API.job._progress = (jobid,reload=false) ->
     job_job.update job._id, {processed:job.processed.concat(processed)}
   return {createdAt:job.createdAt, progress:p, name:job.name, email:job.email, _id:job._id, new:job.new}
 
-API.job.progress = (jobid,reload=false) ->
+API.job.progress = (jobid,limit=10000,reload=false) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
   if job.new or job.done
     return {createdAt:job.createdAt, progress:(if job.done then 100 else 0), name:job.name, email:job.email, _id:job._id, new:job.new}
@@ -544,8 +552,7 @@ API.job.progress = (jobid,reload=false) ->
     else
       return {createdAt:job.createdAt, progress:0, name:job.name, email:job.email, _id:job._id, new:false}
   else
-    API.log msg: 'Checking job progress of ' + job._id, level: 'debug'
-    return API.job.process({_id: job._id, priority: 9000, group: 'PROGRESS', limit: 10000, function: 'API.job._progress', args: [job._id,reload]})._raw_result['API.job._progress']
+    return API.job.process({_id: job._id, priority: 9000, group: 'PROGRESS', limit: limit, function: 'API.job._progress', args: [job._id,reload]})._raw_result['API.job._progress']
 
 API.job.rerun = (jobid,uid) ->
   job = job_job.get jobid
