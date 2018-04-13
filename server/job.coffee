@@ -245,6 +245,8 @@ API.job.create = (job) ->
   if imports.length
     job_process.import(imports)
     job_process.refresh()
+  else
+    API.job.progress job, 5000
 
   # NOTE job can also have a "complete" function string name, which will be called when API.job.progress hits 100%, see below
   # the "complete" function will receive the whole job object as the only argument (so can look up results by the process IDs)
@@ -353,7 +355,7 @@ API.job.process = (proc) ->
   try
     job_job.each 'processes._id.exact:' + proc._id, (job) ->
       if not job_processing.find(job._id) and not job_process.find job._id
-        API.job.progress job, 30000
+        API.job.progress job, 600000
   if proc.callback
     cb = API
     cb = cb[c] for c in proc.callback.replace('API.','').split('.')

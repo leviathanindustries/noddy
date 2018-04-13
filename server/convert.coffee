@@ -62,7 +62,7 @@ API.add 'convert',
     to = 'application/' + this.queryParams.to if this.queryParams.to is 'json' or this.queryParams.to is 'xml'
     out = API.convert.run undefined, this.queryParams.from, this.queryParams.to, this.request.body, this.queryParams
     to = 'application/json' if typeof out is 'object'
-    try return out if out.statusCode is 401
+    try return out if out.statusCode is 401 or out.status is 'error'
     if to is 'text/csv'
       this.response.writeHead 200,
         'Content-disposition': "attachment; filename=convert.csv"
