@@ -145,12 +145,12 @@ API.http.resolve = (url,refresh=false) ->
         request.head url, {timeout:4000, jar:true, headers: {'User-Agent':'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36'}}, (err, res, body) ->
           if err and JSON.stringify(err).indexOf('TIMEDOUT') isnt -1
             API.log msg: 'http resolve timed out', url: url, error: err, level: 'info'
-            callback null, false
+            callback null, url
           else
             callback null, (if not res? or (res.statusCode? and res.statusCode > 399) then false else res.request.uri.href)
       aresolve = Meteor.wrapAsync resolve
       resolved = aresolve resolved ? url
-      API.http.cache(url, 'http_resolve', resolved) if resolved
+      API.http.cache(url, 'http_resolve', resolved) if resolved?
       return resolved ? url
     catch
       return url
