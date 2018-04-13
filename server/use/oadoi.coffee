@@ -15,7 +15,9 @@ API.use.oadoi.doi = (doi) ->
       res = HTTP.call 'GET', url
       if res.statusCode is 200
         res = res.data
-        res.url = API.http.resolve(res.best_oa_location.url) if res?.best_oa_location?.url?
+        #res.url = API.http.resolve(res.best_oa_location.url) if res?.best_oa_location?.url?
+        # for now we trust oadoi URLs instead of resolving them, to speed things up
+        res.url = res?.best_oa_location?.url
         API.http.cache doi, 'oadoi_doi', res
       else
         return undefined
