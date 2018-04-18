@@ -111,7 +111,7 @@ API.es._retries = {
 API.es.refresh = (index, url) ->
   try
     API.log 'Refreshing index ' + index
-    h = API.es.call 'POST', index + '/_refresh', undefined, undefined, undefined, undefined, undefined, url
+    h = API.es.call 'POST', index + '/_refresh', undefined, undefined, undefined, undefined, undefined, undefined, url
     return true
   catch err
     return false
@@ -244,10 +244,10 @@ API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url,dev=API.s
       console.log 'ES MAPPING ERROR'
       console.log err
 
-API.es.mapping = (index='', type='', url=API.settings.es.url, dev= API.settings.dev) ->
+API.es.mapping = (index='', type='', dev=API.settings.dev, url=API.settings.es.url) ->
   index += '_dev' if index.length and dev and index.indexOf('_dev') is -1
   try
-    mp = API.es.call 'GET', index + '/_mapping/' + type, undefined, undefined, undefined, undefined, undefined, url
+    mp = API.es.call 'GET', index + '/_mapping/' + type, undefined, undefined, undefined, undefined, undefined, undefined, dev, url
     return if index.length then (if type.length then mp[index].mappings[type] else mp[index].mappings) else mp
   catch
     return {}
@@ -264,7 +264,7 @@ API.es.types = (index,url=API.settings.es.url) ->
   try types.push(t) for t of HTTP.call('GET', url + '/' + index + '/_mapping').data[index].mappings
   return types
 
-API.es.call = (action, route, data, refresh, versioned, scan, scroll='5m', url=API.settings.es.url, dev=API.settings.dev) ->
+API.es.call = (action, route, data, refresh, versioned, scan, scroll='5m', partial=false, dev=API.settings.dev, url=API.settings.es.url) ->
   scroll = '120m' if scroll is true
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
   route = '/' + route if route.indexOf('/') isnt 0
@@ -287,6 +287,10 @@ API.es.call = (action, route, data, refresh, versioned, scan, scroll='5m', url=A
 
   # API.es.map(routeparts[0],routeparts[1],undefined,undefined,url) if route.indexOf('/_') is -1 and routeparts.length >= 1 and action in ['POST','PUT']
   opts = data:data
+  if partial isnt false and route.indexOf('_update') is -1
+    partial = 3 if partial is true
+    route += '/_update'
+    route += '?retry_on_conflict=' + partial if typeof partial is 'number'
   route = API.es.random(route) if route.indexOf('source') isnt -1 and route.indexOf('random=true') isnt -1
   route += (if route.indexOf('?') is -1 then '?' else '&') + 'version=' + versioned if versioned?
   if scan is true
@@ -356,7 +360,7 @@ API.es.terms = (index, type, key, size=100, counts=true, qry, url=API.settings.e
   query.facets ?= {}
   query.facets[key] = { terms: { field: key, size: size } }; # TODO need some way to decide if should check on .exact? - collection assumes it so far
   try
-    ret = API.es.call 'POST', '/' + index + '/' + type + '/_search', query, undefined, undefined, undefined, undefined, url
+    ret = API.es.call 'POST', '/' + index + '/' + type + '/_search', query, undefined, undefined, undefined, undefined, undefined, undefined, url
     return if not ret?.facets? then [] else (if counts then ret.facets[key].terms else _.pluck(ret.facets[key].terms,'term'))
   catch err
     console.log(err) if API.settings.log?.level is 'debug'

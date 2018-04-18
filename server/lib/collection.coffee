@@ -95,30 +95,28 @@ API.collection.prototype.insert = (q, obj, uid, refresh) ->
   this.history('insert', obj, uid) if this._history
   return API.es.call('POST', this._route + '/' + obj._id, obj, refresh)?._id
 
-API.collection.prototype.update = (q, obj, uid, refresh, versioned) ->
+API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial) ->
   # to delete an already set value, the update obj should use the value '$DELETE' for the key to delete
-  # TODO may need a lock index to control disordered overwrites
   rec = this.get q
   if rec
-    if obj.script?
-      # TODO this is not handling versioned, history, or user who made the change - consider if necessary
-      # note that this will not work unless scripts are enabled too, but that then means ensuring they cannot be passed in from remote
-      ps = API.es.call 'POST', this._route + '/' + rec._id + '/_update', obj, refresh
-      return true
-    else
+    partial = true if obj.script?
+    if _.keys(obj).length is 1 and rec[_.keys(obj)[0]]? and (_.values(obj)[0].indexOf('+') is 0 or _.values(obj)[0].indexOf('-') is 0)
+      partial = true
+      obj = {script: "ctx._source." + _.keys(obj)[0] + _.values(obj)[0].replace('+=','+').replace('-=','-').replace('+','+=').replace('-','-=')}
+    if not partial
       for k of obj
         API.collection._dot(rec,k,obj[k]) if k isnt '_id'
       rec.updatedAt = Date.now()
       rec.updated_date = moment(rec.updatedAt, "x").format "YYYY-MM-DD HHmm.ss"
-      API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, level: 'debug' }) if this._route.indexOf('_log') is -1
-      if versioned
-        rs = API.es.call 'POST', this._route + '/' + rec._id, rec, refresh, versioned
-        versioned = rs._version
-      else
-        API.es.call 'POST', this._route + '/' + rec._id, rec, refresh # TODO this should catch failures due to versions, and try merges and retries (or ES layer should do this)
-      if this._history
-        this.history 'update', obj, uid
-      return if versioned? then versioned else true
+    API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, refresh: refresh, versioned: versioned, partial: partial, level: 'debug' }) if this._route.indexOf('_log') is -1
+    if versioned
+      rs = API.es.call 'POST', this._route + '/' + rec._id, (if partial then obj else rec), refresh, versioned, undefined, undefined, partial
+      versioned = rs._version
+    else
+      API.es.call 'POST', this._route + '/' + rec._id, (if partial then obj else rec), refresh, undefined, undefined, undefined, partial # TODO this should catch failures due to versions, and try merges and retries (or ES layer should do this)
+    if this._history
+      this.history 'update', obj, uid
+    return if versioned? then versioned else true
   else
     return this.each q, ((res) -> this.update res._id, obj, uid )
 
