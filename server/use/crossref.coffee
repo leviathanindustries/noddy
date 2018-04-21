@@ -4,8 +4,13 @@
 # https://github.com/CrossRef/rest-api-doc/blob/master/rest_api.md
 # http://api.crossref.org/works/10.1016/j.paid.2009.02.013
 
+# crossref now prefers some identifying headers
+header = {
+  'User-Agent': (API.settings.name ? 'noddy') + ' v' + (API.settings.version ? '0.0.1') + (if API.settings.dev then 'd' else '') + ' (https://cottagelabs.com; mailto:' + API.settings.log?.to ? 'mark@cottagelabs.com' + ')'
+}
+
 API.use ?= {}
-API.use.crossref = {works:{}}
+API.use.crossref = {works:{},journals:{}}
 
 API.add 'use/crossref/works/doi/:doipre/:doipost',
   get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost
@@ -19,6 +24,15 @@ API.add 'use/crossref/works/published/:startdate',
 API.add 'use/crossref/works/published/:startdate/:enddate',
   get: () -> return API.use.crossref.works.published this.urlParams.startdate, this.urlParams.enddate, this.queryParams.from, this.queryParams.size, this.queryParams.filter
 
+API.add 'use/crossref/journals/:issn',
+  get: () -> return API.use.crossref.journals.issn this.urlParams.issn
+
+API.add 'use/crossref/journals/:issn/works',
+  get: () -> return API.use.crossref.journals.works this.urlParams.issn
+
+API.add 'use/crossref/journals/:issn/works/dois',
+  get: () -> return API.use.crossref.journals.dois this.urlParams.issn
+
 API.add 'use/crossref/reverse',
   get: () -> return API.use.crossref.reverse [this.queryParams.q], this.queryParams.score
   post: () -> return API.use.crossref.reverse this.request.body
@@ -27,11 +41,12 @@ API.add 'use/crossref/resolve/:doipre/:doipost', get: () -> return API.use.cross
 API.add 'use/crossref/resolve', get: () -> return API.use.crossref.resolve this.queryParams.doi
 
 
+
 API.use.crossref.reverse = (citations,score=80) ->
   citations = [citations] if typeof citations is 'string'
   url = 'https://api.crossref.org/reverse'
   try
-    res = HTTP.call 'POST', url, {data:citations}
+    res = HTTP.call 'POST', url, {data:citations, headers: header}
     if res.statusCode is 200
       if res?.data?.message?.DOI and res.data.message.score and res.data.message.type is 'journal-article'
         sc = res.data.message.score
@@ -67,7 +82,7 @@ API.use.crossref.resolve = (doi) ->
     url = false
     try
       # TODO NOTE that the URL given by crossref doi resolver may NOT be the final resolved URL. The publisher may still redirect to a different one
-      resp = HTTP.call 'GET', 'https://doi.org/api/handles/' + doi
+      resp = HTTP.call 'GET', 'https://doi.org/api/handles/' + doi, {headers: header}
       for r in resp.data?.values
         if r.type.toLowerCase() is 'url'
           url = r.data.value
@@ -75,6 +90,56 @@ API.use.crossref.resolve = (doi) ->
           url = new Buffer(url,'base64').toString('utf-8') if r.data.format is 'base64'
           API.http.cache doi, 'crossref_resolve', url
     return url
+
+
+
+API.use.crossref.journals.issn = (issn) ->
+  url = 'https://api.crossref.org/journals/' + issn
+  API.log 'Using crossref for ' + url
+  cached = API.http.cache issn, 'crossref_journals_issn'
+  if cached
+    return cached
+  else
+    try
+      res = HTTP.call 'GET', url, {headers: header}
+      if res.statusCode is 200
+        API.http.cache issn, 'crossref_journals_issn', res.data.message
+        return res.data.message
+      else
+        return undefined
+    catch
+      return undefined
+
+API.use.crossref.journals.works = (issn,from,size=100) ->
+  # cannot cache this because list of works for a journal changes over time
+  # could add time constrained caching, but not possible right now
+  url = 'https://api.crossref.org/journals/' + issn + '/works?sort=published&order=desc&rows=' + size + (if from then '&from=' + from else '')
+  API.log 'Using crossref for ' + url
+  try
+    res = HTTP.call 'GET', url, {headers: header}
+    if res.statusCode is 200
+      return res.data.message
+    else
+      return undefined
+  catch
+    return undefined
+
+API.use.crossref.journals.dois = (issn) ->
+  try
+    dois = []
+    works = API.use.crossref.journals.works issn, undefined, 10000
+    dois.push(w.DOI) for w in works.items
+    total = works['total-results']
+    counter = 0
+    while counter < total
+      counter += 10000
+      works = API.use.crossref.journals.works issn, counter, 10000
+      dois.push(w.DOI) for w in works.items
+    return dois
+  catch
+    return undefined
+
+
 
 API.use.crossref.works.doi = (doi) ->
   url = 'https://api.crossref.org/works/' + doi
@@ -84,7 +149,7 @@ API.use.crossref.works.doi = (doi) ->
     return cached
   else
     try
-      res = HTTP.call 'GET', url
+      res = HTTP.call 'GET', url, {headers: header}
       if res.statusCode is 200
         API.http.cache doi, 'crossref_works_doi', res.data.message
         return res.data.message
@@ -103,7 +168,7 @@ API.use.crossref.works.search = (qrystr,from,size,filter) ->
   url += '&filter=' + filter if filter?
   url = url.replace('?&','?') # tidy any params coming immediately after the start of search query param signifier, as it makes crossref error out
   API.log 'Using crossref for ' + url
-  res = HTTP.call 'GET', url
+  res = HTTP.call 'GET', url, {headers: header}
   return if res.statusCode is 200 then { total: res.data.message['total-results'], data: res.data.message.items, facets: res.data.message.facets} else { status: 'error', data: res}
 
 API.use.crossref.works.published = (startdate,enddate,from,size,filter) ->
@@ -123,7 +188,7 @@ API.use.crossref.works.indexed = (startdate,enddate,from,size,filter) ->
 
 API.use.crossref.status = () ->
   try
-    res = HTTP.call 'GET', 'https://api.crossref.org/works/10.1186/1758-2946-3-47', {timeout: API.settings.use?.crossref?.timeout ? API.settings.use?._timeout ? 4000}
+    res = HTTP.call 'GET', 'https://api.crossref.org/works/10.1186/1758-2946-3-47', {headers: header, timeout: API.settings.use?.crossref?.timeout ? API.settings.use?._timeout ? 4000}
     return if res.statusCode is 200 and res.data.status is 'ok' then true else res.data
   catch err
     return err.toString()
@@ -134,7 +199,7 @@ API.use.crossref.test = (verbose) ->
   result = {passed:[],failed:[]}
   tests = [
     () ->
-      result.record = HTTP.call 'GET', 'https://api.crossref.org/works/10.1186/1758-2946-3-47'
+      result.record = HTTP.call 'GET', 'https://api.crossref.org/works/10.1186/1758-2946-3-47', {headers: header}
       if result.record.data?
         result.record = result.record.data.message
         delete result.record.indexed # remove some stuff that is irrelevant to the match
