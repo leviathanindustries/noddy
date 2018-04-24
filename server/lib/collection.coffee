@@ -100,9 +100,12 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial) ->
   return undefined if obj.script? and partial isnt true
   rec = this.get q
   if rec
-    if _.keys(obj).length is 1 and rec[_.keys(obj)[0]]? and (_.values(obj)[0].indexOf('+') is 0 or _.values(obj)[0].indexOf('-') is 0)
-      partial = true
-      obj = {script: "ctx._source." + _.keys(obj)[0] + _.values(obj)[0].replace('+=','+').replace('-=','-').replace('+','+=').replace('-','-=')}
+    if _.keys(obj).length is 1 and typeof _.values(obj)[0] is 'string' and  (_.values(obj)[0].indexOf('+') is 0 or _.values(obj)[0].indexOf('-') is 0)
+      if rec[_.keys(obj)[0]]? and typeof rec[_.keys(obj)[0]] is 'number'
+        partial = true
+        obj = {script: "ctx._source." + _.keys(obj)[0] + _.values(obj)[0].replace('+=','+').replace('-=','-').replace('+','+=').replace('-','-=')}
+      else
+        obj[_.keys(obj)[0]] = 1
     if not partial
       for k of obj
         API.collection._dot(rec,k,obj[k]) if k isnt '_id'
