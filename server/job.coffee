@@ -246,8 +246,6 @@ API.job.create = (job) ->
     job_process.import(imports)
     job_process.refresh()
     job.processed = job.processes.length - imports.length
-  else
-    API.job.complete job
 
   # NOTE job can also have a "complete" function string name, which will be called when progress hits 100%, see below
   # the "complete" function will receive the whole job object as the only argument (so can look up results by the process IDs)
@@ -257,6 +255,8 @@ API.job.create = (job) ->
     job_job.update job._id, job
   else
     job._id = job_job.insert job
+  if imports.length is 0
+    API.job.complete job
   return job
 
 API.job.limit = (limitms,fn,args,group,refresh=0) -> # directly create a sync throttled process
