@@ -58,7 +58,7 @@ API.mail.send = (opts,mail_url) ->
   # also takes opts.attachments, but not required. Should be a list of objects as per
   # https://github.com/nodemailer/mailcomposer/blob/7c0422b2de2dc61a60ba27cfa3353472f662aeb5/README.md#add-attachments
 
-  ms = API.settings.service?[opts.service?]?.mail ? API.settings.mail
+  ms = if opts.service? and API.settings.service?[opts.service]?.mail? then API.settings.service[opts.service].mail else API.settings.mail
   delete opts.service
   opts.from ?= ms.from
   opts.to ?= ms.to
