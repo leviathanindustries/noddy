@@ -97,9 +97,9 @@ API.collection.prototype.insert = (q, obj, uid, refresh) ->
 
 API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial) ->
   # to delete an already set value, the update obj should use the value '$DELETE' for the key to delete
+  return undefined if obj.script? and partial isnt true
   rec = this.get q
   if rec
-    partial = true if obj.script?
     if _.keys(obj).length is 1 and rec[_.keys(obj)[0]]? and (_.values(obj)[0].indexOf('+') is 0 or _.values(obj)[0].indexOf('-') is 0)
       partial = true
       obj = {script: "ctx._source." + _.keys(obj)[0] + _.values(obj)[0].replace('+=','+').replace('-=','-').replace('+','+=').replace('-','-=')}

@@ -144,7 +144,7 @@ API.add '/',
     for rt in res.listing
       srt = rt #rt.replace('service/','').replace('use/','')
       tgt = res.routes #if rt.indexOf('service/') is 0 then service else if rt.indexOf('use/') is 0 then use else res.routes
-      ep = rts[rt]
+      ep = JSON.parse JSON.stringify rts[rt]
       delete ep.options
       for tp in ['get','post','put','delete']
         try ep[tp].auth = if ep[tp].roleRequired then ep[tp].roleRequired else if ep[tp].authRequired then 'required' else if ep[t].authOptional then 'optional' else false
