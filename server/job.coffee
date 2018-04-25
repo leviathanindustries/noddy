@@ -527,7 +527,7 @@ API.job.complete = (jobid) ->
     catch
       if job.group isnt 'JOBTEST'
         text = 'Job ' + (if job.name then job.name else job._id) + ' is complete.'
-        email = job.email ? job.user and API.accounts.retrieve(job.user)?.emails[0].address
+        email = job.email ? API.accounts.retrieve(job.user)?.emails[0].address
         API.mail.send to:email, subject:text, text:text
   return true
 
