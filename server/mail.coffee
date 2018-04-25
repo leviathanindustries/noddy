@@ -5,7 +5,7 @@ import marked from 'marked'
 API.mail = {}
 
 @mail_template = new API.collection "mailtemplate"
-mail_progress = new API.collection "mailprogress"
+@mail_progress = new API.collection "mailprogress"
 
 API.add 'mail/validate', get: () -> return API.mail.validate this.queryParams.email
 
@@ -33,10 +33,20 @@ API.add 'mail/feedback/:token',
     return {}
 
 API.add 'mail/progress',
-  get: () -> return mail_progress.search this.queryParams
+  get:
+    roleRequired: 'root'
+    action: () -> return mail_progress.search this.queryParams
   post: () ->
     API.mail.progress this.request.body, this.queryParams.token
     return {}
+
+API.add 'mail/progress/:mid',
+  get: () ->
+    try
+      rm = mail_progress.find {'Message-Id.exact':this.urlParams.mid}
+      return rm.event
+    catch
+      return ''
 
 
 API.mail.send = (opts,mail_url) ->

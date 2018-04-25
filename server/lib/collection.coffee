@@ -47,9 +47,9 @@ API.collection.prototype.history = (action, doc, uid) ->
     # TODO action could actually be a usual search q / doc id here, so would need to check if it meets the criteria
     # and if action was a doc id, doc could be a search q
     # and history search should probably have a default descending sort applied to it
-    q = API.collection._translate(action ?= '*')
+    q = API.collection._translate(action ?= '*', doc)
     if typeof q is 'string'
-      return API.es.call 'GET', this._route + '/_history/_search?' + (if q.indexOf('?') is 0 then q.replace('?', '') else q)
+      return API.es.call 'GET', this._route + '_history/_search?' + (if q.indexOf('?') is 0 then q.replace('?', '') else q)
     else
       return API.es.call 'POST', this._route + '_history/_search', q
   else
@@ -73,6 +73,26 @@ API.collection.prototype.history = (action, doc, uid) ->
         ret = API.es.call 'POST', this._route + '_history', change
         if not ret?
           API.log msg:'History logging failing',error:err,action:action,doc:doc,uid:uid
+
+API.collection.prototype.fetch_history = (q, opts={}) ->
+  qy = API.collection._translate q, opts
+  qy.from ?= 0
+  qy.size ?= 3000
+  results = []
+  res = API.es.call 'POST', this._route + '_history/_search', qy, undefined, undefined, true
+  console.log res
+  if res.hits.hits.length
+    for h in res.hits.hits
+      results.push h._source ? h.fields
+  return results if not res?._scroll_id?
+  res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id
+  return results if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
+  while (res.hits.hits.length)
+    for h in res.hits.hits
+      results.push h._source ? h.fields
+    res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id
+  this.refresh()
+  return results
 
 API.collection.prototype.get = (rid,versioned) ->
   # TODO is there any case for recording who has accessed certain documents?
@@ -118,6 +138,7 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial) ->
     else
       API.es.call 'POST', this._route + '/' + rec._id, (if partial then obj else rec), refresh, undefined, undefined, undefined, partial # TODO this should catch failures due to versions, and try merges and retries (or ES layer should do this)
     if this._history
+      obj._id = rec._id
       this.history 'update', obj, uid
     return if versioned? then versioned else true
   else
@@ -185,7 +206,7 @@ API.collection.prototype.each = (q, opts, fn, scroll) ->
   return 0 if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
   processed = 0
   while (res.hits.hits.length)
-    scrollids.push(res._scroll_id) if scroll>
+    scrollids.push(res._scroll_id) if scroll?
     processed += res.hits.hits.length
     for h in res.hits.hits
       fn = fn.bind this
@@ -195,6 +216,26 @@ API.collection.prototype.each = (q, opts, fn, scroll) ->
     try API.es.call 'DELETE', '_search/scroll', undefined, undefined, undefined, sid
   this.refresh()
   return processed
+
+API.collection.prototype.fetch = (q, opts={}) ->
+  qy = API.collection._translate q, opts
+  qy.from ?= 0
+  qy.size ?= 3000
+  results = []
+  res = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, true
+  if res.hits.hits.length
+    for h in res.hits.hits
+      results.push h._source ? h.fields
+    # scroll queries that are not of scan type will have results in the first request, whereas scan queries will not
+  return results if not res?._scroll_id?
+  res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id
+  return results if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
+  while (res.hits.hits.length)
+    for h in res.hits.hits
+      results.push h._source ? h.fields
+    res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id
+  this.refresh()
+  return results
 
 API.collection.prototype.count = (q,key) ->
   if key?

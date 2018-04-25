@@ -295,7 +295,10 @@ API.es.call = (action, route, data, refresh, versioned, scan, scroll='5m', parti
   route = API.es.random(route) if route.indexOf('source') isnt -1 and route.indexOf('random=true') isnt -1
   route += (if route.indexOf('?') is -1 then '?' else '&') + 'version=' + versioned if versioned?
   if scan is true
-    route += (if route.indexOf('?') is -1 then '?' else '&') + 'search_type=scan&scroll=' + scroll
+    route += (if route.indexOf('?') is -1 then '?' else '&')
+    if not data? or (typeof data is 'object' and not data.sort?) or (typeof data is 'string' and data.indexOf('sort=') is -1)
+      route += 'search_type=scan&'
+    route += 'scroll=' + scroll
   else if scan?
     route = '/_search/scroll?scroll_id=' + scan + (if action isnt 'DELETE' then '&scroll=' + scroll else '')
   try
