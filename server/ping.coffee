@@ -37,6 +37,10 @@ API.add 'ping.png',
     this.response.end img
     this.done()
 
+API.add 'pings',
+  get: () -> return pings.search this.queryParams
+  post: () -> return pings.search this.bodyParams
+
 API.add 'ping',
   get: () ->
     return API.ping this.request.body.url ? this.queryParams.url
