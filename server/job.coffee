@@ -269,7 +269,8 @@ API.job.limit = (limitms,fn,args,group,refresh=0) -> # directly create a sync th
     if rs?
       pr._id = rs._id
     else
-      jp = job_process.insert pr
+      pr._id = job_process.insert pr
+      API.job.process(pr._id) if not API.settings.job?.startup and API.settings.job?.limit
     while not jr?
       future = new Future()
       Meteor.setTimeout (() -> future.return()), limitms
