@@ -478,6 +478,7 @@ API.job.status = (filter='NOT group:STUCK AND NOT group:TEST') ->
       count: job_result.count(filter)
       oldest: {_id: jro._id, createdAt: jro.createdAt, created_date: jro.created_date} if jro = job_result.find(filter, {sort:{createdAt:{order:'asc'}}})
       newest: {_id: jrn._id, createdAt: jrn.createdAt, created_date: jrn.created_date} if jrn = job_result.find(filter, true)
+      cluster: job_result.terms('_cid')
   res.limits = {} # may not be worth reporting on limit index in new structure
   job_limit.each 'NOT last:*', (lm) -> res.limits[lm.group] = {date:lm.created_date,limit:lm.limit}
   return res

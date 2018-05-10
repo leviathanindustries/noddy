@@ -91,8 +91,7 @@ notify section, then it will also look for any specific settings in the notify.d
 
 ## Making a VM that can run in a noddy cluster
 
-A 2GB DO machine with the latest Ubuntu server works fine, and can have deployment handled by mupx.
-Each machine can run 2 instances of noddy, on different ports (see the mup config files).
+A 2GB DO machine with the latest Ubuntu server works fine, and can have deployment handled by mup.
 
 adduser --gecos "" USERNAME
 cd /home/USERNAME

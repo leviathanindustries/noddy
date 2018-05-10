@@ -1,6 +1,6 @@
 // http://meteor-up.com/docs.html
 // mup setup to configure the machines mup deploy to deploy the app
-// mup reconfig is last steop of deploy, can be run alone, to update env vars, meteor settings, and start script
+// mup reconfig is last step of deploy, can be run alone, to update env vars, meteor settings, and start script
 // mup stop, start, restart, does as expected
 // mup logs [-f --tail=50] supports docker logs falgs, gets logs
 module.exports = {

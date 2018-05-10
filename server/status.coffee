@@ -35,13 +35,13 @@ API.status = (email=true) ->
   reported = false
   if lm?.data?
     lm.data.machine = 'local'
-    if lm.data.appid is process.env.APP_ID
+    if lm.data.cid is process.env.CID
       reported = true
       lm.data.served = true
     ret.memory.push lm.data
   if dm?.data?
     dm.data.machine = 'dev'
-    if dm.data.appid is process.env.APP_ID
+    if dm.data.cid is process.env.CID
       reported = true
       dm.data.served = true
     ret.memory.push dm.data
@@ -54,7 +54,7 @@ API.status = (email=true) ->
         try
           cm = HTTP.call 'GET',(if m.indexOf('http') isnt 0 then 'http://' else '') + m + '/api/stats', {timeout:2000}
           cm.data.machine = m
-          if cm.data.appid is process.env.APP_ID
+          if cm.data.cid is process.env.CID
             reported = true
             cm.data.served = true
           ret.memory.push cm.data
