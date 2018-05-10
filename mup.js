@@ -20,7 +20,7 @@ module.exports = {
     name: 'noddy',
     path: '.',
     docker: {
-      image: 'abernix/meteord:node-8.4.0-base'
+      image: 'abernix/meteord:node-8.9.4-base'
     },
     servers: {
       one: {
