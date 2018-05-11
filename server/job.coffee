@@ -436,6 +436,7 @@ API.job.reload = (q='*') ->
         reloads.push proc
     )
     job_processing.remove q
+    job_processing.refresh()
   if reloads.length
     job_process.import(reloads)
     job_process.refresh()
