@@ -375,7 +375,6 @@ API.job.next = () ->
     if v <= now
       delete API.job._ignoregroups[k]
   for s, t of API.job._ignoreids
-    console.log s, t, now, t <= now, API.job._ignoreids[s]
     if t <= now
       delete API.job._ignoreids[s]
   if (API.settings.job?.concurrency ?= 1000000000) <= job_processing.count()
@@ -388,7 +387,7 @@ API.job.next = () ->
     API.log {msg:'Checking for jobs to run', ignores: {groups:API.job._ignoregroups,ids:API.job._ignoreids}, function:'API.job.next', level:'debug'}
     match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
     match.must_not.push({term: 'group.exact':g}) for g of API.job._ignoregroups
-    match.must_not.push({term: '_id.exact':m}) for m of API.job._ignoreids
+    match.must_not.push({term: '_id':m}) for m of API.job._ignoreids
     console.log(JSON.stringify match) if API.settings.log?.level is "all"
     p = job_process.find match, {sort:{priority:{order:'desc'}}, random:true} # TODO check if random sort works - may have to be more complex
     if p?
