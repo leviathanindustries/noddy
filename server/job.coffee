@@ -389,7 +389,7 @@ API.job.next = () ->
     match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
     match.must_not.push({term: 'group.exact':g}) for g of API.job._ignoregroups
     match.must_not.push({term: '_id.exact':m}) for m of API.job._ignoreids
-    #console.log(JSON.stringify match) if API.settings.dev
+    console.log(JSON.stringify match) if API.settings.dev
     p = job_process.find match, {sort:{priority:{order:'desc'}}, random:true} # TODO check if random sort works - may have to be more complex
     if p?
       if job_processing.get(p._id)? # because job_process is searched, there can be a delay before it reflects deleted jobs, so accept this extra load on ES
