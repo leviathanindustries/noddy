@@ -418,10 +418,10 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   future = new Future() # randomise start time so that cluster machines do not all start jobs at exactly the same time
   Meteor.setTimeout (() -> future.return()), Math.floor(Math.random()*interval+1)
   future.wait()
-  API.log {msg: 'Starting job runner with interval ' + interval, _cid: process.env.CID, _appid: process.env.APP_ID, function: 'API.job.start', level: 'all'}
+  API.log {msg: 'Starting job runner with interval ' + interval, _cid: process.env.CID, _appid: process.env.APP_ID, function: 'API.job.start', level: 'debug'}
   # create a repeating limited stuck check process with id 'STUCK' so that it can check for stuck jobs
   # multiple machines trying to create it won't matter because they will just overwrite each other, eventually only one process will run
-  job_limit.remove('*')
+  job_limit.remove '*'
   job_process.remove 'STUCK'
   job_process.remove 'TEST'
   job_processing.remove 'STUCK'
@@ -430,7 +430,7 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   job_result.remove 'TEST'
   #job_process.insert _id: 'STUCK', repeat: true, function: 'API.job.stuck', priority: 8000, group: 'STUCK', limit: 3600000 # hourly stuck check
   #job_process.insert _id: 'TEST', repeat: true, function: 'API.test', priority: 8000, group: 'TEST', limit: 86400000 # daily system test
-  API.job._iid ?= Meteor.setInterval API.job.next,interval
+  API.job._iid ?= Meteor.setInterval API.job.next, interval
 
 API.job.start() if not API.job._iid? and API.settings.job?.startup
 
