@@ -145,7 +145,6 @@ API.add 'job/clear/:which',
         return job_result.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
       else if this.urlParams.which is 'processes'
         res = job_process.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
-        job_process.insert _id: 'STUCK', repeat: true, function: 'API.job.stuck', priority: 1, group: 'API.job.stuck', limit: 900000
         return res
       else if this.urlParams.which is 'processing'
         return job_processing.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
@@ -421,16 +420,11 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   Meteor.setTimeout (() -> future.return()), Math.floor(Math.random()*interval+1)
   future.wait()
   API.log {msg: 'Starting job runner with interval ' + interval, _cid: process.env.CID, _appid: process.env.APP_ID, function: 'API.job.start', level: 'debug'}
-  # create a repeating limited stuck check process with id 'STUCK' so that it can check for stuck jobs
-  # multiple machines trying to create it won't matter because they will just overwrite each other, eventually only one process will run
   job_limit.remove '*'
-  job_process.remove 'STUCK'
-  job_process.remove 'TEST'
-  job_processing.remove 'STUCK'
-  job_processing.remove 'TEST'
-  job_result.remove 'STUCK'
-  job_result.remove 'TEST'
-  job_process.insert _id: 'STUCK', repeat: true, function: 'API.job.stuck', priority: 8000, group: 'STUCK', limit: 1800000 # half-hourly stuck check
+  API.job.reload() # TODO this will be risky if multiple cluster machines try to run it - add a limit checker or something so it only runs on the first machine
+  #job_process.remove 'TEST'
+  #job_processing.remove 'TEST'
+  #job_result.remove 'TEST'
   #job_process.insert _id: 'TEST', repeat: true, function: 'API.test', priority: 8000, group: 'TEST', limit: 86400000 # daily system test
   API.job._iid ?= Meteor.setInterval API.job.next, interval
 
@@ -442,28 +436,11 @@ API.job.stop = () ->
   # note that processes already processing will keep going, but no new ones will start
   job_limit.insert _id: 'PAUSE'
 
-API.job.stuck = (p) ->
-  if p._id is 'STUCK' # the first stuck check after a system restart will have this as ID, so check for hung processes
-    if job_processing.find 'NOT _id:STUCK AND NOT _id:TEST AND createdAt:<' + p.createdAt
-      API.job.reload(if job_processing.find('NOT _id:STUCK AND NOT _id:TEST AND createdAt:>=' + p.createdAt) then 'createdAt:<' + p.createdAt else '*')
-  else if job_processing.count('*') is 0 and job_process.count('*') isnt 0
-    API.log {msg:'Job processing seems to be stuck, there are processes waiting but none running', notify:true, level:'WARN'}
-  st = API.job.status()
-  try
-    if p.previous and job_result.get p.previous
-      previous = API.job.result p.previous
-      if st.jobs.count isnt 0 and previous.jobs.count is st.jobs.count and previous.jobs.oldest?._id is st.jobs.oldest?._id and previous.jobs.newest?._id is st.jobs.newest?._id and previous.jobs.done is st.jobs.done and st.jobs.done isnt st.jobs.count
-        # if there are jobs, and previous jobs count matches current, and previous oldest and newest job IDs match current,
-        # and amount of jobs done is the same, and amount of jobs done is not all jobs, then something is wrong, send a warning
-        API.log {msg:'Job processing seems to be stuck, job amounts have not changed since last check', notify:true, level:'WARN'}
-      else if previous.processing.count is st.processing.count and previous.processing.oldest._id is st.processing.oldest._id and previous.processing.newest._id is st.processing.newest._id
-        API.log {msg:'Job processing seems to be stuck, processing amounts and oldest and newest have not changed since last check', notify:true, level:'WARN'}
-      else if st.jobs.done isnt st.jobs.count and st.processing.count is 0
-        API.log {msg:'Job processing seems to be stuck, there are jobs not done but no processes running', notify:true, level:'WARN'}
-  # TODO could trigger a reload if it seems processing jobs are just not getting done - can be done en masse or per job not done
-  return st
+API.job.stuck = () ->
+  # TODO add a stuck checker
+  return false
 
-API.job.status = (filter='NOT group:STUCK AND NOT group:TEST') ->
+API.job.status = (filter='NOT group:TEST') ->
   res =
     running: API.job.running()
     jobs:
@@ -504,7 +481,7 @@ API.job.reload = (q='*') ->
   else
     job_processing.each q, ((proc) ->
       ret += 1
-      if proc.group isnt 'STUCK' and not job_result.get(proc._id)? and not job_process.get(proc._id)?
+      if not job_result.get(proc._id)? and not job_process.get(proc._id)?
         proc.reloaded ?= []
         proc.reloaded.push proc.createdAt
         reloads.push proc
