@@ -164,7 +164,7 @@ meteor build ~ --server-only
 # if any new machine deps were install via apt or similar, they need to be installed on the cluster machine too
 
 # copy the tar.gz file created by meteor build to the cluster machine and untar it, then cd into it
-#scp ~/noddy.tar.gz IP-OF-SERVER for each cluster machine
+#scp ~/noddy.tar.gz IP-OF-SERVER:/home/cloo for each cluster machine
 # scp the cluster settings file too, if doing manually on the cluster machine, see below to set it into an env variable
 
 #ssh IP-OF-SERVER
