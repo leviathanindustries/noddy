@@ -448,7 +448,6 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   Meteor.setTimeout (() -> future.return()), Math.floor(Math.random()*interval+1)
   future.wait()
   API.log {msg: 'Starting job runner with interval ' + interval, _cid: process.env.CID, _appid: process.env.APP_ID, function: 'API.job.start', level: 'debug'}
-  job_limit.remove 'START_RELOAD'
   if not job_limit.get 'START_RELOAD'
     job_limit.insert _id: 'START_RELOAD'
     API.job.reload()
