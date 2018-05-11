@@ -37,7 +37,7 @@ API.collection.prototype.delete = (confirm, history) ->
   this.remove('*') if confirm is '*'
   API.es.call('DELETE', this._route) if confirm is true
   API.es.call('DELETE', this._route + '_history') if history is true and this._history
-  return true;
+  return true
 
 API.collection.prototype.history = (action, doc, uid) ->
   # NOTE even if a collection has history turned on, the uid of the user who made the
@@ -145,7 +145,7 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial) ->
     return this.each q, ((res) -> this.update res._id, obj, uid )
 
 API.collection.prototype.remove = (q, uid) ->
-  if typeof q is 'string' or typeof q is 'number' and this.get q
+  if (typeof q is 'string' or typeof q is 'number') and this.get q
     this.history('remove', q, uid) if this._history
     API.es.call 'DELETE', this._route + '/' + q
     return true
