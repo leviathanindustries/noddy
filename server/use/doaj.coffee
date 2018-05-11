@@ -63,7 +63,7 @@ API.use.doaj.articles.redirect = (record) ->
         res.url = l.url
         if res.url?
           try
-            resolves = HTTP.call 'HEAD', res.url
+            resolves = HTTP.call 'HEAD', res.url, {timeout: API.settings.use?.doaj?.timeout ? API.settings.use?._timeout ? 2000}
           catch
             res.url = undefined
         res.redirect = API.service.oab.redirect(res.url) if API.service.oab?

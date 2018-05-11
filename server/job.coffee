@@ -384,7 +384,7 @@ API.job.next = () ->
     # and if legit and being hit on every available machine in the cluster, should trigger alert to start more cluster machines?
     API.log {msg:'Not running more jobs, job max memory reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
   else
-    API.log {msg:'Checking for jobs to run',ignore:API.job._ignoregroups,function:'API.job.next',level:'all'}
+    API.log {msg:'Checking for jobs to run',ignore:API.job._ignoregroups,function:'API.job.next',level:'debug'}
     match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
     match.must_not.push({term: 'group.exact':g}) for g of API.job._ignoregroups
     match.must_not.push({term: '_id.exact':m}) for m of API.job._ignoreids
@@ -422,10 +422,13 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   # create a repeating limited stuck check process with id 'STUCK' so that it can check for stuck jobs
   # multiple machines trying to create it won't matter because they will just overwrite each other, eventually only one process will run
   job_limit.remove('*')
-  job_process.remove [{group:'STUCK'},{group:'TEST'}]
-  job_processing.remove [{group:'STUCK'},{group:'TEST'}]
-  job_result.remove [{group:'STUCK'},{group:'TEST'}]
-  job_process.insert _id: 'STUCK', repeat: true, function: 'API.job.stuck', priority: 8000, group: 'STUCK', limit: 900000 # 15 mins stuck check
+  job_process.remove 'STUCK'
+  job_process.remove 'TEST'
+  job_processing.remove 'STUCK'
+  job_processing.remove 'TEST'
+  job_result.remove 'STUCK'
+  job_result.remove 'TEST'
+  #job_process.insert _id: 'STUCK', repeat: true, function: 'API.job.stuck', priority: 8000, group: 'STUCK', limit: 3600000 # hourly stuck check
   #job_process.insert _id: 'TEST', repeat: true, function: 'API.test', priority: 8000, group: 'TEST', limit: 86400000 # daily system test
   API.job._iid ?= Meteor.setInterval API.job.next,interval
 
