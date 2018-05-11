@@ -184,8 +184,8 @@ API.collection.prototype.find = (q, opts, versioned) ->
     return got
   else
     try
-      res = this.search(q, opts).hits.hits[0]
-      return if res? then (if versioned then res else res._source ? res.fields) else undefined
+      hits = this.search(q, opts).hits.hits
+      return if hits.length isnt 0 then (if versioned then hits[0] else hits[0]._source ? hits[0].fields) else undefined
     catch err
       API.log({ msg: 'Collection find threw error', q: q, level: 'error', error: err }) if this._route.indexOf('_log') is -1
       return undefined

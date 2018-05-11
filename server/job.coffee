@@ -399,6 +399,9 @@ API.job.next = () ->
         if lm? and lm.createdAt + p.limit > now
           if not API.job._ignoregroups[p.group]?
             API.job._ignoregroups[p.group] = lm.createdAt + p.limit
+            future = new Future()
+            Meteor.setTimeout (() -> future.return()), Math.floor((API.settings.job?.interval ? 1000)/2)
+            future.wait()
             return API.job.next()
           else
             return false
