@@ -243,7 +243,6 @@ API.job.create = (job) ->
 
   if imports.length
     job_process.import(imports)
-    job_process.refresh()
     job.processed = job.processes.length - imports.length
 
   # NOTE job can also have a "complete" function string name, which will be called when progress hits 100%, see below
@@ -384,14 +383,13 @@ API.job.next = () ->
     API.log {msg:'Not running more jobs, job max memory reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
   else
     API.log {msg:'Checking for jobs to run', ignores: {groups:API.job._ignoregroups,ids:API.job._ignoreids}, function:'API.job.next', level:'debug'}
-    job_process.refresh()
     match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
     match.must_not.push({term: 'group.exact':g}) for g of API.job._ignoregroups
     match.must_not.push({term: '_id':m}) for m of API.job._ignoreids
     p = job_process.find match, {sort:{priority:{order:'desc'}}, random:true} # TODO check if random sort works - may have to be more complex
     if p?
       if job_processing.get(p._id)? # because job_process is searched, there can be a delay before it reflects deleted jobs, so accept this extra load on ES
-        API.job._ignoreids[p._id] = now + API.settings.job?.interval ? 1000
+        API.job._ignoreids[p._id] = now + 10000
         future = new Future()
         Meteor.setTimeout (() -> future.return()), Math.floor((API.settings.job?.interval ? 1000)/2)
         future.wait()
@@ -407,10 +405,10 @@ API.job.next = () ->
         else
           job_limit.insert {group:lm.group,last:lm.createdAt} if lm? and API.settings.dev # keep a history of limit counters until service restarts
           jl = job_limit.insert {_id:p.group,group:p.group,limit:p.limit} # adding the limit here is just for info in status
-          API.job._ignoreids[p._id] = now + API.settings.job?.interval ? 1000
+          API.job._ignoreids[p._id] = now + 10000
           return API.job.process p
       else
-        API.job._ignoreids[p._id] = now + API.settings.job?.interval ? 1000
+        API.job._ignoreids[p._id] = now + 10000
         return API.job.process p
     else
       return false
@@ -437,10 +435,8 @@ API.job.reload = (q='*') ->
         reloads.push proc
     )
     job_processing.remove q
-    job_processing.refresh()
   if reloads.length
     job_process.import(reloads)
-    job_process.refresh()
   return ret
 
 API.job._iid
