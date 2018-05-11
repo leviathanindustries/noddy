@@ -375,6 +375,7 @@ API.job.next = () ->
     if v <= now
       delete API.job._ignoregroups[k]
   for s, t of API.job._ignoreids
+    console.log s, t, now, t <= now, API.job._ignoreids[s]
     if t <= now
       delete API.job._ignoreids[s]
   if (API.settings.job?.concurrency ?= 1000000000) <= job_processing.count()
