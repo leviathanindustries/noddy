@@ -384,7 +384,7 @@ API.job.next = () ->
     # and if legit and being hit on every available machine in the cluster, should trigger alert to start more cluster machines?
     API.log {msg:'Not running more jobs, job max memory reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
   else
-    API.log {msg:'Checking for jobs to run',ignore:API.job._ignoregroups,function:'API.job.next',level:'debug'}
+    API.log {msg:'Checking for jobs to run', ignores: {groups:API.job._ignoregroups,ids:API.job._ignoreids}, function:'API.job.next', level:'debug'}
     match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
     match.must_not.push({term: 'group.exact':g}) for g of API.job._ignoregroups
     match.must_not.push({term: '_id.exact':m}) for m of API.job._ignoreids
