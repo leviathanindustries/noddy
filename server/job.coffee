@@ -414,6 +414,33 @@ API.job.next = () ->
     else
       return false
 
+API.job.reload = (q='*') ->
+  ret = 0
+  reloads = []
+  if q isnt '*' and job = job_job.get q
+    for p in job.processes
+      proc = if p._id? then job_processing.get(p._id) else undefined
+      if proc?
+        ret += 1
+        job_processing.remove proc._id
+        if not job_result.get(proc._id)? and not job_process.get(proc._id)?
+          proc.reloaded ?= []
+          proc.reloaded.push proc.createdAt
+          reloads.push proc
+  else
+    job_processing.each q, ((proc) ->
+      ret += 1
+      if not job_result.get(proc._id)? and not job_process.get(proc._id)?
+        proc.reloaded ?= []
+        proc.reloaded.push proc.createdAt
+        reloads.push proc
+    )
+    job_processing.remove q
+  if reloads.length
+    job_process.import(reloads)
+    job_process.refresh()
+  return ret
+
 API.job._iid
 API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   future = new Future() # randomise start time so that cluster machines do not all start jobs at exactly the same time
@@ -464,33 +491,6 @@ API.job.status = (filter='NOT group:TEST') ->
   res.limits = {} # may not be worth reporting on limit index in new structure
   job_limit.each 'NOT last:*', (lm) -> res.limits[lm.group] = {date:lm.created_date,limit:lm.limit}
   return res
-
-API.job.reload = (q='*') ->
-  ret = 0
-  reloads = []
-  if q isnt '*' and job = job_job.get q
-    for p in job.processes
-      proc = if p._id? then job_processing.get(p._id) else undefined
-      if proc?
-        ret += 1
-        job_processing.remove proc._id
-        if not job_result.get(proc._id)? and not job_process.get(proc._id)?
-          proc.reloaded ?= []
-          proc.reloaded.push proc.createdAt
-          reloads.push proc
-  else
-    job_processing.each q, ((proc) ->
-      ret += 1
-      if not job_result.get(proc._id)? and not job_process.get(proc._id)?
-        proc.reloaded ?= []
-        proc.reloaded.push proc.createdAt
-        reloads.push proc
-    )
-    job_processing.remove q
-  if reloads.length
-    job_process.import(reloads)
-    job_process.refresh()
-  return ret
 
 API.job.progress = (jobid) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
