@@ -431,7 +431,7 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   job_processing.remove 'TEST'
   job_result.remove 'STUCK'
   job_result.remove 'TEST'
-  #job_process.insert _id: 'STUCK', repeat: true, function: 'API.job.stuck', priority: 8000, group: 'STUCK', limit: 3600000 # hourly stuck check
+  job_process.insert _id: 'STUCK', repeat: true, function: 'API.job.stuck', priority: 8000, group: 'STUCK', limit: 1800000 # half-hourly stuck check
   #job_process.insert _id: 'TEST', repeat: true, function: 'API.test', priority: 8000, group: 'TEST', limit: 86400000 # daily system test
   API.job._iid ?= Meteor.setInterval API.job.next, interval
 
