@@ -384,6 +384,7 @@ API.job.next = () ->
     API.log {msg:'Not running more jobs, job max memory reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
   else
     API.log {msg:'Checking for jobs to run', ignores: {groups:API.job._ignoregroups,ids:API.job._ignoreids}, function:'API.job.next', level:'debug'}
+    job_process.refresh()
     match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
     match.must_not.push({term: 'group.exact':g}) for g of API.job._ignoregroups
     match.must_not.push({term: '_id':m}) for m of API.job._ignoreids
@@ -392,7 +393,7 @@ API.job.next = () ->
       if job_processing.get(p._id)? # because job_process is searched, there can be a delay before it reflects deleted jobs, so accept this extra load on ES
         API.job._ignoreids[p._id] = now + API.settings.job?.interval ? 1000
         future = new Future()
-        Meteor.setTimeout (() -> future.return()), Math.floor((API.settings.job?.interval ? 1000)/3)
+        Meteor.setTimeout (() -> future.return()), Math.floor((API.settings.job?.interval ? 1000)/2)
         future.wait()
         return API.job.next()
       else if p.limit?
@@ -448,11 +449,10 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   Meteor.setTimeout (() -> future.return()), Math.floor(Math.random()*interval+1)
   future.wait()
   API.log {msg: 'Starting job runner with interval ' + interval, _cid: process.env.CID, _appid: process.env.APP_ID, function: 'API.job.start', level: 'debug'}
-  job_limit.remove '*'
-  job_process.remove 'STUCK'
-  job_processing.remove 'STUCK'
-  job_result.remove 'STUCK'
-  API.job.reload() # TODO this will be risky if multiple cluster machines try to run it - add a limit checker or something so it only runs on the first machine
+  if not job_limit.get 'START_RELOAD'
+    job_limit.insert _id: 'START_RELOAD'
+    API.job.reload()
+    job_limit.remove '*'
   #job_process.remove 'TEST'
   #job_processing.remove 'TEST'
   #job_result.remove 'TEST'
