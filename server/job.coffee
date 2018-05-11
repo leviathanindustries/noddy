@@ -449,6 +449,9 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   future.wait()
   API.log {msg: 'Starting job runner with interval ' + interval, _cid: process.env.CID, _appid: process.env.APP_ID, function: 'API.job.start', level: 'debug'}
   job_limit.remove '*'
+  job_process.remove 'STUCK'
+  job_processing.remove 'STUCK'
+  job_result.remove 'STUCK'
   API.job.reload() # TODO this will be risky if multiple cluster machines try to run it - add a limit checker or something so it only runs on the first machine
   #job_process.remove 'TEST'
   #job_processing.remove 'TEST'
