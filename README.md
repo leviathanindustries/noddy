@@ -180,12 +180,14 @@ export METEOR_SETTINGS="$(cat cluster_settings.json )"
 
 # can check the meteor settings is valid json with echo "$METEOR_SETTINGS" | jq .
 
+# before untarring, need to do something to stop the app if it is already running. Look for a main.js pid or if using forever then forever stopall
 tar -xzf noddy.tar.gz
 cd bundle/programs/server
 npm install
 cd ../../
 node main.js
 # or could use forever start main.js
+# or more complex forever start -l forever.log -o out.log -e err.log main.js
 
 # on the current cluster machine and the starting machine, can remove the tar if desired
 # rm ~/noddy.tar.gz
