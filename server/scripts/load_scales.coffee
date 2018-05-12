@@ -11,7 +11,7 @@ API.add 'ml/scales/load',
     #roleRequired: 'root',
     action: () ->
 
-      ml_scales.remove '*'
+      ml_scales.delete '*'
 
       sheet = '/home/cloo/scales.csv'
       scales = API.convert.csv2json(undefined,fs.readFileSync(sheet).toString())
