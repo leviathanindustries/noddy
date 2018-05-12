@@ -10,12 +10,14 @@ API.add 'ml/scales/load',
   get:
     #roleRequired: 'root',
     action: () ->
-      
+
       sheet = '/home/cloo/scales.csv'
       scales = API.convert.csv2json(undefined,fs.readFileSync(sheet).toString())
 
-      count = 0      
+      count = 0
       for s in scales
+        for k of s
+          s[k] = 0 if s[k].toLowerCase() is 'na'
         ml_scales.insert s
 
       return count
