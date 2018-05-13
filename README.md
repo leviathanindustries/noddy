@@ -150,12 +150,14 @@ nvm install 8.9.4
 
 # the new machine will have to be given permission to access all index cluster machines (their firewalls only allow specific access on internal network)
 # any cluster machines that are destroyed should have their index machine access revoked
+sudo ufw allow in on eth1 from MACHINEINTERNALIP to any port 9200
+
 
 
 
 ### Build the meteor app and push it to the cluster machine
 
-# in the meteor app file on the dev machine (assuming builing on same arch, and that app file can be built in current dir):
+# in the meteor app file on the dev machine (assuming builing on same arch):
 npm install --production
 meteor build ~ --server-only
 
