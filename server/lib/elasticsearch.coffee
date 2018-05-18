@@ -309,14 +309,14 @@ API.es.call = (action, route, data, refresh, versioned, scan, scroll='5m', parti
     opts.retry = API.es._retries
     ret = RetryHttp.call action, url + route, opts
     API.es.refresh('/' + routeparts[0], url) if refresh and action in ['POST','PUT']
-    ld = JSON.parse(JSON.stringify(ret.data))
-    ld.hits?.NOTE = 'Results length reduced from ' + ld.hits.hits.length + ' to 1 for logging example, does not affect output'
-    ld.hits?.hits = ld.hits?.hits.splice(0,1)
-    if route.indexOf('_log') is -1
-      API.log msg:'ES query info', options:opts, url: url, route: route, result: ld, level: 'all'
-    else if API.settings.log?.level is 'all'
-      console.log('ES SEARCH DEBUG INFO\n' + JSON.stringify(opts),'\n',JSON.stringify(ld),'\n')
-    ld = undefined # searching for a memory leak, which is probably phantom-related, but putting this here just in case, as it is the creation of ld where memory finally runs out
+    if API.settings.log?.level is 'all'
+      ld = JSON.parse(JSON.stringify(ret.data))
+      ld.hits?.NOTE = 'Results length reduced from ' + ld.hits.hits.length + ' to 1 for logging example, does not affect output'
+      ld.hits?.hits = ld.hits?.hits.splice(0,1)
+      if route.indexOf('_log') is -1
+        API.log msg:'ES query info', options:opts, url: url, route: route, result: ld, level: 'all'
+      else
+        console.log('ES SEARCH DEBUG INFO\n' + JSON.stringify(opts),'\n',JSON.stringify(ld),'\n')
     return ret.data
   catch err
     # if versioned and versions don't match, there will be a 409 thrown here - this should be handled in some way, here or in collection
