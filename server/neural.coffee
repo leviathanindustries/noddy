@@ -1,7 +1,9 @@
 
-import nj from 'numjs'
+#import nj from 'numjs' numjs installs sharp, which on ubuntu errors when loaded after canvas. This is known by the devs and they don't seem to intend to fix it
+# also numjs does not seem to work properly, not the same as numpy. So, just not going to use it.
 #import ops from 'ndarray-ops'
 
+###
 nj.fill = (shape,val) ->
   # shape is like [2,3] - can shape have more dimensions than 2? presumably yes, given it is meant to work on n-dimensional arrays
   # val is what val to put on each place
@@ -18,7 +20,7 @@ nj.maximum = (a1,a2) ->
   # should this work on arrays of arrays? If so, what counts as the largest one?
   arr = []
   arr.push(if isNaN(a1[k]) then a1[k] else if isNaN(a2[k]) then as[k] else if a1[k] > a2[k] then a1[k] else a2[k]) for k of a1
-  return arr
+  return arr###
   
 ###nj.add = (x, copy) ->
   copy = true if arguments.length is 1
@@ -88,7 +90,7 @@ API.neural.hash = (v) ->
       c++
   return hash
 
-API.neural.forward = (rec,config) ->
+###API.neural.forward = (rec,config) ->
   console.log rec
   if typeof config is 'string'
     # lookup a previously calculated config to do a prediction on a new record
@@ -115,7 +117,7 @@ API.neural.forward = (rec,config) ->
       config.nodes[layer+1] = nj.maximum(0, nj.dot(X, config.weights[layer]) + config.biases[layer]) # this is relu but want to change to leaky or make configurable
     layer++
   config.result = config.classes[config.nodes[config.nodes.length-1].indexOf(Math.max(config.nodes[config.nodes.length-1]))]
-  return config
+  return config###
 
 # https://stats.stackexchange.com/questions/181/how-to-choose-the-number-of-hidden-layers-and-nodes-in-a-feedforward-neural-netw
 # http://cs231n.github.io/neural-networks-case-study/#net
@@ -201,7 +203,7 @@ API.neural.forward = (rec,config) ->
 
 
 
-API.neural.train = (recs,answers,config={}) ->
+###API.neural.train = (recs,answers,config={}) ->
   config.rate ?= 0.1 # step_size
   config.reg ?= 0.003
   config.iterations ?= 4000
@@ -242,6 +244,7 @@ API.neural.train = (recs,answers,config={}) ->
 
 
     # add pruning step once pruning is implemented
+    ###
 
     ###exp_scores = nj.exp config.nodes[config.nodes.length-1]
     probs = exp_scores.divide(nj.fill(exp_scores.shape, nj.sum(exp_scores, axis=1, keepdims=true)), false)
