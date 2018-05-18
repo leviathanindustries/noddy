@@ -158,6 +158,7 @@ sudo ufw allow in on eth1 from MACHINEINTERNALIP to any port 9200
 ### Build the meteor app and push it to the cluster machine
 
 # in the meteor app file on the dev machine (assuming builing on same arch):
+# (or can clone the repo onto the cluster machine and build it there, BUT would need to install meteor and also have any service and other API files copied into it)
 npm install --production
 meteor build ~ --server-only
 
@@ -174,18 +175,14 @@ meteor build ~ --server-only
 # root url would depend on whether dev or live - check settings
 # a stringified json rep of the content of settings file to use
 # e.g. from code just JSON.stringify(API.settings) or from command line
-export CID=N
-export PORT=3000
-export MONGO_URL=http://nowhere
-export ROOT_URL=https://api.cottagelabs.com
+export CID=1 && export ROOT_URL=https://api.cottagelabs.com && export PORT=3000 && export MONGO_URL=http://nowhere
 export METEOR_SETTINGS="$(cat cluster_settings.json )"
 
 # can check the meteor settings is valid json with echo "$METEOR_SETTINGS" | jq .
 
 # before untarring, need to do something to stop the app if it is already running. Look for a main.js pid or if using forever then forever stopall
 tar -xzf noddy.tar.gz
-cd bundle/programs/server
-npm install
+cd bundle/programs/server && npm install
 cd ../../
 node main.js
 # or could use forever start main.js
