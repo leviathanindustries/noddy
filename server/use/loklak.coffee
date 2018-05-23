@@ -30,7 +30,7 @@ API.use.loklak.search = (params, timeout=API.settings.use?.loklak?.timeout ? API
   API.log 'Using loklak for ' + url
   try
     res = HTTP.call 'GET', url, {timeout:timeout}
-    return if res.statusCode is 200 then { total: res.data.statuses.length, data: res.data.statuses} else { status: 'error', data: res}
+    return if res.statusCode is 200 then { total: res.data.search_metadata.hits, data: res.data.statuses} else { status: 'error', data: res}
   catch err
     return {status: 'error', error: err.toString()}
 
