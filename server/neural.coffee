@@ -1,44 +1,7 @@
 
-#import nj from 'numjs' numjs installs sharp, which on ubuntu errors when loaded after canvas. This is known by the devs and they don't seem to intend to fix it
-# also numjs does not seem to work properly, not the same as numpy. So, just not going to use it.
-#import ops from 'ndarray-ops'
-
-###
-nj.fill = (shape,val) ->
-  # shape is like [2,3] - can shape have more dimensions than 2? presumably yes, given it is meant to work on n-dimensional arrays
-  # val is what val to put on each place
-  empt = nj.empty(shape)
-  empt[i][j] = val for j in empt[i] for i in empt
-  return empt
-
-nj.maximum = (a1,a2) ->
-  # Compare two arrays and returns a new array containing the element-wise maxima. If one of the elements being compared is a NaN, 
-  # then that element is returned. If both elements are NaNs then the first is returned. The latter distinction is important for 
-  # complex NaNs, which are defined as at least one of the real or imaginary parts being a NaN. The net effect is that NaNs are propagated.
-  # e.g. np.maximum([2, 3, 4], [1, 5, 2]) = array([2, 5, 4])
-  # what about complex numbers? does numjs handle them at all?
-  # should this work on arrays of arrays? If so, what counts as the largest one?
-  arr = []
-  arr.push(if isNaN(a1[k]) then a1[k] else if isNaN(a2[k]) then as[k] else if a1[k] > a2[k] then a1[k] else a2[k]) for k of a1
-  return arr###
-  
-###nj.add = (x, copy) ->
-  copy = true if arguments.length is 1
-  arr = if copy then this.clone() else this
-  if _.isNumber x
-    ops.addseq arr.selection, x
-    return arr
-  else
-    x = createArray x, this.dtype
-    try
-      ops.addeq arr.selection, x.selection
-    catch err
-      ops.adds arr.selection, x.selection
-    return arr###
-
-neural_config = new API.collection index: API.settings.es.index + "_neural", type: "config"
-
-API.add 'neural/train', get: () -> return API.neural.train()
+# reminder - did not use numjs here because it did not work properly, as in was not the 
+# same as numpy, and also numjs installs sharp, which on ubuntu errors when loaded after canvas. 
+# This is known by the devs and they don't seem to intend to fix it
 
 # Building a profile of subjective well-being for social media users (chen)
 # http://journals.plos.org/plosone/article?id=10.1371/journal.pone.0187278
@@ -52,31 +15,143 @@ API.add 'neural/train', get: () -> return API.neural.train()
 # What’s True, and Fake, About the Facebook Effect
 # http://behavioralscientist.org/whats-true-and-fake-about-the-facebook-effect/
 
+neural_model = new API.collection index: API.settings.es.index + "_neural", type: "model"
+  
 API.neural = {}
 an = API.neural # short convenience
 
-API.neural.range = (start, stop, step) ->
-  if typeof stop is 'undefined'
+API.add 'neural/train', get: () -> return an.train()
+API.add 'neural/random', get: () -> return an.random this.queryParams.min, this.queryParams.max, this.queryParams.seed
+
+#API.add 'neural/ans', get: () -> 
+#  ans = []
+#  for i in an.range 300
+#    ans[i] = [(if i < 100 then 1 else 0),(if i >99 and i < 200 then 1 else 0),(if i > 199 then 1 else 0)]
+#  return ans
+
+
+
+API.neural._seed = 987654321
+API.neural._seedi = 1
+API.neural._mask = 0xffffffff
+API.neural.seed = (i) -> 
+  an._seed = 987654321
+  an._seedi = i
+  return true
+API.neural.random = (min,max,int,seed) ->
+  #return Math.floor(Math.random()*(max-min+1)+min) # old simpler random
+  #x = Math.sin(seed++) * 10000 # another simpler solution
+  #return x - Math.floor x
+  API.neural.seed(seed) if seed?
+  an._seed = (36969 * (an._seed & 65535) + (an._seed >> 16)) & an._mask
+  an._seedi = (18000 * (an._seedi & 65535) + (an._seedi >> 16)) & an._mask
+  result = ((an._seed << 16) + an._seedi) & an._mask
+  result /= 4294967296
+  result += 0.5 # random between 0 inclusive and 1.0 exclusive
+  if min? and max?
+    result = parseInt(min) + ((parseInt(max) - parseInt(min)) * result)
+  return if int? then Math.round(result) else result
+API.neural.random.randn = () ->
+  # https://docs.scipy.org/doc/numpy/reference/generated/numpy.random.randn.html
+  # http://onlinestatbook.com/2/normal_distribution/standard_normal.html
+  # the above random is probably standard normal, but between what range would suit?
+  # this may not be necessary if the above can be used well enough...
+  return an.random() # TODO need to return a number from the standard normal distribution
+
+API.neural.range = (start, stop, step=1) ->
+  if not stop?
     stop = start
     start = 0
-  step = 1 if typeof step is 'undefined'
-
   return [] if (step > 0 and start >= stop) or (step < 0 and start <= stop)
-
   result = []
   i = start
   if step > 0
     while i < stop
-      result.push(i)
+      result.push i
       i += step
   else
     while i > stop
-      result.push(i)
+      result.push i
       i += step
   return result
 
-API.neural.transpose = (array) ->
-  return _.zip.apply(_, array)
+API.neural.transpose = (arr) -> # not used directly yet... this does a .T
+  return _.zip.apply _, arr
+
+API.neural.dot = (a, b, fn=((v) -> return v)) ->
+  #console.log a.length, a[0].length, b.length, b[0].length
+  res = []
+  for i of a
+    res.push []
+    for j of b[0]
+      for k of a[0]
+        res[i][j] = fn(a[i][k] * b[k][j])
+  return res
+
+API.neural.apply = (arr, fn) ->
+  if typeof arr is 'number'
+    return fn(arr)
+  else
+    res = []
+    for i of arr
+      if typeof arr[i] is 'number'
+        res.push fn(arr[i],i,undefined,arr)
+      else
+        res.push []
+        res[i][j] = fn(arr[i][j],i,j,arr) for j of arr[i]
+    return res
+
+API.neural.clip = (arr,min,max) ->
+  return an.apply arr, ((v) -> return if min? and v < min then min else if max? and v > max then max else v)
+API.neural.abs = (arr) ->
+  return an.apply arr, ((v) -> return if v < 0 then v * -1 else v)
+API.neural.log = (arr) ->
+  return an.apply arr, ((v) -> return Math.log v)
+API.neural.exp = (arr) ->
+  return an.apply arr, ((v) -> return Math.exp v)
+API.neural.add = (a,b) ->
+  if typeof a is 'number'
+    tmp = b
+    b = a
+    a = tmp
+  return an.apply a, ((v,i,j,arr) -> return v + if typeof b is 'number' then b else if b[i]? and j? and b[i][j]? then b[i][j] else if b.length is arr.length then b[i] else b[j])
+API.neural.subtract = (a,b) ->
+  return an.apply a, ((v,i,j,arr) -> return v - if typeof b is 'number' then b else if b[i]? and j? and b[i][j]? then b[i][j] else if b.length is arr.length then b[i] else b[j])
+API.neural.multiply = (a,b) ->
+  if typeof a is 'number'
+    tmp = b
+    b = a
+    a = tmp
+  return an.apply a, ((v,i,j,arr) -> return v * if typeof b is 'number' then b else if b[i]? and j? and b[i][j]? then b[i][j] else if b.length is arr.length then b[i] else b[j])
+API.neural.divide = (a,b) ->
+  return an.apply a, ((v,i,j,arr) -> return v / if typeof b is 'number' then b else if b[i]? and j? and b[i][j]? then b[i][j] else if b.length is arr.length then b[i] else b[j])
+
+API.neural.sum = (arr,axis,keepdims) ->
+  res = if axis? then [] else 0
+  if axis is 0
+    arr = an.transpose arr
+    res.push []
+  for i of arr
+    if typeof arr[i] is 'number'
+      res += arr[i]
+    else if axis is 0
+      res[0].push an.sum arr[i]
+    else if axis is 1
+      res.push [an.sum arr[i]]
+    else
+      res += an.sum arr[i]
+  return res
+
+API.neural.argmax = (arr, axis) ->
+  # returns indices of maximum values in the arrays, on the given axis.
+  res = if axis? then [] else 0
+  arr = an.transpose(arr) if axis is 0
+  for i of arr
+    if typeof arr[i] is 'number' and arr[i] > res
+      res = arr[i]
+    else
+      res.push arr[i].indexOf(Math.max.apply this, arr[i])
+  return res
 
 API.neural.hash = (v) ->
   hash = 0
@@ -90,268 +165,123 @@ API.neural.hash = (v) ->
       c++
   return hash
 
-###API.neural.forward = (rec,config) ->
-  console.log rec
-  if typeof config is 'string'
-    # lookup a previously calculated config to do a prediction on a new record
-    # this could hvae a cache, so if using saved config, also check to see if already calculated this record for this config
-    config = neural_config.get config
-  config.weights ?= []
-  config.biases ?= []
-  if not config.nodes?
-    config.nodes = [[]]
-    config.nodes[0].push API.neural.hash(rec[k]) for k of rec
-    config.nodes[0] = nj.array(config.nodes[0])
-  layer = 0
-  while layer < config.hidden+1
-    current_size = if config.weights.length then config.weights[layer-1].length else if _.isArray(rec) then rec.length else _.keys(rec).length
-    next_size = if layer is config.hidden then config.classes.length else Math.ceil((current_size - config.classes.length)/2)
-    config.hidden = layer if next_size <= config.classes.length
-    config.weights.push(0.01 * nj.random(current_size,next_size)) if config.weights.length < layer+1
-    config.biases.push(nj.zeros([1,next_size])) if config.biases.length < layer+1
-    if layer is config.hidden
-      console.log config.nodes[layer]
-      console.log config.weights[layer]
-      config.nodes[layer+1] = nj.dot(config.nodes[layer], config.weights[layer]) + config.biases[layer] # this is softmax final output layer
-    else
-      config.nodes[layer+1] = nj.maximum(0, nj.dot(X, config.weights[layer]) + config.biases[layer]) # this is relu but want to change to leaky or make configurable
-    layer++
-  config.result = config.classes[config.nodes[config.nodes.length-1].indexOf(Math.max(config.nodes[config.nodes.length-1]))]
-  return config###
+API.neural.maximum = (a1,a2) ->
+  # Compare two arrays and returns a new array containing the element-wise maxima. If one of the elements being compared is a NaN, 
+  # then that element is returned. If both elements are NaNs then the first is returned. The latter distinction is important for 
+  # complex NaNs, which are defined as at least one of the real or imaginary parts being a NaN. The net effect is that NaNs are propagated.
+  # e.g. np.maximum([2, 3, 4], [1, 5, 2]) = array([2, 5, 4])
+  # should this work on arrays of arrays? If so, what counts as the largest one?
+  arr = []
+  arr.push(if isNaN(a1[k]) then a1[k] else if isNaN(a2[k]) then a2[k] else if a1[k] > a2[k] then a1[k] else a2[k]) for k of a1
+  return arr
+
+API.neural.lrelu = (arr) ->
+  res = []
+  for i of arr
+    res.push []
+    for j of arr[i]
+      res[i][j] = if arr[i][j] > 0 then arr[i][j] else if arr[i][j] is 0 then 0.001 else arr[i][j]/10
+  return res
+
+API.neural.lrelu.derivative = (arr) ->
+  res = []
+  for i of arr
+    res.push []
+    for j of arr[i]
+      res[i][j] = if arr[i][j] < 0 then 0 else 1 for j of arr[i]
+  return res
+
+API.neural.forward = (model, recs) ->
+  # First linear step Z1 is the input layer x times the dot product of the weights + our bias b
+  a1 = an.lrelu an.add(an.dot(recs,model.W1), model.b1) # Put it through the first activation function
+  # Second linear step
+  a2 = an.exp an.add(an.dot(a1,model.W2), model.b2) # start of softmax
+  a2 = an.divide a2, an.sum(a2, 1, true) # calculate softmax for final layer
+  return {a1:a1, a2:a2}
+
+API.neural.backward = (model, cache, recs, answers) ->
+  # Calculate loss derivative with respect to output
+  dz2 = an.subtract cache.a2, answers
+  m = 1/recs.length
+  # Calculate loss derivative with respect to second layer weights
+  dW2 = an.multiply m, an.dot(an.transpose(cache.a1),dz2)
+  # Calculate loss derivative with respect to second layer bias
+  db2 = an.multiply m, an.sum(dz2, 0)
+  # then rewind the activation function
+  console.log an.dot(dz2, an.transpose(model.W2))[0].length # dot result is 300 long with 100 per record, lrelu result is 100 long, with 3 per record
+  dz1 = an.multiply an.dot(dz2, an.transpose(model.W2)), an.lrelu.derivative(cache.a1)
+  console.log dz1.length, dz1[0].length # TODO here is where problems arise, with some but not all NaNs appearing
+  # if there were multiple hidden layers, extra weights/biases/activations should be rewound here
+  # then weights and biases back to first layer
+  dW1 = an.multiply m, an.dot(an.transpose(recs),dz1)
+  db1 = an.multiply m, an.sum(dz1, 0)
+  return {dW2:dW2, db2:db2, dW1:dW1, db1:db1}
+
+API.neural.update = (model, gradients) ->
+  console.log model.W1[0][0], model.rate, gradients.dW1[0][0], (model.rate * gradients.dW1[0][0]), (model.W1 - (model.rate * gradients.dW1[0][0]))
+  model.W1 = an.subtract model.W1, an.multiply(model.rate, gradients.dW1)
+  console.log model.W1[0][0]
+  model.b1 = an.subtract model.b1, an.multiply(model.rate, gradients.db1)
+  model.W2 = an.subtract model.W2, an.multiply(model.rate, gradients.dW2)
+  model.b2 = an.subtract model.b2, an.multiply(model.rate, gradients.db2)
+  console.log model.W1[0][0], model.b1[0], model.W2[0][0], model.b2[0]
+  return model
+
+API.neural.accuracy = (model, recs, answers) ->
+  c = an.forward model, recs
+  predicted = an.argmax(c.a2, 1)
+  actual = an.argmax(answers, 1) # so now have two lists of the indices of predicted answers and right answers
+  error = an.sum(an.abs(an.subtract predicted, actual))
+  return (recs.length - error)/recs.length #if this does not work, just compare the values of the two lists to get a right/wrong count, between 0 and 1, so can be multiplied by 100 to get a %
 
 # https://stats.stackexchange.com/questions/181/how-to-choose-the-number-of-hidden-layers-and-nodes-in-a-feedforward-neural-netw
 # http://cs231n.github.io/neural-networks-case-study/#net
 # https://towardsdatascience.com/activation-functions-and-its-types-which-is-better-a9a5310cc8f
 # https://medium.freecodecamp.org/building-a-3-layer-neural-network-from-scratch-99239c4af5d3
-###API.neural.train = (recs, answers, classes=[0,1], rate=0.1, reg=0.003, iterations=4000, hidden=1) ->
-  recs = API.neural.test._examples.recs
-  answers = API.neural.test._examples.answers
-  classes = [0,1,2]
-  config = {classes: classes, rate: rate, hidden: hidden, sampled: recs.length}
-
-  h = 100 # this should be the number of nodes I want to use in the hidden layer, some function related to number of input recs, and number of things in each rec
-
-  iteration = 0
-  while iteration < iterations # or could be while error is greater than acceptable, or until convergence appears
-    iteration++
-    #for r of recs
-    #  config = API.neural.forward recs[r], config
-    config.weights = []
-    config.biases = []
-    config.weights[0] = nj.random([2, h]).multiply(nj.fill([2, h],0.01),false) # 2 is number of things in each incoming rec
-    #console.log config.weights[0]
-    config.biases[0] = nj.zeros([1,h])
-    config.weights[1] = 0.01 * nj.random([h,config.classes.length])
-    config.biases[1] = nj.zeros([1,config.classes.length])
-    config.nodes = []
-    arecs = nj.array(recs)
-    #console.log arecs
-    config.nodes[0] = nj.max(0, nj.dot(arecs, config.weights[0]) + config.biases[0]) # relu activation, should change to lrelu, maybe make configurable
-    config.nodes[1] = nj.dot(config.nodes[0], config.weights[1]) + config.biases[1]
-    # compute the class probabilities
-
-    # add pruning step once pruning is implemented
-
-    exp_scores = nj.exp config.nodes[config.nodes.length-1]
-    probs = exp_scores.divide(nj.fill(exp_scores.shape, nj.sum(exp_scores, axis=1, keepdims=true)), false)
-    cl = []
-    cl.push(probs[p][answers[p]]) for p of probs
-    correct_logprobs = -nj.log(nj.array(cl))
-    data_loss = nj.sum(correct_logprobs)/recs.length
-    reg_loss = 0
-    for w in config.weights
-      reg_loss += 0.5*reg*nj.sum(w*w) # what is reg?
-    loss = data_loss + reg_loss
-    if iteration % 1000 is 0
-      console.log "iteration " + iteration + ": loss" + loss
-
-    dscores = []
-    dscores.push(probs[p][answers[p]]) for p of probs
-    console.log dscores
-    dscores = nj.array(dscores)
-    console.log(dscores)
-    dscores.subtract(nj.ones([recs.length]),false)
-    #dscores = probs
-    #dscores([range(recs.length),answers]).subtract(nj.ones([recs.length]),false)
-    dscores /= recs.length
-    ws = config.weights.length-1
-    while ws >= 0
-      if ws is config.weights.length-1
-        # first step back, rewind the softmax
-        # alter the weights and biases at this layer with the updated values
-        dw = nj.dot(config.nodes[ws].T, dscores) + reg*config.weights[ws]
-        db = nj.sum(dscores, axis=0, keepdims=True)
-      else
-        # rewind the activation functions performed at each hidden layer
-        # alter the weights and biases at this layer with the updated values
-        dh = nj.dot(config.weights[ws+1], config.weights[ws].T)
-        dh[config.nodes[ws] <= 0] = 0 # this is for relu, will need to be different for other activation functions
-        dw = nj.dot(config.nodes[ws].T, dh) + reg*config.weights[ws]
-        db = nj.sum(dh, axis=0, keepdims=True)
-      config.weights[ws] += -rate * dw
-      config.biases[ws] = -rate * db
-      ws--
-
-  # could try multiple times with different rates, iterations, layers, pruning, node functions if results are not yet good enough
-  
-  # save the config so it can be used for later identifications - need to know what to call it
-  #neural_config.insert config
-  return config###
-    
-
-
-
-
-
-###API.neural.train = (recs,answers,config={}) ->
-  config.rate ?= 0.1 # step_size
-  config.reg ?= 0.003
-  config.iterations ?= 4000
-  config.hidden ?= 1
-  config.nodes = []
-  config.weights = []
-  config.biases = []
-  config.classes = [0,1,2] # all the different possible answer types K is length of this
-  
+API.neural.train = (model={}, recs, answers, rate=0.07, epochs=20000) ->
+  # recs here is a list of rec data lists/objects
+  # answers is a list of answer data lists too, e.g. [[yes,no,no],[no,yes,no]]
   recs = API.neural.test._examples.recs # list of records to train on D is length of rec keys / list
-  answers = API.neural.test._examples.answers # the answers that the records must match to
+  #answers = API.neural.test._examples.answers # the answers that the records must match to
+  answers = API._answers
 
-  config.sampled = recs.length
+  model.inputs = {rows: recs.length, cols: if _.isArray(recs[0]) then recs[0].length else _.keys(recs[0]).length}
+  model.outputs = 3 # how many nodes in last result layer - depends on how many things trying to classify into, could be just one if looking for a specific result somehow
+  model.hiddens = if model.inputs.cols < model.outputs + 2 then Math.floor(recs.length/3) else model.inputs - Math.ceil(model.inputs/(if model.outputs is 1 then 2 else model.outputs))
+  model.rate ?= rate
+  model.epochs ?= epochs
   
-  # num_examples X.shape
-  K = config.classes.length
-  D = 2
-  h = 100 # this should be the number of nodes I want to use in the hidden layer, some function related to number of input recs, and number of things in each rec
-
-  W = [[],[]]
-  W[i][j] = Math.random() * 0.01 for j of W[i] for i of W
-  b = []
-  b.push(0) for i in an.range(h)
-  W2 = []
-  W2.push([]) while W2.length < h
-  W2[i][j] = Math.random() * 0.01 for j of W2[i] for i of W2
-  b2 = []
-  b2.push(0) for i in an.range(K)
-
-  for i in an.range(10000) # or could be while error is greater than acceptable, or until convergence appears
-    #for r of recs
-    #  config = API.neural.forward recs[r], config
-    config.nodes[0] = [[],[]]
-    config.nodes[0][k].push(if lr = recs[j][k] * W[j][k] + b[j] > 0 then lr else 0) for k of recs[j] for j of recs # relu hidden layer
-    config.nodes[1] = [[],[]]
-    config.nodes[1][k].push(config.nodes[j][k] * W2[j][k] + b2[j]) for k of config.nodes[0][j] for j of config.nodes[0]
-
-
-
-    # add pruning step once pruning is implemented
-    ###
-
-    ###exp_scores = nj.exp config.nodes[config.nodes.length-1]
-    probs = exp_scores.divide(nj.fill(exp_scores.shape, nj.sum(exp_scores, axis=1, keepdims=true)), false)
-    correct_logprobs = []
-    correct_logprobs.push(-Math.log(probs[p][answers[p]])) for p of probs
-
-    data_loss = nj.sum(correct_logprobs)/recs.length
-    reg_loss = 0
-    for w in config.weights
-      reg_loss += 0.5*reg*nj.sum(w*w) # what is reg?
-    loss = data_loss + reg_loss
-    if iteration % 1000 is 0
-      console.log "iteration " + iteration + ": loss" + loss
-
-    dscores = []
-    dscores.push((probs[p][answers[p]]-1)/recs.length) for p of probs
-    console.log dscores
-    dscores = nj.array(dscores)
-    console.log(dscores)
-    dscores.subtract(nj.ones([recs.length]),false)
-    dscores /= recs.length
-    ws = config.weights.length-1
-    while ws >= 0
-      if ws is config.weights.length-1
-        # first step back, rewind the softmax
-        # alter the weights and biases at this layer with the updated values
-        dw = nj.dot(config.nodes[ws].T, dscores) + reg*config.weights[ws]
-        db = nj.sum(dscores, axis=0, keepdims=True)
-      else
-        # rewind the activation functions performed at each hidden layer
-        # alter the weights and biases at this layer with the updated values
-        dh = nj.dot(config.weights[ws+1], config.weights[ws].T)
-        dh[config.nodes[ws] <= 0] = 0 # this is for relu, will need to be different for other activation functions
-        dw = nj.dot(config.nodes[ws].T, dh) + reg*config.weights[ws]
-        db = nj.sum(dh, axis=0, keepdims=True)
-      config.weights[ws] += -rate * dw
-      config.biases[ws] = -rate * db
-      ws--###
-
-  # could try multiple times with different rates, iterations, layers, pruning, node functions if results are not yet good enough
+  model.W1 = []
+  model.b1 = []
+  for i in an.range model.inputs.cols
+    model.W1.push []
+    for j in an.range model.hiddens
+      model.W1[i][j] = an.random(-10,10) * 0.01 # or use 2 * the random number, then subtract 1
+      model.b1.push(0) if i is 0
+  model.W2 = []
+  model.b2 = []
+  for i in an.range model.hiddens
+    model.W2.push []
+    for j in an.range model.outputs
+      model.W2[i][j] = an.random(-10,10) * 0.01
+      model.b2.push(0) if i is 0
   
+  for i in an.range 1 #model.epochs
+    cache = an.forward model, recs
+    gradients = an.backward model, cache, recs, answers
+    model = an.update model, gradients
+    
+    if i % 100 is 0
+      loss = an.multiply -1/model.inputs.rows, an.sum(an.multiply answers, an.log(an.clip(cache.a2, 0.000000000001)))
+      console.log 'Loss after iteration', i, ':', loss
+      console.log 'Accuracy after iteration', i, ':', an.accuracy(model,recs,answers)*100, '%'
+
   # save the config so it can be used for later identifications - need to know what to call it
-  #neural_config.insert config
-  return config
+  delete model.recs
+  #neural_model.insert model
+  return model
 
 
-###API.neural.train = () ->
-  N = 100
-  D = 2
-  K = 3
-  X = API.neural.test._examples.recs
-  y = API.neural.test._examples.answers
-  h = 100
-  W = [[],[]]
-  W[i][j] = Math.random() * 0.01 for j of W[i] for i of W
-  b = []
-  b.push(0) for i in range(0,h)
-  W2 = []
-  W2.push([]) while W2.length < h
-  W2[i][j] = Math.random() * 0.01 for j of W2[i] for i of W2
-  b2 = []
-  b2.push(0) for i in range(0,K)
-  step_size = 1e-0
-  reg = 1e-3
-  num_examples = X.length
-  for i in range(10000)
-    hidden_layer = [[],[]]
-    hidden_layer[k].push(if lr = X[j][k] * W[j][k] + b[j] > 0 then lr else 0) for k of X[j] for j of X
-    exp_scores = [[],[]]
-    exp_scores[k].push(Math.exp(hidden_layer[j][k] * W2[j][k] + b2[j])) for k of hidden_layer[j] for j of hidden_layer
-    probs = [[],[]]
-    probs[k].push(exp_scores[j][k]/exp_scores[j].reduce((acc, val) -> return acc + val)) for k of probs[j] for j of probs
-    
-    correct_logprobs = []
-    correct_logprobs.push(-Math.log(probs[p][y[p]])) for p of probs
-    data_loss = correct_logprobs[j].reduce((acc, val) -> return acc + val)/num_examples
-    reg_loss = 0.5*reg*W.multiply(W,false).reduce((acc, val) -> return acc + val) + 0.5*reg*W2.multiply(W2,false).reduce((acc, val) -> return acc + val)
-    # TODO replace W and W2 multiply
-    loss = data_loss + reg_loss
-    if i % 1000 is 0
-      console.log "iteration " + i + ": loss " + loss
-    
-    dscores = []
-    dscores.push((probs[p][y[p]]-1)/num_examples) for p of probs
-
-    dW2 = []
-    zhl = _.zip.apply(_, hidden_layer)
-    dW2.push(zhl[j][k] * dscores[j][k] + reg * W2[j][k]) for k of zhl[j] for j of zhl
-
-    db2 = dscores[0].reduce((acc, val) -> return acc + val)
-    dhidden = []
-    zdh = _.zip.apply(_, W2)
-    dhidden.push(zdh[j][k] * dscores[j][k]) for k of zdh[j] for j of zdh
-    #dhidden[hidden_layer <= 0] = 0
-
-    dW = []
-    xhl = _.zip.apply(_, X)
-    dW.push(xhl[j][k] * dhidden[j][k] + reg * W[j][k]) for k of xhl[j] for j of xhl
-
-    db= dhidden[0].reduce((acc, val) -> return acc + val)
-
-    W[j][k] += -step_size * dW[j][k] for k of dW[j] for j of dW
-    b[j] += -step_size * db[j] for j of db
-    W2[j][k] += -step_size * dW2[j][k] for k of dW2[j] for j of dW2
-    b2[j] += -step_size * db2[j] for j of db2
-
-  return scores###
 
 # reduce size of needle image so that narrowest defined part is q pixel wide
 # do the same with the haystack image. Then should be able to find same-sized image in haystack
@@ -372,71 +302,6 @@ API.neural.hash = (v) ->
 # https://www.npmjs.com/package/pdfjs-dist
 # http://mozilla.github.io/pdf.js/examples/index.html#interactive-examples
 
-
-
-
-
-
-
-###
-# initialize parameters randomly
-h = 100 # size of hidden layer
-W = 0.01 * np.random.randn(D,h)
-b = np.zeros((1,h))
-W2 = 0.01 * np.random.randn(h,K)
-b2 = np.zeros((1,K))
-
-# some hyperparameters
-step_size = 1e-0
-reg = 1e-3 # regularization strength
-
-# gradient descent loop
-num_examples = X.shape[0]
-for i in xrange(10000):
-  
-  # evaluate class scores, [N x K]
-  hidden_layer = np.maximum(0, np.dot(X, W) + b) # note, ReLU activation
-  scores = np.dot(hidden_layer, W2) + b2
-  
-  # compute the class probabilities
-  exp_scores = np.exp(scores)
-  probs = exp_scores / np.sum(exp_scores, axis=1, keepdims=True) # [N x K]
-  
-  # compute the loss: average cross-entropy loss and regularization
-  correct_logprobs = -np.log(probs[range(num_examples),y])
-  data_loss = np.sum(correct_logprobs)/num_examples
-  reg_loss = 0.5*reg*np.sum(W*W) + 0.5*reg*np.sum(W2*W2)
-  loss = data_loss + reg_loss
-  if i % 1000 == 0:
-    print "iteration %d: loss %f" % (i, loss)
-  
-  # compute the gradient on scores
-  dscores = probs
-  dscores[range(num_examples),y] -= 1
-  dscores /= num_examples
-  
-  # backpropate the gradient to the parameters
-  # first backprop into parameters W2 and b2
-  dW2 = np.dot(hidden_layer.T, dscores)
-  db2 = np.sum(dscores, axis=0, keepdims=True)
-  # next backprop into hidden layer
-  dhidden = np.dot(dscores, W2.T)
-  # backprop the ReLU non-linearity
-  dhidden[hidden_layer <= 0] = 0
-  # finally into W,b
-  dW = np.dot(X.T, dhidden)
-  db = np.sum(dhidden, axis=0, keepdims=True)
-  
-  # add regularization gradient contribution
-  dW2 += reg * W2
-  dW += reg * W
-  
-  # perform a parameter update
-  W += -step_size * dW
-  b += -step_size * db
-  W2 += -step_size * dW2
-  b2 += -step_size * db2
-###
 
 
 API.neural.test = {} # this can become the usual test function eventually
@@ -745,3 +610,1742 @@ API.neural.test._examples = {
   ],
   answers: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
 }
+
+API._answers = [
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    1,
+    0,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    1,
+    0
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ],
+  [
+    0,
+    0,
+    1
+  ]
+]
+
+
+
+### An attempt to generalise forwarding for multiple layers, can delete if not useful
+API.neural.forward = (rec,config) ->
+  if typeof config is 'string'
+    # lookup a previously calculated config to do a prediction on a new record
+    # this could hvae a cache, so if using saved config, also check to see if already calculated this record for this config
+    config = neural_model.get config
+  config.weights ?= []
+  config.biases ?= []
+  if not config.nodes?
+    config.nodes = [[]]
+    config.nodes[0].push API.neural.hash(rec[k]) for k of rec
+    config.nodes[0] = nj.array(config.nodes[0])
+  layer = 0
+  while layer < config.hidden+1
+    current_size = if config.weights.length then config.weights[layer-1].length else if _.isArray(rec) then rec.length else _.keys(rec).length
+    next_size = if layer is config.hidden then config.classes.length else Math.ceil((current_size - config.classes.length)/2)
+    config.hidden = layer if next_size <= config.classes.length
+    config.weights.push(0.01 * nj.random(current_size,next_size)) if config.weights.length < layer+1
+    config.biases.push(nj.zeros([1,next_size])) if config.biases.length < layer+1
+    if layer is config.hidden
+      config.nodes[layer+1] = nj.dot(config.nodes[layer], config.weights[layer]) + config.biases[layer] # this is softmax final output layer
+    else
+      config.nodes[layer+1] = nj.maximum(0, nj.dot(X, config.weights[layer]) + config.biases[layer]) # this is relu but want to change to leaky or make configurable
+    layer++
+  config.result = config.classes[config.nodes[config.nodes.length-1].indexOf(Math.max(config.nodes[config.nodes.length-1]))]
+  return config###
+
+
+
+### Can delete this one if get the latest one working
+API.neural.train = (recs,answers,config={}) ->
+  config.rate ?= 1e-0 # step_size
+  config.reg ?= 1e-3
+  config.iterations ?= 4000
+  config.hidden ?= 1
+  config.nodes = []
+  config.weights = []
+  config.biases = []
+  config.classes = [0,1,2] # all the different possible answer types K is length of this
+  
+  recs = API.neural.test._examples.recs # list of records to train on D is length of rec keys / list
+  answers = API.neural.test._examples.answers # the answers that the records must match to
+
+  config.sampled = recs.length
+  
+  # num_examples X.shape
+  K = config.classes.length
+  D = 2 # number of properties in each object - but should also include number of classes if doing individually?
+  h = 100 # this should be the number of nodes I want to use in the hidden layer, some function related to number of input recs, and number of things in each rec
+
+  W = []
+  b = []
+  for i in an.range D
+    W.push []
+    for j in an.range h
+      W[i][j] = an.random(D,h) * 0.01
+      b.push(0) if i is 0
+  W2 = []
+  b2 = []
+  for i in an.range h
+    W2.push []
+    for j in an.range K
+      W2[i][j] = an.random(h,K) * 0.01
+      b2.push(0) if i is 0
+
+  for iteration in an.range(10000) # or could be while error is greater than acceptable, or until convergence appears
+    #for r of recs
+    #  config = API.neural.forward recs[r], config
+
+    config.nodes[0] = []
+    for i of recs # relu hidden layer - change to lrelu
+      config.nodes[0].push []
+      for j of W[0]
+        for k of recs[0]
+          config.nodes[0][i][j] = if 0 < lr = recs[i][k] * W[k][j] + b[i] then lr else 0 # add some randomness here for lrelu
+    config.nodes[1] = []
+    for i of config.nodes[0]
+      config.nodes[1].push []
+      for j of W2[0]
+        for k of config.nodes[0][0]
+          config.nodes[1][i][j] = Math.exp(config.nodes[0][i][k] * W2[k][j] + b2[j])
+
+    # add pruning step once pruning is implemented
+    exp_scores = config.nodes[config.nodes.length-1]
+    probs = []
+    correct_logprobs = []
+    for i of exp_scores
+      probs.push []
+      exp_sum = exp_scores[i].reduce((acc, val) -> return acc + val)
+      probs[i][j] = exp_scores[i][j]/exp_sum for j of exp_scores[i]
+      correct_logprobs.push(-Math.log(probs[i][answers[i]]))
+    
+    data_loss = correct_logprobs.reduce((acc, val) -> return acc + val)/recs.length
+    Wsum = 0
+    Wsum += W[i][j] * W[i][j] for j of W[i] for i of W
+    W2sum = 0
+    W2sum += W2[i][j] * W2[i][j] for j of W2[i] for i of W2
+    reg_loss = 0.5*config.reg*Wsum + 0.5*config.reg*W2sum
+    config.loss = data_loss + reg_loss
+    if iteration % 1000 is 0
+      console.log "iteration " + iteration + ": loss " + config.loss
+
+    dscores = []
+    for i of probs
+      dscores.push []
+      dscores[i][j] = (probs[i][j] - (if parseInt(j) is answers[i] then 1 else 0))/recs.length for j of probs[i]
+
+    dW2 = []
+    zhl = _.zip.apply(_, config.nodes[0])
+    for i of zhl
+      dW2.push []
+      for j of dscores[0]
+        for k of zhl[0]
+          dW2[i][j] = zhl[i][k] * dscores[k][j] + config.reg * W2[i][j]
+          W2[i][j] += -config.rate * dW2[i][j]
+
+    db2 = dscores[0].reduce((acc, val) -> return acc + val)
+    b2[i] += -config.rate * db2[i] for i of db2
+    
+    dhidden = []
+    zdh = _.zip.apply(_, W2)
+    for i of dscores
+      dhidden.push []
+      for j of zdh[0]
+        for k of dscores[0]
+          dhidden[i][j] = if config.nodes[0][i][j] <= 0 then 0 else dscores[i][k] * zdh[k][j] # dhidden[hidden_layer <= 0] = 0
+
+    dW = []
+    xhl = _.zip.apply(_, recs)
+    for i of xhl
+      dW.push []
+      for j of dhidden[0]
+        for k of xhl[0]
+          dW[i][j] = xhl[i][k] * dhidden[k][j] + config.reg * W[i][j]
+          W[i][j] += -config.rate * dW[i][j]
+
+    db = dhidden[0].reduce((acc, val) -> return acc + val)
+    b[i] += -config.rate * db[i] for i of db
+
+    ###
+    ###ws = config.weights.length-1
+    while ws >= 0
+      if ws is config.weights.length-1
+        # first step back, rewind the softmax
+        # alter the weights and biases at this layer with the updated values
+        dw = nj.dot(config.nodes[ws].T, dscores) + reg*config.weights[ws]
+        db = nj.sum(dscores, axis=0, keepdims=True)
+      else
+        # rewind the activation functions performed at each hidden layer
+        # alter the weights and biases at this layer with the updated values
+        dh = nj.dot(config.weights[ws+1], config.weights[ws].T)
+        dh[config.nodes[ws] <= 0] = 0 # this is for relu, will need to be different for other activation functions
+        dw = nj.dot(config.nodes[ws].T, dh) + reg*config.weights[ws]
+        db = nj.sum(dh, axis=0, keepdims=True)
+      config.weights[ws] += -rate * dw
+      config.biases[ws] = -rate * db
+      ws--###
+  ###
+  # could try multiple times with different rates, iterations, layers, pruning, node functions if results are not yet good enough
+  
+  # save the config so it can be used for later identifications - need to know what to call it
+  #neural_model.insert config
+  #config.weights.push W
+  #config.weights.push W2
+  #config.biases.push b
+  #config.biases.push b2
+  #delete config.nodes
+  return config###
+
+
+
+
+
+
+### Stanford example, in case useful later
+# initialize parameters randomly
+h = 100 # size of hidden layer
+W = 0.01 * np.random.randn(D,h)
+b = np.zeros((1,h))
+W2 = 0.01 * np.random.randn(h,K)
+b2 = np.zeros((1,K))
+
+# some hyperparameters
+step_size = 1e-0
+reg = 1e-3 # regularization strength
+
+# gradient descent loop
+num_examples = X.shape[0]
+for i in xrange(10000):
+  
+  # evaluate class scores, [N x K]
+  hidden_layer = np.maximum(0, np.dot(X, W) + b) # note, ReLU activation
+  scores = np.dot(hidden_layer, W2) + b2
+  
+  # compute the class probabilities
+  exp_scores = np.exp(scores)
+  probs = exp_scores / np.sum(exp_scores, axis=1, keepdims=True) # [N x K]
+  
+  # compute the loss: average cross-entropy loss and regularization
+  correct_logprobs = -np.log(probs[range(num_examples),y])
+  data_loss = np.sum(correct_logprobs)/num_examples
+  reg_loss = 0.5*reg*np.sum(W*W) + 0.5*reg*np.sum(W2*W2)
+  loss = data_loss + reg_loss
+  if i % 1000 == 0:
+    print "iteration %d: loss %f" % (i, loss)
+  
+  # compute the gradient on scores
+  dscores = probs
+  dscores[range(num_examples),y] -= 1
+  dscores /= num_examples
+  
+  # backpropate the gradient to the parameters
+  # first backprop into parameters W2 and b2
+  dW2 = np.dot(hidden_layer.T, dscores)
+  db2 = np.sum(dscores, axis=0, keepdims=True)
+  # next backprop into hidden layer
+  dhidden = np.dot(dscores, W2.T)
+  # backprop the ReLU non-linearity
+  dhidden[hidden_layer <= 0] = 0
+  # finally into W,b
+  dW = np.dot(X.T, dhidden)
+  db = np.sum(dhidden, axis=0, keepdims=True)
+  
+  # add regularization gradient contribution
+  dW2 += reg * W2
+  dW += reg * W
+  
+  # perform a parameter update
+  W += -step_size * dW
+  b += -step_size * db
+  W2 += -step_size * dW2
+  b2 += -step_size * db2
+###

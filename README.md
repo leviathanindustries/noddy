@@ -186,7 +186,8 @@ cd bundle/programs/server && npm install
 cd ../../
 node main.js
 # or could use forever start main.js
-# or more complex forever start -l forever.log -o out.log -e err.log main.js
+# or more complex 
+# forever start -l ~/forever.log -o ~/out.log -e ~/err.log ~/bundle/main.js
 
 # on the current cluster machine and the starting machine, can remove the tar if desired
 # rm ~/noddy.tar.gz

@@ -244,7 +244,13 @@ _phantom = (url,delay=1000,refresh=86400000,callback) ->
     )
 
 API.http.phantom = Meteor.wrapAsync(_phantom)
-
+# switch phantom completely for puppeteer using chrome instead
+# https://www.npmjs.com/package/puppeteer
+# should be able to access full page content
+# https://github.com/GoogleChrome/puppeteer/issues/331
+# however phantom does not seem to be the cause of the OOM error that was seen
+# that appears to be something to do with the lantern process, but only for certain jobs that were in the system at one point
+# which may or may not have caused phantom errors - but was probably something within the job itself.
 
 
 ################################################################################

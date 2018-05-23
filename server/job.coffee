@@ -377,7 +377,7 @@ API.job.next = () ->
       delete API.job._ignoreids[s]
   if (API.settings.job?.concurrency ?= 1000000000) <= job_processing.count()
     API.log {msg:'Not running more jobs, job max concurrency reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
-  else if (API.settings.job?.memory ? 1300000000) <= process.memoryUsage().rss
+  else if (API.settings.job?.memory ? 1200000000) <= process.memoryUsage().rss
     # TODO should check why this is happening, is it memory leak or just legit usage while running lots of jobs?
     # and if legit and being hit on every available machine in the cluster, should trigger alert to start more cluster machines?
     API.log {msg:'Not running more jobs, job max memory reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}

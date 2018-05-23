@@ -303,7 +303,7 @@ API.img._data = (pfn, img, clusters=6, focuscrop=false) ->
       info.avg.hex = '#' + info.avg.red.toString(16) + info.avg.green.toString(16) + info.avg.blue.toString(16)
       info.lightness = Math.floor(((info.avg.red + info.avg.green + info.avg.blue)/765)*100)
       if clusters > 1
-        info.clusters = API.tdm.kmeans vector, clusters
+        info.clusters = API.ml.kmeans vector, clusters
         for c in info.clusters
           hex = '#'
           hex += Math.floor(cv).toString(16) for cv in c.centroid
@@ -311,7 +311,7 @@ API.img._data = (pfn, img, clusters=6, focuscrop=false) ->
         delete info.clusters
       if focuscrop
         info.fcolours = []
-        info.fclusters = API.tdm.kmeans foci, 2
+        info.fclusters = API.ml.kmeans foci, 2
         info.fcolours.push({pc: Math.floor((c.size / foci.length)*100), px: Math.floor((c.centroid[1] / img.bitmap.width)*100), py: Math.floor((c.centroid[2] / img.bitmap.height)*100)}) for c in info.fclusters
         if info.fclusters[0].centroid[0] < info.fclusters[1].centroid[0]
           which = if info.lightness <= 50 then info.fcolours[1] else info.fcolours[0]
