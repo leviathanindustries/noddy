@@ -1,5 +1,6 @@
 
 # https://dev.loklak.org/server/development/api.html#api-search-json
+# https://api.loklak.org/api/search.json?q=%23cheat&count=1&startRecord=1
 
 # term1 term2       : term1 and term2 shall appear in the Tweet text
 # @user             : the user must be mentioned in the message

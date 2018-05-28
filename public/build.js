@@ -4,6 +4,9 @@
 
 // Requires fs and handlebars - handlebars syntax can be used to include files in other files.
 
+// On OSX there can be trouble finding some node modules, so try export NODE_PATH=/usr/local/lib/node_modules/
+// if $NODE_PATH seems unset - and check which folder would actually contain your installs. Then node build.js should work.
+
 // If a settings.json file is included and if it has a bundle list, then crypto, sync-request,
 // uglify-js (2.x, such as 2.8.29), uglifycss are required
 // the bundle list should contain a list of string routes to local js or css files in ./static/

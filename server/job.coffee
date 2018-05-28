@@ -1,8 +1,8 @@
 
-
 import { Random } from 'meteor/random'
 import Future from 'fibers/future'
 import moment from 'moment'
+import crypto from 'crypto'
 
 API.job = {}
 
@@ -171,6 +171,12 @@ API.add 'job/stop',
 
 
 
+API.job._sign = (fn,args,checksum=true) ->
+  args = JSON.stringify(args) if args? and typeof args isnt 'string'
+  sig = encodeURIComponent(fn + '_' + args) # just used to use this, but got some where args were too long
+  csig = crypto.createHash('md5').update(sig, 'utf8').digest('base64')
+  return if checksum then csig else sig
+
 API.job.allowed = (job,uacc) ->
   job = job_job.get(job) if typeof job is 'string'
   uacc = API.accounts.retrieve(uacc) if typeof uacc is 'string'
@@ -217,7 +223,7 @@ API.job.create = (job) ->
     # collisions, they will actually be stringified and saved under the result.string key, so look there if looking them up.
     # However the returned (or callbacked) result object will still have the JSON version as normal.
     proc.callback ?= job.callback # optional callback name string per job or process, will call when process completes. Processes do return too, so either way is good
-    proc.signature = encodeURIComponent proc.function + '_' + proc.args # combines with refresh to decide if need to run process or just pick up result from a same recent process
+    proc.signature = API.job._sign proc.function, proc.args # combines with refresh to decide if need to run process or just pick up result from a same recent process
 
     job.refresh = parseInt(job.refresh) if typeof job.refresh is 'string'
     if job.refresh is true or job.refresh is 0 or proc.callback? or proc.repeat?
@@ -258,7 +264,7 @@ API.job.create = (job) ->
   return job
 
 API.job.limit = (limitms,fn,args,group,refresh=0) -> # directly create a sync throttled process
-  pr = {priority:10000,_id:Random.id(),group:(group ? fn), function: fn, args: args, signature: encodeURIComponent(fn + '_' + args), limit: limitms}
+  pr = {priority:10000,_id:Random.id(),group:(group ? fn), function: fn, args: args, signature: API.job._sign(fn,args), limit: limitms}
   if typeof refresh is 'number' and refresh isnt 0
     match = {must:[{term:{'signature.exact':pr.signature}},{range:{createdAt:{gt:Date.now() - refresh}}}], must_not:[{exists:{field:'_raw_result.error'}}]}
     jr = job_result.find match, true
@@ -447,14 +453,12 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   future = new Future() # randomise start time so that cluster machines do not all start jobs at exactly the same time
   Meteor.setTimeout (() -> future.return()), Math.floor(Math.random()*interval+1)
   future.wait()
-  job_process.remove 'STUCK'
-  job_processing.remove 'STUCK'
-  job_result.remove 'STUCK'
   API.log {msg: 'Starting job runner with interval ' + interval, _cid: process.env.CID, _appid: process.env.APP_ID, function: 'API.job.start', level: 'debug'}
   if not job_limit.get 'START_RELOAD'
     job_limit.insert _id: 'START_RELOAD'
     API.job.reload()
     job_limit.remove '*'
+  job_limit.insert _id: 'STARTED'
   #job_process.remove 'TEST'
   #job_processing.remove 'TEST'
   #job_result.remove 'TEST'
@@ -463,7 +467,7 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
 
 API.job.start() if not API.job._iid? and API.settings.job?.startup
 
-API.job.running = () -> return API.job._iid? and not job_limit.get('PAUSE')?
+API.job.running = () -> return (API.job._iid? or job_limit.get('STARTED')?) and not job_limit.get('PAUSE')?
 
 API.job.stop = () ->
   # note that processes already processing will keep going, but no new ones will start

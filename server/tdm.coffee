@@ -3,6 +3,11 @@ import gramophone from 'gramophone'
 import CryptoJS from 'crypto-js' # TODO no need for this when crypto is available, fix below then remove
 import crypto from 'crypto'
 
+# TODO check out nodenatural and add it in here where useful
+# https://github.com/NaturalNode/natural#tf-idf
+# ALSO use the stopword package to strip stopwords from any text that needs processing
+# https://www.npmjs.com/package/stopword
+
 API.tdm = {}
 
 API.add 'tdm/levenshtein',
