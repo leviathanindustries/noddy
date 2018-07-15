@@ -1,4 +1,6 @@
 node_modules/
 settings.json
+*_settings.json
+*-settings.json
 ./meteor/local
 server/service/*
