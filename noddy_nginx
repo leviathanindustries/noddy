@@ -42,7 +42,7 @@ upstream noddy {
 #REDIRECT PORT 80 TO PORT 443 FOR ANYTHING THAT SHOULD ONLY SERVE ON 443
 server {
     listen      80;
-    server_name api.cottagelabs.com dev.api.cottagelabs.com cluster.api.cottagelabs.com local.api.cottagelabs.com;
+    server_name api.cottagelabs.com dev.api.cottagelabs.com cluster.api.cottagelabs.com local.api.cottagelabs.com lvatn.com api.lvatn.com dev.lvatn.com cluster.lvatn.com local.lvatn.com;
     return 301 https://$host$request_uri;
 }
 
@@ -120,6 +120,11 @@ server {
 
 
 # DEVELOPMENT API AND METEOR TEST SITE
+# make a wildcard call here perhaps, for different versions?
+#server {
+#  server_name ~^(.*)\.example\.com$ ;
+#  root www/pub/$1;
+#}
 server {
     listen          443 ssl;
     server_name     dev.api.cottagelabs.com;
@@ -181,3 +186,110 @@ server {
 }
 
 
+
+
+server {
+    listen          443 ssl spdy;
+    server_name     api.lvatn.com;
+    ssl_certificate /etc/letsencrypt/live/api.lvatn.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/api.lvatn.com/privkey.pem;
+
+    location / {
+        # DO NOT add the usual origin * header to the api and dev api routes, it is already set by the software in a default way, and setting it twice results in errors
+        add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
+        add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Disposition';
+        proxy_pass http://noddy/api/;
+        proxy_redirect off;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+
+    location /store {
+        # DO NOT add the usual origin * header to the api and dev api routes, it is already set by the software in a default way, and setting it twice results in errors
+        add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
+        add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Disposition';
+        proxy_pass http://noddy_local/api/store/;
+        proxy_redirect off;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
+}
+
+server {
+    listen          443 ssl;
+    server_name     dev.lvatn.com;
+    ssl_certificate /etc/letsencrypt/live/dev.lvatn.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/dev.lvatn.com/privkey.pem;
+
+    location / {
+        add_header Strict-Transport-Security "max-age=31536000;";
+        add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
+        add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Disposition';
+        proxy_pass http://noddy_dev/api/;
+        proxy_redirect off;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Authorization "";
+        # proxy_buffering off;
+    }
+}
+
+# LIVE API CONNECTED DIRECTLY RATHER THAN THROUGH CLUSTER
+server {
+    listen          443 ssl spdy;
+    server_name     local.lvatn.com;
+    ssl_certificate /etc/letsencrypt/live/local.lvatn.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/local.lvatn.com/privkey.pem;
+
+    location / {
+        add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
+        add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Disposition';
+        proxy_pass http://noddy_local/api/;
+        proxy_redirect off;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Authorization "";
+        # proxy_buffering off;
+    }
+}
+
+
+
+# LIVE API USING ONLY THE CLUSTER
+server {
+    listen          443 ssl spdy;
+    server_name     cluster.lvatn.com;
+    ssl_certificate /etc/letsencrypt/live/cluster.lvatn.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/cluster.lvatn.com/privkey.pem;
+
+    location / {
+        add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
+        add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Disposition';
+        proxy_pass http://noddy_cluster/api/;
+        proxy_redirect off;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header Authorization "";
+        # proxy_buffering off;
+    }
+}
+
+server {
+        server_name static.lvatn.com;
+        listen 80;
+        listen 443 ssl;
+        ssl_certificate /etc/letsencrypt/live/static.lvatn.com/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/static.lvatn.com/privkey.pem;
+        root /home/cloo/static;
+        location / {
+            expires           0;
+            add_header        Cache-Control private;
+            add_header Access-Control-Allow-Origin *;
+            autoindex on;
+        }
+}

@@ -371,6 +371,33 @@ API.es.terms = (index, type, key, size=100, counts=true, qry, url=API.settings.e
     console.log(err) if API.settings.log?.level is 'debug'
     return []
 
+API.es.range = (index, type, key, url=API.settings.es.url) ->
+  sobj = {}
+  sobj[key] = {order:'asc'}
+  query = {query:{"match_all":{}},sort:[sobj],size:1}
+  try
+    ret = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, undefined, url
+    min = ret.hits.hits[0].sort[0]
+    sobj[key] = {order:'desc'}
+    query.sort = [sobj]
+    re2 = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, undefined, url
+    max = re2.hits.hits[0].sort[0]
+    return {min:min,max:max}
+  catch err
+    return {info: 'the call to es returned an error', err:err}
+
+API.es.keys = (index, type, url=API.settings.es.url) ->
+  try
+    mapping = API.es.mapping index, type, undefined, url
+    keys = []
+    for k of mapping.properties
+      keys.push k
+      #if mapping[index].mappings[type].properties[k].properties
+      #TODO should cascade into the sub keys and append as k.subk etc
+    return keys
+  catch err
+    return {info: 'the call to es returned an error', err:err}
+
 API.es.import = (index, type, data, bulk=50000, url=API.settings.es.url,dev=API.settings.dev) ->
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
   index += '_dev' if dev and index.indexOf('_dev') is -1

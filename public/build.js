@@ -51,7 +51,8 @@ var help = {
   retrieve: 'true*/false if true any remote files listed in bundle.json will be retrieved before bundling, if false but some have been retrieved in a previous attempt, they will be reused in the bundle',
   sass: 'true*/false if true will look for any .scss files in static and generate a css file equivalent, and bundle.json scss files will use css instead',
   coffee: 'true*/false will look for any .coffee files and convert them to js in the serve/static folder, then those will be included in the bundle',
-  reload: 'true*/false if the vars in settings or local include a service and an API, will try to send a POST to the API reloader'
+  reload: 'true/false* if the vars in settings or local include a service and an API, will try to send a POST to the API reloader',
+  ignore: 'a list of file / folder names to ignore when walking the content or static folders'
 }
 var args = {
   dev: false,
@@ -59,7 +60,8 @@ var args = {
   retrieve: true,
   sass: true,
   coffee: true,
-  reload: true
+  reload: false,
+  ignore: ['/impress.js']
 }
 var vars = {};
 try { vars = JSON.parse(fs.readFileSync('./settings.json').toString()); } catch (err) {} // don't use require, because symlinked build script requires from its own dir, not that of fs, which is local dir where script is called
@@ -108,6 +110,7 @@ for (var i = 2; i < process.argv.length; i++) {
     }
   }
 }
+if (args.ignore !== undefined && typeof(args.ignore) === 'string') args.ignore = args.ignore.split(',');
 
 console.log('Args');
 console.log(args);
@@ -122,7 +125,13 @@ var walk = function(dir, done) {
       if (!file) return done(null, results);
       file = dir + '/' + file;
       fs.stat(file, function(err, stat) {
-        if (stat && stat.isDirectory()) {
+        ignore = false;
+        for ( var i in args.ignore ) {
+          if (file.indexOf(args.ignore[i]) !== -1) ignore = true;
+        }
+        if (ignore) {
+          next();
+        } else if (stat && stat.isDirectory()) {
           walk(file, function(err, res) {
             results = results.concat(res);
             next();
@@ -434,7 +443,7 @@ walk('./content', function(err, results) {
         content = nc;
       }
 
-      content = reader(content);
+      content = reader(content,results);
 
       // TODO before using these preload and precache options, need to fix the problem of onload firing
       // before images have actually finished loading. Which is annoying.
@@ -542,7 +551,7 @@ walk('./content', function(err, results) {
 
 
 
-var reader = function(content) {
+var reader = function(content,results) {
   // codes to build page layout
 
   // <L> <M> <R> left, middle, and right columns. A middle on its own will also get a col-md-offset-2
@@ -557,6 +566,27 @@ var reader = function(content) {
 
   // need to be able to apply writer toc, refs, etc when desired
   // and maybe use jmpress to scale the entire page content, and build presentation views
+  
+  if (results !== undefined && (content.indexOf('<MENU') !== -1 || content.indexOf('<menu') !== -1)) {
+    // eventually add options to this that control what sorts of menu can be included
+    // for now just add a menu of the specified folder content, just one layer deep
+    // add a settings overwrite of menus, in case some order is desired - or could have some way to order in the files
+    content = content.replace('<menu','<MENU');
+    content = content.replace('</menu>','').replace('</MENU>','');
+    var mparts = content.split('<MENU');
+    var mopts = mparts[1].replace('>','>+>+>+>+>+>+>+').split('>+>+>+>+>+>+>+');
+    var menu_opts = mopts[0].trim();
+    var menu_folder = menu_opts.split(' ')[0].replace(/"/g,'');
+    var menu = '<div class="hidden-sm"><table class="table table-bordered table-striped">'; // or if xs or sm try to add to top nav?
+    for ( var r in results ) {
+      if ( results[r].toLowerCase().indexOf(menu_folder.toLowerCase()) !== -1 && results[r].toLowerCase().indexOf('/index') === -1 ) {
+        var fl = results[r].split(menu_folder)[1].split('.')[0];
+        menu += '<tr><td><a href="' + menu_folder + fl + '">' + fl.replace('/','') + '</a></td></tr>';
+      }
+    }
+    menu += '</table></div>';
+    content = mparts[0] + menu + mopts[1];
+  }
 
   if (content.indexOf('<READER>') !== -1 || content.indexOf('<reader>') !== -1) {
     content = content.replace('<reader>','<READER>');
@@ -580,6 +610,10 @@ var reader = function(content) {
       if (m) {
         var rp = '';
         var mt = m[0].split(' ')[0].replace('<','').replace('>','').toLowerCase();
+        var attrs = m[0].split(' ').length > 1 ? m[0].split(/ (.+)/)[1].replace('>','') : '';
+        var classes = attrs.indexOf('class="') !== -1 ? attrs.split('class="')[1].split('"')[0] : '';
+        var styles = attrs.indexOf('style="') !== -1 ? attrs.split('style="')[1].split('"')[0] : '';
+        attrs = attrs.replace('style="' + styles + '"','').replace('class="' + classes + '"','');
         var numeral = false;
         try { numeral = parseInt(mt) } catch(err) {}
         if (['l','m','r'].indexOf(mt) !== -1 || numeral) {
@@ -592,14 +626,14 @@ var reader = function(content) {
           }
           col = numeral ? mt : (mt === 'm' && lm !== 'l' ? '8' : (mt === 'l' && mn !== 'm' ? '6' : (mt === 'r' && lm !== 'm' ? '6' : '4')));
           off = mt === 'm' && lm !== 'l' ? ' col-md-offset-' + offset : (mt === 'r' && lm !== 'l' && lm !== 'm' ? ' col-md-offset-6' : '');
-          rp += '<div class="col-md-' + col + off + '">';
+          rp += '<div class="col-md-' + col + off + ' ' + classes + '" style="' + styles + '" ' + attrs + '>';
           lm = mt;
         } else if (mt === 'e') {
           rp += '</div>';
         } else if (mt === 'h') {
-          rp += '<div class="jumbotron">'
+          rp += '<div class="jumbotron ' + classes + '" style="' + styles + '" ' + attrs + '>';
         } else if (mt === 'w') {
-          rp += '<div class="well">';
+          rp += '<div class="well ' + classes + '" style="' + styles + '" ' + attrs + '>';
         } else if (mt === 'f') {
           rp += '</div></div></div></div>';
         } else if (mt === 'c') {
@@ -607,26 +641,23 @@ var reader = function(content) {
         } else if (mt === 's') {
           //if (['l','m','r'].indexOf(lm) !== -1) rp += '</div>';
           //rp += '</div></div></div></div>';
-          rp += '<div class="splash"></div>';
+          rp += '<div class="splash ' + classes + '" style="' + styles + '" ' + attrs + '></div>';
           //rp += cr;
           //rp += '</div>';
           //rp += '<div class="col-md-' + lm !== 'l' ? '8' : (mn !== 'm' ? '6' : (lm !== 'm' ? '6' : '4')) + (lm !== 'l' ? ' col-md-offset-2">' : '">');
         } else if (mt === 'x') {
           rp += '</div></div></div></div>';
-          rp += '<div class="cbg" ';
-          if (m.length > 1 && m[1]) {
-            if (m[1].indexOf(' bg') !== -1) {
-              rp += 'style="padding-top:30px;padding-bottom:30px;background-image:url(' + m[1].split('bg="')[1].split('"')[0] + ');';
-              if (m[1].indexOf(' fixed') !== -1) rp += 'background-attachment:fixed;';
-              rp += 'background-position:center;background-repeat:no-repeat;background-size:cover;"';
-            } else if (m[1].indexOf(' style') !== -1) {
-              rp += 'style="' + m[1].split('style="')[1].split('"')[0] + '"';
-            }
-          } else {
-            rp += 'style="padding-top:30px;padding-bottom:30px;background-color:#FFFFFC;"';
-          }
-          rp += '>';
-          rp += '<' + cr.split(/><(.+)/)[1];
+          if (styles.indexOf('padding-top') === -1) styles += 'padding-top:30px;';
+          if (styles.indexOf('padding-bottom') === -1) styles += 'padding-bottom:30px;';
+          if (styles.indexOf('background-position') === -1) styles += 'background-position:center;';
+          if (styles.indexOf('background-repeat') === -1) styles += 'background-repeat:no-repeat;';
+          if (styles.indexOf('background-size') === -1) styles += 'background-size:cover;';
+          if (styles.indexOf('background-image') === -1 && attrs.indexOf('bg=') !== -1) styles += 'background-image:url(' + attrs.split('bg="')[1].split('"')[0] + ');';
+          if (attrs.indexOf('fixed') !== -1) styles += 'background-attachment:fixed;';
+          if (styles.indexOf('background-image') === -1 && styles.indexOf('background-color') === -1) styles += 'background-color:#FFFFFC;';
+          rp += '<div class="cbg ' + classes + '" style="' + styles + '" ' + attrs + '>';
+          // why did this check form m[1]? if (m.length > 1 && m[1]) {
+          rp += '<' + cr.split(/><(.+)/)[1]; // what is this doing?
           rp += '</div><div class="col-md-' + col + off + '">';
         }
         content = content.replace(m[0], rp);

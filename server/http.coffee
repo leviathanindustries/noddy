@@ -12,9 +12,9 @@
 
 import request from 'request'
 import Future from 'fibers/future'
-import phantom from 'phantom'
-import fs from 'fs'
-
+#import fs from 'fs'
+#import phantom from 'phantom'
+import puppeteer from 'puppeteer'
 
 API.http = {}
 
@@ -24,6 +24,19 @@ API.add 'http/phantom',
   get: () ->
     refresh = if this.queryParams.refresh? then (try(parseInt(this.queryParams.refresh))) else undefined
     res = API.http.phantom this.queryParams.url, this.queryParams.delay ? 1000, refresh
+    if typeof res is 'number'
+      return res
+    else
+      return
+        statusCode: 200
+        headers:
+          'Content-Type': 'text/' + this.queryParams.format ? 'plain'
+        body: res
+
+API.add 'http/puppeteer',
+  get: () ->
+    refresh = if this.queryParams.refresh? then (try(parseInt(this.queryParams.refresh))) else undefined
+    res = API.http.puppeteer this.queryParams.url, refresh
     if typeof res is 'number'
       return res
     else
@@ -244,6 +257,8 @@ _phantom = (url,delay=1000,refresh=86400000,callback) ->
     )
 
 API.http.phantom = Meteor.wrapAsync(_phantom)
+
+
 # switch phantom completely for puppeteer using chrome instead
 # https://www.npmjs.com/package/puppeteer
 # should be able to access full page content
@@ -251,6 +266,47 @@ API.http.phantom = Meteor.wrapAsync(_phantom)
 # however phantom does not seem to be the cause of the OOM error that was seen
 # that appears to be something to do with the lantern process, but only for certain jobs that were in the system at one point
 # which may or may not have caused phantom errors - but was probably something within the job itself.
+# update 12072018 - although phantom may not have directly caused the OOM in noddy, it 
+# does appear to leave too many hanging processes, even though they should all get cleared. 
+# This results in all the machine memory getting used up so then the noddy stack OOMs anyway.
+# This may be combo of how they are called in different threads. So, switch to puppeteer anyway. 
+
+# can also update my crawl / spider scripts using puppeteer
+# https://github.com/GoogleChromeLabs/puppeteer-examples/blob/master/crawlsite.js
+
+# puppeteer default meteor npm install should install chromium for itself to use, but it fails to find it
+# so try adding chrome to the machine directly (which will have to be done for any cluster machines)
+# wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add - 
+# sudo sh -c 'echo "deb https://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list'
+# sudo apt-get update
+# sudo apt-get install google-chrome-stable
+# and check that which google-chrome does give the path used below (could add a check of this, and output something if not found
+# or even do the install? Could make this the necessary way to go for other things that include machine installations too
+# they could have an install function which must run if the which command cannot find the expected executable
+# then once the which command can find one, just use that
+_puppeteer = (url,refresh=86400000,callback) ->
+  if typeof refresh is 'function'
+    callback = refresh
+    refresh = 86400000
+  return callback(null,'') if not url? or typeof url isnt 'string'
+  url = 'http://' + url if url.indexOf('http') is -1
+  if refresh isnt true and refresh isnt 0
+    cached = API.http.cache url, 'puppeteer', undefined, refresh
+    return callback(null,cached) if cached?
+  API.log('starting puppeteer retrieval of ' + url)
+  try
+    browser = await puppeteer.launch({executablePath: '/usr/bin/google-chrome'})
+    page = await browser.newPage()
+    await page.goto(url)
+    content = await page.evaluate(() => new XMLSerializer().serializeToString(document.doctype) + '\n' + document.documentElement.outerHTML)
+    await browser.close()
+    #API.http.cache(url, 'puppeteer', content) if typeof content is 'string' and content.length > 200
+    return callback(null,content)
+  catch
+    return callback(null,'')
+
+API.http.puppeteer = Meteor.wrapAsync(_puppeteer)
+
 
 
 ################################################################################

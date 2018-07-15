@@ -7,7 +7,7 @@ import fs from 'fs'
 # https://maps.googleapis.com/maps/api/place/autocomplete/json?input=Aberdeen%20Asset%20Management%20PLC&key=<OURKEY>
 
 API.use ?= {}
-API.use.google = {places:{},docs:{},sheets:{},cloud:{},knowledge:{}}
+API.use.google = {search:{},places:{},docs:{},sheets:{},cloud:{},knowledge:{}}
 
 API.add 'use/google/places/autocomplete',
 	get: () -> return API.use.google.places.autocomplete this.queryParams.q,this.queryParams.location,this.queryParams.radius
@@ -23,6 +23,11 @@ API.add 'use/google/places/search',
 
 API.add 'use/google/places/url',
 	get: () -> return API.use.google.places.url this.queryParams.q
+
+API.add 'use/google/search/custom', 
+	get:
+		roleRequired:'root'
+		action: () -> return API.use.google.search.custom this.queryParams.q
 
 API.add 'use/google/language',
 	get:
@@ -81,6 +86,17 @@ API.add 'use/google/clear',
 # see http://finance.google.com/finance/info?client=ig&q=NASDAQ:AAPL
 # which runs pages lik https://finance.yahoo.com/quote/AAPL/profile
 
+
+
+# https://developers.google.com/custom-search/json-api/v1/overview#Pricing
+# note technically meant to be targeted to a site but can do full search on free tier
+# free tier only up to 100 queries a day. After that, $5 per 1000, up to 10k
+API.use.google.search.custom = (q, id=API.settings.use.google.search.id, key=API.settings.use.google.search.key) ->
+	url = 'https://www.googleapis.com/customsearch/v1?key=' + key + '&cx=' + id + '&q=' + q
+	return HTTP.call('GET',url).data
+
+	
+	
 # https://developers.google.com/knowledge-graph/
 # https://developers.google.com/knowledge-graph/reference/rest/v1/
 API.use.google.knowledge.retrieve = (mid,types,wikidata) ->
@@ -114,6 +130,8 @@ API.use.google.knowledge.wikidata = (mid,wurl) ->
 	if wurl
 		return API.use.wikidata.find undefined,wurl
 
+
+
 # https://cloud.google.com/natural-language/docs/getting-started
 # https://cloud.google.com/natural-language/docs/basics
 API.use.google.cloud.language = (content, actions=['entities','sentiment'], auth) ->
@@ -132,6 +150,8 @@ API.use.google.cloud.language = (content, actions=['entities','sentiment'], auth
 		result.sentiment = HTTP.call('POST',lurl.replace('analyzeEntities','analyzeSentiment'),{data:document,headers:{'Content-Type':'application/json'}}).data
 	API.http.cache actions.join(',')+','+checksum, 'google_language', result
 	return result
+
+
 
 API.use.google.places.autocomplete = (qry,location,radius) ->
 	url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json?input=' + qry + '&key=' + API.settings.use.google.serverkey
@@ -178,6 +198,8 @@ API.use.google.places.search = (params) ->
 		return HTTP.call('GET',url).data
 	catch err
 		return {status:'error', error: err}
+
+
 
 API.use.google.sheets.feed = (sheetid,stale=3600000) ->
 	return [] if not sheetid?

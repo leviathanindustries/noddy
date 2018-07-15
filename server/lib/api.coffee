@@ -147,7 +147,7 @@ API.add '/',
       ep = JSON.parse JSON.stringify rts[rt]
       delete ep.options
       for tp in ['get','post','put','delete']
-        try ep[tp].auth = if ep[tp].roleRequired then ep[tp].roleRequired else if ep[tp].authRequired then 'required' else if ep[t].authOptional then 'optional' else false
+        try ep[tp].auth = if ep[tp].roleRequired then ep[tp].roleRequired else if ep[tp].authRequired then 'required' else if ep[tp].authOptional then 'optional' else false
         try delete ep[tp].roleRequired
         try delete ep[tp].authRequired
         try delete ep[tp].authOptional

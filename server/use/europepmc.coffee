@@ -178,7 +178,7 @@ API.use.europepmc.licence = (pmcid,rec,fulltext,noui,cache,refresh=86400000) ->
 
     if pmcid and not noui and API.service?.lantern?.licence?
       url = 'https://europepmc.org/articles/PMC' + pmcid.toLowerCase().replace('pmc','')
-      pg = API.job.limit (API.settings.use?.europepmc?.limit ? 3000), 'API.http.phantom', [url,1000,refresh], "EPMCUI"
+      pg = API.job.limit (API.settings.use?.europepmc?.limit ? 3000), 'API.http.puppeteer', [url,refresh], "EPMCUI"
       if typeof pg is 'string'
         licsplash = API.service.lantern.licence url, false, pg
         if licsplash.licence?
@@ -211,7 +211,7 @@ API.use.europepmc.authorManuscript = (pmcid,rec,fulltext,noui,cache=true,refresh
         else if not noui
           url = 'https://europepmc.org/articles/PMC' + pmcid.toLowerCase().replace('pmc','')
           #try
-          pg = API.job.limit (API.settings.use?.europepmc?.limit ? 3000), 'API.http.phantom', [url,1000,refresh], "EPMCUI"
+          pg = API.job.limit (API.settings.use?.europepmc?.limit ? 3000), 'API.http.puppeteer', [url,refresh], "EPMCUI"
           if pg is 404
             resp = {aam:false,info:'not in EPMC (404)'}
             API.http.cache pmcid, 'epmc_aam', resp

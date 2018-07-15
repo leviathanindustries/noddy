@@ -24,6 +24,8 @@ API.neural = {}
 an = API.neural # short convenience, for use in this file only
 
 API.add 'neural/train', 
+  desc: 'Train the neural network with a dataset and known answers. Easier to POST JSON to. 
+    Login is optional but recommended (e.g. identify your request by providing your apikey param or x-apikey header), or provide an email param, as training can take a long time and it will email when complete.'
   get:
     authOptional: true
     action: () ->
@@ -33,33 +35,45 @@ API.add 'neural/train',
       # could recs be a url to a records set, of either csv or json?
       # if POST, could post json and/or csv? and could contain recs and answers, maybe classes too, or just recs
       # need to get an email from the signed in user, or one passed in the args, to notify of completion
-      return an.train(this.queryParams)
+      return an.train this.queryParams
   post:
     authOptional: true
     action: () ->
-      this.queryParams.classes = this.queryParams.classes.split(',') if this.queryParams.classes?
-      # do other values need to be converted, say to numbers, etc?
-      # how would recs and answers be passed in to this? Does it really need to be a POST with data? Probably both...
-      # could recs be a url to a records set, of either csv or json?
-      # if POST, could post json and/or csv? and could contain recs and answers, maybe classes too, or just recs
-      model = this.queryParams
-      return an.train(model)
+      this.bodyParams.classes = this.bodyParams.classes.split(',') if this.bodyParams.classes? and typeof this.bodyParams.classes is 'string'
+      model = this.bodyParams
+      return an.train model # this should be started as a job, not run direct
 
+API.add 'neural/:model',
+  desc: 'Get back a previously created model, the model name of which will have been returned when it was first completed.'
+  get: () -> return neural_model.get this.urlParams.model
+  
 API.add 'neural/:model/predict',
+  desc: 'Given the name of a previously trained model, provide a record param (or POST a list) that is a comma-separated list of the values of a previously unseen record, and the model will try to predict the class.'
   get: () -> 
-    model = neural_model.get this.urlParams.model
-    return {} if not model?
-    return an.predict model, this.queryParams.record.split(',')
-# add a POST so record could be posted too
+    return an.predict this.urlParams.model, this.queryParams.record.split(',')
+  post: () -> 
+    return an.predict this.urlParams.model, this.request.body
+
+API.add 'neural/:model/learn',
+  desc: 'Once a trained model has had to make some predictions on new records, and those predictions have been validated, 
+    the model can learn from the new data. Hitting this endpoint will update the model with any validated predictions that it has not yet been trained with.'
+  get: () -> 
+    return an.learn this.urlParams.model
+
+API.add 'neural/predictions',
+  desc: 'A query endpoint onto all the predictions the network has made. Does not include the training data that was used, just what was predicted after training.'
+  get: () -> return neural_prediction.search(if _.isEmpty(this.queryParams) then '*' else this.queryParams)
 
 API.add 'neural/prediction/:prediction',
+  desc: 'Just a way to get a specific previously run prediction, the ID of which will have been provided when it was first run.'
   get: () -> return neural_prediction.get this.urlParams.prediction
 
-API.add 'neural/prediction/:prediction/:value',
+API.add 'neural/teach/:prediction/:val',
+  desc: 'For a given prediction, teach the correct answer. The model can then learn from this - to trigger a learn immediately, 
+    add the learn param with value true. Otherwise learning only occurs when triggered by the learn endpoint.'
   get: () -> 
-    prediction = neural_prediction.get this.urlParams.prediction
-    return {} if not prediction?
-    return an.prediction this.urlParams.prediction, this.urlParams.value
+    return an.teach this.urlParams.prediction, this.urlParams.val, this.queryParams.learn
+
 
 
 an._seed = 987654321
@@ -154,13 +168,35 @@ an.forward = (model, recs) ->
   return cache
 
 an.predict = (model, rec) ->
+  prediction = {model: (if typeof model is 'string' then model else model._id), rec: rec} # rec may have to be a cached stringified value here, to be safe for the index, and could do a cache lookup before running the prediction too
   model = neural_model.get(model) if typeof model is 'string'
-  cache = an.forward model, [rec]
-  res = cache[cache.length-1][0].indexOf Math.max.apply this, cache[cache.length-1][0]
+  cache = an.forward model, [rec] # is it worth saving this cache on each prediction?
+  prediction.result = cache[cache.length-1][0].indexOf Math.max.apply this, cache[cache.length-1][0]
+  prediction.class = model.classes[result] if model.classes?
+  neural_prediction.insert prediction
   # TODO should actually save the prediciton, and which model was used for it, and return a prediction object
   # then later can use the prediction as extra training data, once informed if it is correct or not
-  return if model.classes then model.classes[res] else res
+  return prediction.class ? prediction.result
 
+an.teach = (prediction, val, learn=false) -> # can set learn to default true once sure how big the run it will cause is
+  prediction = neural_prediction.get prediction
+  return {} if not prediction?
+  prediction.correct = val is 'true' or val is true or (prediction.class? and val is prediction.class)
+  prediction.value = val # what if we are just told false, but there is more than one answer class that it could be? Need to know the right answer? or train it on what it is not?
+  neural_prediction.update prediction._id, {correct: prediction.correct, value: prediction.value}
+  an.learn(prediction.model) if learn
+  return prediction
+  
+an.learn = (model) ->
+  model = neural_model.get(model) if typeof model is 'string'
+  # find every neural prediction that ran on this model._id, that has correct:true/false and does not yet have learned:true
+  # set learned:true
+  # train the model with the new data points - will this work, or does it have to be completely retrained with these plus the originals? Should not be necessary...
+  # compare the previous model accuracy with the new model accurcay
+  # save the updated model
+  # if there were no new records to run on, don't do anything
+  return false # should return the old and new accuracies for comparison
+  
 an.accuracy = (model, recs, answers) ->
   cache = an.forward model, recs
   correct = 0
@@ -171,7 +207,7 @@ an.accuracy = (model, recs, answers) ->
 # https://stats.stackexchange.com/questions/181/how-to-choose-the-number-of-hidden-layers-and-nodes-in-a-feedforward-neural-netw
 # http://cs231n.github.io/neural-networks-case-study/#net
 # https://medium.freecodecamp.org/building-a-3-layer-neural-network-from-scratch-99239c4af5d3
-an.train = (model={}, recs, classes, answers, save, epochs=10000, accuracy=98, layers=['relu','softmax'], rate=1, reg=0.001, scale=0.01, losses=100) ->
+an.train = (model={}, recs, classes, answers, save, overwrite=false, epochs=10000, accuracy=98, layers=['relu','softmax'], rate=1, reg=0.001, scale=0.01, losses=100) ->
   # TODO the trainer should run as a job if the job runner is running, so that it does not block. Should also email someone once done.
   # Should also have some name to save the trained object as - and maybe a cache? If inputs are same and name is same, why bother running again...
   
@@ -184,8 +220,9 @@ an.train = (model={}, recs, classes, answers, save, epochs=10000, accuracy=98, l
   # answers is a list of answer data lists too, e.g. [[1,0,0],[0,1,0]]
   #recs = an.test._examples.recs # list of records to train on D is length of rec keys / list
   #answers = an.test._examples.answers # the answers that the records must match to
-  recs = an.test._examples.wine
-  classes = ['Cultivar 1','Cultivar 2','Cultivar 3']
+  if _.isEmpty model
+    recs ?= an.test._examples.wine
+    classes ?= ['Cultivar 1','Cultivar 2','Cultivar 3']
   
   # if recs is a csv, should that be acceptable and converted to json? If so, how to know if it has headers row or not?
   build = false
@@ -203,17 +240,18 @@ an.train = (model={}, recs, classes, answers, save, epochs=10000, accuracy=98, l
       recs[r][v] = parseFloat(recs[r][v]) for v of recs[r]
 
   model.classes ?= classes # a list of class names, which are the names of the answer rows, if answers is a list of lists of 1/0 values, where 1 indicates the correct class for the row
-  model.inputs = {rows: recs.length, cols: if _.isArray(recs[0]) then recs[0].length else _.keys(recs[0]).length}
-  model.outputs = 3 # how many nodes in last result layer - depends on how many things trying to classify into, could be just one if looking for a specific result somehow
-  model.hiddens = if model.inputs.cols < model.outputs + 2 then Math.floor(recs.length/3) else model.inputs.cols - Math.ceil(model.inputs.cols/(if model.outputs is 1 then 2 else model.outputs))
-  model.layers = layers
+  model.inputs ?= {rows: recs.length, cols: if _.isArray(recs[0]) then recs[0].length else _.keys(recs[0]).length}
+  model.outputs ?= if model.classes then model.classes.length else 1 # how many nodes in last result layer - depends on how many things trying to classify into, could be just one if looking for a specific result somehow
+  model.hiddens ?= if model.inputs.cols < model.outputs + 2 then Math.floor(recs.length/3) else model.inputs.cols - Math.ceil(model.inputs.cols/(if model.outputs is 1 then 2 else model.outputs))
+  model.layers ?= layers
   model.rate ?= rate # learning rate
   model.reg ?= reg # regularisation rate
   model.scale ?= scale # a scale factor on the initial random weights
   model.epochs ?= epochs
   model.accuracy ?= accuracy # if a number and not 0, when accuracy goes above this on an epoch loss check, epochs will stop regardless how many have run
   model.losses = []
-  model._id ?= if save is true then Random.id() else if neural_model.get(save)? then save + '_' + Random.id() else save
+  model.overwrite = model.overwrite if model.overwrite
+  model._id ?= if save is true then Random.id() else if overwrite is false and neural_model.get(save)? then save + '_' + Random.id() else save
 
   model.W = []
   model.W2 = []

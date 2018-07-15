@@ -200,7 +200,7 @@ API.tdm.keywords = (content,opts={}) ->
 
 API.tdm.extract = (opts) ->
 	# opts expects url,content,matchers (a list, or singular "match" string),start,end,convert,format,lowercase,ascii
-	opts.content = API.http.phantom(opts.url, undefined, true) if opts.url and not opts.content
+	opts.content = API.http.puppeteer(opts.url, true) if opts.url and not opts.content
 	try
 		text = if opts.convert then API.convert.run(opts.url,opts.convert,'txt',opts.content) else opts.content
 	catch

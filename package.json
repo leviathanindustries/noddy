@@ -27,6 +27,7 @@
     "oauth": "^0.9.15",
     "pdf2json": "^1.1.7",
     "phantom": "^2.1.21",
+    "puppeteer": "^1.5.0",
     "request": "^2.83.0",
     "textract": "^1.2.1",
     "unidecode": "^0.1.8",
