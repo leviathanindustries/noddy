@@ -85,7 +85,6 @@ API.es.action = (uacc, action, urlp, params={}, data, refresh) ->
           allowed = true
     return if allowed then API.es.call(action, rt, data, refresh, undefined, undefined, undefined, undefined, dev) else 401
 
-
 # track if we are waiting on retry to connect http to ES (when it is busy it takes a while to respond)
 API.es._waiting = false
 API.es._retries = {
@@ -108,14 +107,14 @@ API.es._retries = {
     cb null, rt
 }
 
-API.es.refresh = (index, url) ->
+API.es.refresh = (index, dev=API.settings.dev, url=API.settings.es.url) ->
   try
     API.log 'Refreshing index ' + index
-    h = API.es.call 'POST', index + '/_refresh', undefined, undefined, undefined, undefined, undefined, undefined, url
+    h = API.es.call 'POST', index + '/_refresh', undefined, undefined, undefined, undefined, undefined, undefined, dev, url
     return true
   catch err
     return false
-
+    
 API.es._reindexing = false
 API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, change, fromurl=API.settings.es.url, tourl) ->
   fromurl = fromurl[Math.floor(Math.random()*fromurl.length)] if Array.isArray fromurl
@@ -193,7 +192,7 @@ API.es.reindex = (index, type, mapping=API.es._mapping, rename, dlt=false, chang
   API.es._reindexing = false
   return processed
 
-API.es.map = (index, type, mapping, overwrite, url=API.settings.es.url,dev=API.settings.dev) ->
+API.es.map = (index, type, mapping, overwrite, dev=API.settings.dev, url=API.settings.es.url) ->
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
   console.log('ES checking mapping for ' + index + (if dev and index.indexOf('_dev') is -1 then '_dev' else '') + ' ' + type) if API.settings.log?.level is 'debug'
   try
@@ -258,13 +257,13 @@ API.es.indexes = (url=API.settings.es.url) ->
   try indexes.push(m) for m of HTTP.call('GET', url + '/_mapping').data
   return indexes
 
-API.es.types = (index,url=API.settings.es.url) ->
+API.es.types = (index, url=API.settings.es.url) ->
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
   types = []
   try types.push(t) for t of HTTP.call('GET', url + '/' + index + '/_mapping').data[index].mappings
   return types
 
-API.es.call = (action, route, data, refresh, versioned, scan, scroll='5m', partial=false, dev=API.settings.dev, url=API.settings.es.url) ->
+API.es.call = (action, route, data, refresh, version, scan, scroll='5m', partial=false, dev=API.settings.dev, url=API.settings.es.url) ->
   return undefined if data? and typeof data is 'object' and data.script? and partial is false
   scroll = '120m' if scroll is true
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
@@ -286,14 +285,14 @@ API.es.call = (action, route, data, refresh, versioned, scan, scroll='5m', parti
     future.wait()
   API.es._waiting = false
 
-  # API.es.map(routeparts[0],routeparts[1],undefined,undefined,url) if route.indexOf('/_') is -1 and routeparts.length >= 1 and action in ['POST','PUT']
+  # API.es.map(routeparts[0],routeparts[1],undefined,undefined,dev,url) if route.indexOf('/_') is -1 and routeparts.length >= 1 and action in ['POST','PUT']
   opts = data:data
   if partial isnt false and route.indexOf('_update') is -1
     partial = 3 if partial is true
     route += '/_update'
     route += '?retry_on_conflict=' + partial if typeof partial is 'number'
   route = API.es.random(route) if route.indexOf('source') isnt -1 and route.indexOf('random=true') isnt -1
-  route += (if route.indexOf('?') is -1 then '?' else '&') + 'version=' + versioned if versioned?
+  route += (if route.indexOf('?') is -1 then '?' else '&') + 'version=' + version if version?
   if scan is true
     route += (if route.indexOf('?') is -1 then '?' else '&')
     if not data? or (typeof data is 'object' and not data.sort?) or (typeof data is 'string' and data.indexOf('sort=') is -1)
@@ -305,10 +304,10 @@ API.es.call = (action, route, data, refresh, versioned, scan, scroll='5m', parti
     try
       if action is 'POST' and data?.query? and data.sort? and routeparts.length > 1
         skey = _.keys(data.sort)[0]
-        delete opts.data.sort if JSON.stringify(API.es.mapping(routeparts[0],routeparts[1])).indexOf(skey) is -1
+        delete opts.data.sort if JSON.stringify(API.es.mapping(routeparts[0],routeparts[1]),dev,url).indexOf(skey) is -1
     opts.retry = API.es._retries
     ret = RetryHttp.call action, url + route, opts
-    API.es.refresh('/' + routeparts[0], url) if refresh and action in ['POST','PUT']
+    API.es.refresh('/' + routeparts[0], dev, url) if refresh and action in ['POST','PUT']
     if API.settings.log?.level is 'all'
       ld = JSON.parse(JSON.stringify(ret.data))
       ld.hits?.NOTE = 'Results length reduced from ' + ld.hits.hits.length + ' to 1 for logging example, does not affect output'
@@ -319,7 +318,7 @@ API.es.call = (action, route, data, refresh, versioned, scan, scroll='5m', parti
         console.log('ES SEARCH DEBUG INFO\n' + JSON.stringify(opts),'\n',JSON.stringify(ld),'\n')
     return ret.data
   catch err
-    # if versioned and versions don't match, there will be a 409 thrown here - this should be handled in some way, here or in collection
+    # if version and versions don't match, there will be a 409 thrown here - pass it back so collection can handle it
     # https://www.elastic.co/blog/elasticsearch-versioning-support
     lg = level: 'debug', msg: 'ES error, but may be OK, 404 for empty lookup, for example', action: action, url: url, route: route, opts: opts, error: err.toString()
     if err.response?.statusCode isnt 404 and route.indexOf('_log') is -1
@@ -329,7 +328,8 @@ API.es.call = (action, route, data, refresh, versioned, scan, scroll='5m', parti
       console.log JSON.stringify(opts)
       console.log JSON.stringify(err)
       try console.log err.toString()
-    return undefined
+    # is it worth returning false for 404 and undefined otherwise? If so would need to check if undefined is expected anywhere, and how the API would return a false as 404, at the moment it only assumes that undefined is a 404 because false could be a valid response
+    return if err.response?.statusCode is 409 then 409 else undefined
 
 API.es.random = (route) ->
   try
@@ -358,47 +358,98 @@ API.es.random = (route) ->
   catch
     return route
 
-API.es.terms = (index, type, key, size=100, counts=true, qry, url=API.settings.es.url) ->
+API.es.count = (index, type, key, query, dev=API.settings.dev, url=API.settings.es.url) ->
+  if key?
+    query.size = 0
+    query.aggs = {
+      "keycard" : {
+        "cardinality" : {
+          "field" : key,
+          "precision_threshold": 40000 # this is high precision and will be very memory-expensive in high cardinality keys, with lots of different values going in to memory
+        }
+      }
+    }
+    return API.es.call('POST', '/' + index + '/' + type + '/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url)?.aggregations?.keycard?.value
+  else
+    return API.es.call('POST', '/' + index + '/' + type + '/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url)?.hits?.total
+
+API.es.terms = (index, type, key, qry, size=100, counts=true, dev=API.settings.dev, url=API.settings.es.url) ->
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
-  query = if typeof qry is 'object' then qry else { query: { "match_all": {} }, size: 0, facets: {} }
-  query.query = { query_string: { query: qry } } if typeof qry is 'string'
+  query = if typeof qry is 'object' then qry else { query: {"filtered":{"filter":{"exists":{"field":key}}}}, size: 0, facets: {} }
+  query.filtered.query = { query_string: { query: qry } } if typeof qry is 'string'
   query.facets ?= {}
   query.facets[key] = { terms: { field: key, size: size } }; # TODO need some way to decide if should check on .exact? - collection assumes it so far
   try
-    ret = API.es.call 'POST', '/' + index + '/' + type + '/_search', query, undefined, undefined, undefined, undefined, undefined, undefined, url
+    ret = API.es.call 'POST', '/' + index + '/' + type + '/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
     return if not ret?.facets? then [] else (if counts then ret.facets[key].terms else _.pluck(ret.facets[key].terms,'term'))
   catch err
     console.log(err) if API.settings.log?.level is 'debug'
     return []
 
-API.es.range = (index, type, key, url=API.settings.es.url) ->
+API.es.min = (index, type, key, dev=API.settings.dev, url=API.settings.es.url) ->
+  try
+    query = if typeof key is 'object' then key else {query:{"filtered":{"filter":{"exists":{"field":key}}}}}
+    query.size = 0
+    query.aggs = {"min":{"min":{"field":key}}}
+    ret = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
+    return ret.aggregations.min.value
+  catch err
+    return {info: 'the call to es returned an error', err:err}
+
+API.es.max = (index, type, key, dev=API.settings.dev, url=API.settings.es.url) ->
+  try
+    query = if typeof key is 'object' then key else {query:{"filtered":{"filter":{"exists":{"field":key}}}}}
+    query.size = 0
+    query.aggs = {"max":{"max":{"field":key}}}
+    ret = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
+    return ret.aggregations.max.value
+  catch err
+    return {info: 'the call to es returned an error', err:err}
+  
+API.es.range = (index, type, key, dev=API.settings.dev, url=API.settings.es.url) ->
+  try
+    query = if typeof key is 'object' then key else {query:{"filtered":{"filter":{"exists":{"field":key}}}}}
+    query.size = 0
+    query.aggs = {"min":{"min":{"field":key}}, "max":{"max":{"field":key}}}
+    ret = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
+    return {min: ret.aggregations.min.value, max: ret.aggregations.max.value}
+  catch err
+    return {info: 'the call to es returned an error', err:err}
+
   sobj = {}
   sobj[key] = {order:'asc'}
   query = {query:{"match_all":{}},sort:[sobj],size:1}
   try
-    ret = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, undefined, url
+    ret = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
     min = ret.hits.hits[0].sort[0]
     sobj[key] = {order:'desc'}
     query.sort = [sobj]
-    re2 = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, undefined, url
+    re2 = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
     max = re2.hits.hits[0].sort[0]
     return {min:min,max:max}
   catch err
     return {info: 'the call to es returned an error', err:err}
 
-API.es.keys = (index, type, url=API.settings.es.url) ->
+API.es.keys = (index, type, dev=API.settings.dev, url=API.settings.es.url) ->
   try
-    mapping = API.es.mapping index, type, undefined, url
+    mapping = API.es.mapping index, type, dev, url
     keys = []
-    for k of mapping.properties
-      keys.push k
-      #if mapping[index].mappings[type].properties[k].properties
-      #TODO should cascade into the sub keys and append as k.subk etc
+    # if no type was given, could be wanting all keys from all mappings on the index
+    if mapping.properties?
+      for k of mapping.properties
+        keys.push k
+        #if mapping[index].mappings[type].properties[k].properties
+        #TODO should cascade into the sub keys and append as k.subk etc
+    else
+      for mp of mapping
+        for k of mapping[mp].properties
+          keys.push(k) if keys.indexOf(k) is -1
+    keys.sort()
     return keys
   catch err
     return {info: 'the call to es returned an error', err:err}
 
-API.es.import = (index, type, data, bulk=50000, url=API.settings.es.url,dev=API.settings.dev) ->
+API.es.import = (index, type, data, bulk=50000, dev=API.settings.dev, url=API.settings.es.url) ->
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
   index += '_dev' if dev and index.indexOf('_dev') is -1
   rows = if typeof data is 'object' and not Array.isArray(data) and data?.hits?.hits? then data.hits.hits else data
@@ -424,8 +475,6 @@ API.es.import = (index, type, data, bulk=50000, url=API.settings.es.url,dev=API.
       pkg = ''
       counter = 0
   return {records:rows.length, responses:responses}
-
-
 
 API.es.status = () ->
   s = API.es.call 'GET', '/_status'

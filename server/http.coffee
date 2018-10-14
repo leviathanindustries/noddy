@@ -271,6 +271,15 @@ API.http.phantom = Meteor.wrapAsync(_phantom)
 # This results in all the machine memory getting used up so then the noddy stack OOMs anyway.
 # This may be combo of how they are called in different threads. So, switch to puppeteer anyway. 
 
+# 31012018 found that a script running many oab request type processes did still cause OOM even with puppeteer
+# so somewhere this call is still leaving hanging puppeteers, as it was doing with phantomjs. Changed 
+# puppeteer startup settings as below, and next time it ran the ~3.5k processes without failing, 
+# but still climb to about 2.5gb memory usage over seven hours or so. Only one puppeteer at a time 
+# started up, and they all seemed to close as expected, but something somewhere is still stacking 
+# up some memory. After the processes were all done, memory usage fell back, but still at about 1gb
+# whereas without running that processing script the app only takes up a few hundred mb at idle. So, 
+# it is not exactly a leak, but an excess remaining allocation. Need to investigate further.
+
 # can also update my crawl / spider scripts using puppeteer
 # https://github.com/GoogleChromeLabs/puppeteer-examples/blob/master/crawlsite.js
 
@@ -295,14 +304,15 @@ _puppeteer = (url,refresh=86400000,callback) ->
     return callback(null,cached) if cached?
   API.log('starting puppeteer retrieval of ' + url)
   try
-    browser = await puppeteer.launch({executablePath: '/usr/bin/google-chrome'})
+    browser = await puppeteer.launch({args:['--no-sandbox', '--disable-setuid-sandbox'], ignoreHTTPSErrors:true, dumpio:false, timeout:12000, executablePath: '/usr/bin/google-chrome'})
     page = await browser.newPage()
-    await page.goto(url)
+    await page.goto(url, {timeout:12000})
     content = await page.evaluate(() => new XMLSerializer().serializeToString(document.doctype) + '\n' + document.documentElement.outerHTML)
     await browser.close()
     #API.http.cache(url, 'puppeteer', content) if typeof content is 'string' and content.length > 200
     return callback(null,content)
   catch
+    try browser.close()
     return callback(null,'')
 
 API.http.puppeteer = Meteor.wrapAsync(_puppeteer)

@@ -4,9 +4,17 @@ import diskspace from 'diskspace'
 
 API.add 'stats',
   get: () ->
-    cpu = Meteor.wrapAsync((callback) -> cpustat.usagePercent((err, percent, seconds) -> console.log(err); return callback(null, percent)))()
-    disk = Meteor.wrapAsync((callback) -> diskspace.check('/', (err, result) -> console.log(err); return callback(null, result)))()
-    return {cid:process.env.CID, appid:process.env.APP_ID, memory:process.memoryUsage(), cpu: cpu, disk: disk}
+    return {
+      cid: process.env.CID, 
+      appid: process.env.APP_ID, 
+      updated: process.env.LAST_UPDATED,
+      memory: process.memoryUsage(), 
+      cpu: Meteor.wrapAsync((callback) -> cpustat.usagePercent((err, percent, seconds) -> console.log(err); return callback(null, percent)))(), 
+      disk: Meteor.wrapAsync((callback) -> diskspace.check('/', (err, result) -> console.log(err); return callback(null, result)))(), 
+      name: (if API.settings.name then API.settings.name else 'API'),
+      version: (if API.settings.version then API.settings.version else "0.0.1"),
+      dev: API.settings.dev
+    }
 
 API.add 'status', get: () -> return API.status(false)
 
@@ -48,11 +56,12 @@ API.status = (email=true) ->
   try
     HTTP.call 'HEAD','https://cluster.api.cottagelabs.com', {timeout:2000}
     ret.up.cluster = true
-    if API.settings.cluster?.machines
+    if API.settings.cluster?.ip
+      API.settings.cluster.ip = [API.settings.cluster.ip] if typeof API.settings.cluster.ip is 'string'
       ccount = 0
-      for m in API.settings.cluster.machines
+      for m in API.settings.cluster.ip
         try
-          cm = HTTP.call 'GET',(if m.indexOf('http') isnt 0 then 'http://' else '') + m + '/api/stats', {timeout:2000}
+          cm = HTTP.call 'GET',(if m.indexOf('http') isnt 0 then 'http://' else '') + m + (if m.indexOf(':') is -1 then ':3000' else '') + '/api/stats', {timeout:2000}
           cm.data.machine = m
           if cm.data.cid is process.env.CID
             reported = true
@@ -60,10 +69,10 @@ API.status = (email=true) ->
           ret.memory.push cm.data
           ccount += 1
       ret.up.cluster = ccount if ccount isnt 0
-      ret.status = 'yellow' if ccount isnt API.settings.cluster.machines.length
+      ret.status = 'yellow' if ccount isnt API.settings.cluster.ip.length
   if not reported
     ret.memory.push {served:true, cid:process.env.CID, appid:process.env.APP_ID, memory:process.memoryUsage()}
-  ret.status = 'red' if API.settings.cluster?.machines and API.settings.cluster.machines.length and (ret.up.cluster is false or ret.up.cluster is 0)
+  ret.status = 'red' if API.settings.cluster?.machines and API.settings.cluster.ip.length and (ret.up.cluster is false or ret.up.cluster is 0)
 
   try ret.job = API.job.status()
   try ret.index = API.es.status()

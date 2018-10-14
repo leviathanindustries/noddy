@@ -10,7 +10,7 @@ import { Random } from 'meteor/random'
 # there are a few direct debug console.log calls in here, depending on whether or not the collection is
 # one with _log in the name or not, just to avoid endless log loops but still have useful output in debug mode for dev
 
-API.collection = (opts) ->
+API.collection = (opts, dev=API.settings.dev) ->
   opts = { type: opts } if typeof opts is 'string'
   opts.index ?= API.settings.es.index
   this._index = opts.index
@@ -18,28 +18,32 @@ API.collection = (opts) ->
   this._route = '/' + this._index
   this._route += '/' + this._type if this._type
   this._mapping = opts.mapping
-  API.es.map this._index, this._type, this._mapping # only has effect if no mapping already
+  API.es.map this._index, this._type, this._mapping, undefined, dev # only has effect if no mapping already
   this._history = opts.history if this._route.indexOf('_log') is -1
-  API.es.map(this._index, this._type + '_history', this._mapping) if this._history
+  API.es.map(this._index, this._type + '_history', this._mapping, undefined, dev) if this._history
   #this._replicate = opts.replicate; # does nothing yet, but could replicate all creates/updates/deletes to alternate cluster address
   this._mount = opts.mount?
   this.mount(if typeof opts.mount is 'object' then opts.mount else undefined) if this._mount
+  if opts.backup
+    try
+      API.backup.register this._index, this._type
+      this._backup = true
 
-API.collection.prototype.map = (mapping) ->
+API.collection.prototype.map = (mapping, dev=API.settings.dev) ->
   this._mapping = mapping
-  return API.es.map this._index, this._type, mapping, true # would overwrite any existing mapping
-API.collection.prototype.mapping = (original) -> return if this._mapping and original then this._mapping else API.es.mapping this._index, this._type
+  return API.es.map this._index, this._type, mapping, true, dev # would overwrite any existing mapping
+API.collection.prototype.mapping = (original, dev=API.settings.dev) -> return if this._mapping and original then this._mapping else API.es.mapping this._index, this._type, dev
 
-API.collection.prototype.refresh = () -> API.es.refresh this._index
+API.collection.prototype.refresh = (dev=API.settings.dev) -> API.es.refresh this._index, dev
 
-API.collection.prototype.delete = (confirm, history) ->
+API.collection.prototype.delete = (confirm, history, dev=API.settings.dev) ->
   # TODO who should be allowed to do this, and how should it be recorded in history, if history is not itself removed?
   this.remove('*') if confirm is '*'
-  API.es.call('DELETE', this._route) if confirm is true
-  API.es.call('DELETE', this._route + '_history') if history is true and this._history
+  API.es.call('DELETE', this._route, undefined, undefined, undefined, undefined, undefined, undefined, dev) if confirm is true
+  API.es.call('DELETE', this._route + '_history', undefined, undefined, undefined, undefined, undefined, undefined, dev) if history is true and this._history
   return true
 
-API.collection.prototype.history = (action, doc, uid) ->
+API.collection.prototype.history = (action, doc, uid, dev=API.settings.dev) ->
   # NOTE even if a collection has history turned on, the uid of the user who made the
   # change will not be known unless the code calling the insert, delete etc functions includes it
   # TODO is it worth having a collection setting that makes this required? But then what about cases where it may not actually be needed?
@@ -49,9 +53,9 @@ API.collection.prototype.history = (action, doc, uid) ->
     # and history search should probably have a default descending sort applied to it
     q = API.collection._translate(action ?= '*', doc)
     if typeof q is 'string'
-      return API.es.call 'GET', this._route + '_history/_search?' + (if q.indexOf('?') is 0 then q.replace('?', '') else q)
+      return API.es.call 'GET', this._route + '_history/_search?' + (if q.indexOf('?') is 0 then q.replace('?', '') else q), undefined, undefined, undefined, undefined, undefined, dev
     else
-      return API.es.call 'POST', this._route + '_history/_search', q
+      return API.es.call 'POST', this._route + '_history/_search', q, undefined, undefined, undefined, undefined, undefined, dev
   else
     record = true
     try
@@ -66,45 +70,44 @@ API.collection.prototype.history = (action, doc, uid) ->
         uid: uid
       change.created_date = moment(change.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
       change[action] = doc
-      ret = API.es.call 'POST', this._route + '_history', change
+      ret = API.es.call 'POST', this._route + '_history', change, undefined, undefined, undefined, undefined, undefined, dev
       if not ret?
         change.string = JSON.stringify change[action]
         delete change[action]
-        ret = API.es.call 'POST', this._route + '_history', change
+        ret = API.es.call 'POST', this._route + '_history', change, undefined, undefined, undefined, undefined, undefined, dev
         if not ret?
           API.log msg:'History logging failing',error:err,action:action,doc:doc,uid:uid
 
-API.collection.prototype.fetch_history = (q, opts={}) ->
+API.collection.prototype.fetch_history = (q, opts={}, dev=API.settings.dev) ->
   qy = API.collection._translate q, opts
   qy.from ?= 0
   qy.size ?= 3000
   results = []
-  res = API.es.call 'POST', this._route + '_history/_search', qy, undefined, undefined, true
-  console.log res
+  res = API.es.call 'POST', this._route + '_history/_search', qy, undefined, undefined, true, undefined, undefined, dev
   if res.hits.hits.length
     for h in res.hits.hits
       results.push h._source ? h.fields
   return results if not res?._scroll_id?
-  res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id
+  res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, undefined, undefined, dev
   return results if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
   while (res.hits.hits.length)
     for h in res.hits.hits
       results.push h._source ? h.fields
-    res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id
-  this.refresh()
+    res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, undefined, undefined, dev
+  this.refresh(dev)
   return results
 
-API.collection.prototype.get = (rid,versioned) ->
+API.collection.prototype.get = (rid, versioned, dev=API.settings.dev) ->
   # TODO is there any case for recording who has accessed certain documents?
   if typeof rid is 'number' or (typeof rid is 'string' and rid.indexOf(' ') is -1 and rid.indexOf(':') is -1 and rid.indexOf('/') is -1 and rid.indexOf('*') is -1)
-    check = API.es.call 'GET', this._route + '/' + rid
+    check = API.es.call 'GET', this._route + '/' + rid, undefined, undefined, undefined, undefined, undefined, undefined, dev
     return (if versioned then check else check._source) if check?.found isnt false and check?.status isnt 'error' and check?.statusCode isnt 404 and check?._source?
   return undefined
 
-API.collection.prototype.import = (recs) ->
-  return API.es.import this._index, this._type, recs
+API.collection.prototype.import = (recs, dev=API.settings.dev) ->
+  return API.es.import this._index, this._type, recs, undefined, dev
 
-API.collection.prototype.insert = (q, obj, uid, refresh) ->
+API.collection.prototype.insert = (q, obj, uid, refresh, dev=API.settings.dev) ->
   if typeof q is 'string' and typeof obj is 'object'
     obj._id = q
   else if typeof q is 'object' and not obj?
@@ -112,14 +115,20 @@ API.collection.prototype.insert = (q, obj, uid, refresh) ->
   obj.createdAt = Date.now()
   obj.created_date = moment(obj.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
   obj._id ?= Random.id()
-  this.history('insert', obj, uid) if this._history
-  return API.es.call('POST', this._route + '/' + obj._id, obj, refresh)?._id
+  this.history('insert', obj, uid, dev) if this._history
+  return API.es.call('POST', this._route + '/' + obj._id, obj, refresh, undefined, undefined, undefined, undefined, dev)?._id
 
-API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial) ->
-  # to delete an already set value, the update obj should use the value '$DELETE' for the key to delete
-  return undefined if obj.script? and partial isnt true
-  rec = this.get q
-  if rec
+API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial, dev=API.settings.dev) ->
+  # versioned here can be a version number, in which case the update will only work if it can update onto that version, otherwise returns 409
+  # if no version number provided, versioning of the update will still be used for internal clash avoidance
+  # and will not necessarily be versioned to the version the user last saw - just to the last version this update method retrieved immediately before the action.
+  # TODO? to delete an already set value, the update obj should use the value '$DELETE' for the key to delete
+  return undefined if obj?.script? and partial isnt true
+  q ?= obj._id
+  return false if not q?
+  res = this.get q, true, dev
+  if res
+    rec = res._source
     if _.keys(obj).length is 1 and typeof _.values(obj)[0] is 'string' and  (_.values(obj)[0].indexOf('+') is 0 or _.values(obj)[0].indexOf('-') is 0)
       if rec[_.keys(obj)[0]]? and typeof rec[_.keys(obj)[0]] is 'number'
         partial = true
@@ -132,33 +141,42 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial) ->
       rec.updatedAt = Date.now()
       rec.updated_date = moment(rec.updatedAt, "x").format "YYYY-MM-DD HHmm.ss"
     API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, refresh: refresh, versioned: versioned, partial: partial, level: 'debug' }) if this._route.indexOf('_log') is -1
-    if versioned
-      rs = API.es.call 'POST', this._route + '/' + rec._id, (if partial then obj else rec), refresh, versioned, undefined, undefined, partial
-      versioned = rs._version
+    rs = API.es.call 'POST', this._route + '/' + rec._id, (if partial then obj else rec), refresh, versioned, undefined, undefined, partial, dev
+    if rs is 409
+      # TODO think about whether using versioned updates is useful all the time or not. For now, it will only be used if version is set by whatever 
+      return 409
     else
-      API.es.call 'POST', this._route + '/' + rec._id, (if partial then obj else rec), refresh, undefined, undefined, undefined, partial # TODO this should catch failures due to versions, and try merges and retries (or ES layer should do this)
-    if this._history
-      obj._id = rec._id
-      this.history 'update', obj, uid
-    return if versioned? then versioned else true
+      if this._history
+        obj._id = rec._id
+        this.history 'update', obj, uid
+      return rs._version
   else
-    return this.each q, ((res) -> this.update res._id, obj, uid )
+    return this.each q, undefined, ((res) -> this.update res._id, obj, uid, refresh, versioned, partial, dev), undefined, dev
 
-API.collection.prototype.remove = (q, uid) ->
+API.collection.prototype.remove = (q, uid, dev=API.settings.dev) ->
   if (typeof q is 'string' or typeof q is 'number') and this.get q
-    this.history('remove', q, uid) if this._history
-    API.es.call 'DELETE', this._route + '/' + q
+    this.history('remove', q, uid, dev) if this._history
+    API.es.call 'DELETE', this._route + '/' + q, undefined, undefined, undefined, undefined, undefined, undefined, dev
     return true
   else if q is '*'
     # TODO who should be allowed to do this, and how should the event be record in the history?
-    omp = this.mapping true
-    API.es.call 'DELETE', this._route
-    API.es.map this._index, this._type, omp
+    omp = this.mapping true, dev
+    API.es.call 'DELETE', this._route, undefined, undefined, undefined, undefined, undefined, undefined, dev
+    API.es.map this._index, this._type, omp, undefined, dev
     return true
   else
-    return this.each q, ((res) -> this.remove res._id, uid )
+    return this.each q, undefined, ((res) -> this.remove res._id, uid, dev), undefined, dev
 
-API.collection.prototype.search = (q, opts, versioned) ->
+API.collection.prototype.bulk = (q, fn, dev=API.settings.dev) ->
+  # TODO a way to do bulk updates and/or removes, in a way that should do something to every record in the query
+  # like an each on the update and remove functions, but it does not write after each one, instead it collects all 
+  # the changes and applies them in bulk at the end - NOTE need to consider how this impacts writing history changes 
+  # in bulk, and also versioning and version clashes
+  # it may be better for update and remove to just behave in this way anyway, depends what actions have to occur on 
+  # those records. Write this first then see what suits best
+  return false
+
+API.collection.prototype.search = (q, opts, versioned, dev=API.settings.dev) ->
   # NOTE is there any case for recording who has done searches? - a write for every search could be a heavy load...
   # or should it be possible to apply certain restrictions on what the search returns?
   # Perhaps - but then this coud/should be applied by the service providing access to the collection
@@ -172,25 +190,29 @@ API.collection.prototype.search = (q, opts, versioned) ->
   if not q?
     return undefined
   else if typeof q is 'string'
-    return API.es.call 'GET', this._route + '/_search?' + (if versioned then 'version=true&' else '') + (if q.indexOf('?') is 0 then q.replace('?', '') else q)
+    res = API.es.call 'GET', this._route + '/_search?' + (if versioned then 'version=true&' else '') + (if q.indexOf('?') is 0 then q.replace('?', '') else q), undefined, undefined, undefined, undefined, undefined, undefined, dev
+    res.q = q if API.settings.dev
+    return res
   else
-    return API.es.call 'POST', this._route + '/_search' + (if versioned then '?version=true' else ''), q
+    res = API.es.call 'POST', this._route + '/_search' + (if versioned then '?version=true' else ''), q, undefined, undefined, undefined, undefined, undefined, dev
+    res.q = q if API.settings.dev
+    return res
 
-API.collection.prototype.find = (q, opts, versioned) ->
+API.collection.prototype.find = (q, opts, versioned, dev=API.settings.dev) ->
   try versioned = opts.versioned
   versioned = true if opts is 'versioned'
-  got = this.get q, versioned
+  got = this.get q, versioned, dev
   if got?
     return got
   else
     try
-      hits = this.search(q, opts).hits.hits
+      hits = this.search(q, opts, versioned, dev).hits.hits
       return if hits.length isnt 0 then (if versioned then hits[0] else hits[0]._source ? hits[0].fields) else undefined
     catch err
       API.log({ msg: 'Collection find threw error', q: q, level: 'error', error: err }) if this._route.indexOf('_log') is -1
       return undefined
 
-API.collection.prototype.each = (q, opts, fn, scroll) ->
+API.collection.prototype.each = (q, opts, fn, scroll, dev=API.settings.dev) ->
   if fn is undefined and typeof opts is 'function'
     fn = opts
     opts = undefined
@@ -198,11 +220,11 @@ API.collection.prototype.each = (q, opts, fn, scroll) ->
   qy = API.collection._translate q, opts
   qy.from ?= 0
   qy.size ?= if scroll then 300 else 1000
-  res = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, true
+  res = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, true, undefined, undefined, dev
   return 0 if not res?._scroll_id?
   scrollids = []
   scrollids.push(res._scroll_id) if scroll?
-  res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll
+  res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
   return 0 if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
   processed = 0
   while (res.hits.hits.length)
@@ -211,59 +233,55 @@ API.collection.prototype.each = (q, opts, fn, scroll) ->
     for h in res.hits.hits
       fn = fn.bind this
       fn h._source ? h.fields
-    res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll
+    res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
   for sid in scrollids
-    try API.es.call 'DELETE', '_search/scroll', undefined, undefined, undefined, sid
-  this.refresh()
+    try API.es.call 'DELETE', '_search/scroll', undefined, undefined, undefined, sid, undefined, undefined, dev
+  this.refresh(dev)
   return processed
 
-API.collection.prototype.fetch = (q, opts={}) ->
+API.collection.prototype.fetch = (q, opts={}, dev=API.settings.dev) ->
   qy = API.collection._translate q, opts
   qy.from ?= 0
   qy.size ?= 3000
   results = []
-  res = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, true
+  res = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, true, undefined, undefined, dev
   if res.hits.hits.length
     for h in res.hits.hits
       results.push h._source ? h.fields
     # scroll queries that are not of scan type will have results in the first request, whereas scan queries will not
   return results if not res?._scroll_id?
-  res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id
+  res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, undefined, undefined, dev
   return results if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
   while (res.hits.hits.length)
     for h in res.hits.hits
       results.push h._source ? h.fields
-    res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id
-  this.refresh()
+    res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, undefined, undefined, dev
+  this.refresh(dev)
   return results
 
-API.collection.prototype.count = (q,key) ->
-  if key?
-    # TODO could check for a hash mapping for the key, and if available use that instead
-    # is there any benefit to default to doing on the exacts rather than the inexact?
-    # https://www.elastic.co/guide/en/elasticsearch/guide/1.x/cardinality.html
-    qy = API.collection._translate(q)
-    qy.size = 0
-    qy.aggs = {
-      "keycard" : {
-        "cardinality" : {
-          "field" : key,
-          "precision_threshold": 40000 # this is high precision and will be very memory-expensive in high cardinality keys, with lots of different values going in to memory
-        }
-      }
-    }
-    res = API.es.call 'POST', this._route + '/_search', qy
-    return res?.aggregations?.keycard?.value
-  else
-    return this.search(q,0)?.hits?.total
+API.collection.prototype.count = (key, q, dev=API.settings.dev) ->
+  return API.es.count this._index, this._type, key, API.collection._translate(q), dev
 
-API.collection.prototype.terms = (key, size=100, counts=false, q) ->
+API.collection.prototype.min = (key, q, dev=API.settings.dev) ->
+  return API.es.min this._index, this._type, key, API.collection._translate(q), dev
+
+API.collection.prototype.max = (key, q, dev=API.settings.dev) ->
+  return API.es.max this._index, this._type, key, API.collection._translate(q), dev
+
+API.collection.prototype.range = (key, q, dev=API.settings.dev) ->
+  return API.es.range this._index, this._type, key, API.collection._translate(q), dev
+
+API.collection.prototype.terms = (key, q, size=100, counts=false, dev=API.settings.dev) ->
   key = key.replace('.exact','')+'.exact' if true # TODO should check the mapping to see if .exact is relevant for key, and have a way for user to decide
-  return API.es.terms this._index, this._type, key, size, counts, API.collection._translate(q)
+  return API.es.terms this._index, this._type, key, API.collection._translate(q), size, counts, dev
 
-API.collection.prototype.job = (q, fn) ->
-  return
-  # TODO for a given query set, create a job that does something with all of them
+API.collection.prototype.keys = (dev=API.settings.dev) ->
+  return API.es.keys this._index, this._type, dev
+
+API.collection.prototype.job = (q, fn, complete) ->
+  # TODO for a given query set, create a job that does some fn to all of them
+  # when the job has finished all the processes, it should run the complete fn, if it is set
+  return false
 
 API.collection.prototype.mount = (opts={}) ->
   # TODO add terms endpoint to mount as well, so that keys can be output as autocomplete lists
@@ -310,17 +328,53 @@ API.collection.prototype.mount = (opts={}) ->
       roleRequired: if typeof opts.auth?.collection?.delete is 'string' then opts.auth.collection.delete else opts.role
       action: () ->
         return if typeof opts.action?.collection?.delete is 'function' then opts.action.collection.delete() else _this.delete (if this.queryParams.confirm then true else '*'), this.queryParams.history
-  API.add opts.route + '/terms/:what',
+  API.add opts.route + '/count',
+    get:
+      authRequired: if opts.auth?.count?.get then true else opts.secure
+      roleRequired: if typeof opts.auth?.count?.get is 'string' then opts.auth.count.get else opts.role
+      action: () ->
+        return if typeof opts.action?.count?.get is 'function' then opts.action.count.get() else _this.count '', this.queryParams
+  API.add opts.route + '/keys',
+    get:
+      authRequired: if opts.auth?.keys?.get then true else opts.secure
+      roleRequired: if typeof opts.auth?.keys?.get is 'string' then opts.auth.keys.get else opts.role
+      action: () ->
+        return if typeof opts.action?.keys?.get is 'function' then opts.action.keys.get() else _this.keys()
+  API.add opts.route + '/:key/count',
+    get:
+      authRequired: if opts.auth?.count?.get then true else opts.secure
+      roleRequired: if typeof opts.auth?.count?.get is 'string' then opts.auth.count.get else opts.role
+      action: () ->
+        return if typeof opts.action?.count?.get is 'function' then opts.action.count.get() else _this.count this.urlParams.key, this.queryParams
+  API.add opts.route + '/:key/min',
+    get:
+      authRequired: if opts.auth?.min?.get then true else opts.secure
+      roleRequired: if typeof opts.auth?.min?.get is 'string' then opts.auth.min.get else opts.role
+      action: () ->
+        return if typeof opts.action?.min?.get is 'function' then opts.action.min.get() else _this.min this.urlParams.key, this.queryParams
+  API.add opts.route + '/:key/max',
+    get:
+      authRequired: if opts.auth?.max?.get then true else opts.secure
+      roleRequired: if typeof opts.auth?.max?.get is 'string' then opts.auth.max.get else opts.role
+      action: () ->
+        return if typeof opts.action?.max?.get is 'function' then opts.action.max.get() else _this.max this.urlParams.key, this.queryParams
+  API.add opts.route + '/:key/range',
+    get:
+      authRequired: if opts.auth?.range?.get then true else opts.secure
+      roleRequired: if typeof opts.auth?.range?.get is 'string' then opts.auth.range.get else opts.role
+      action: () ->
+        return if typeof opts.action?.range?.get is 'function' then opts.action.range.get() else _this.range this.urlParams.key, this.queryParams
+  API.add opts.route + '/:key/terms',
     get:
       authRequired: if opts.auth?.terms?.get then true else opts.secure
       roleRequired: if typeof opts.auth?.terms?.get is 'string' then opts.auth.terms.get else opts.role
       action: () ->
-        return if typeof opts.action?.terms?.get is 'function' then opts.action.terms.get() else _this.terms this.urlParams.what, this.queryParams.size, this.queryParams.counts is 'true', this.queryParams.q
+        return if typeof opts.action?.terms?.get is 'function' then opts.action.terms.get() else _this.terms this.urlParams.key, this.queryParams.q, this.queryParams.size, this.queryParams.counts is 'true'
     post:
       authRequired: if opts.auth?.terms?.get then true else opts.secure
       roleRequired: if typeof opts.auth?.terms?.get is 'string' then opts.auth.terms.get else opts.role
       action: () ->
-        return if typeof opts.action?.terms?.post is 'function' then opts.action.terms.post() else _this.terms this.urlParams.what, this.bodyParams.size, this.bodyParams.counts is 'true', this.bodyParams.q
+        return if typeof opts.action?.terms?.post is 'function' then opts.action.terms.post() else _this.terms this.urlParams.key, this.bodyParams.q, this.bodyParams.size, this.bodyParams.counts is 'true'
   API.add opts.route + '/:id',
     get:
       authRequired: if opts.auth?.item?.get then true else opts.secure
@@ -364,10 +418,11 @@ API.collection.prototype.mount = (opts={}) ->
     Keys can use dot notation, and can use .exact so that terms match on full terms e.g. "Mark MacGillivray" rather than partials
 
     Options that can be included:
-    If options is true, the query will be adjusted to sort by createdAt descending, so returning the newest first
+    If options is true, the query will be adjusted to sort by createdAt descending, so returning the newest first (it sets newest:true, see below)
     If options is string 'random' it will convert the query to be a random order
     If options is a number it will be assumed to be the size parameter
     Otherwise options should be an object (and the above can be provided as keys, "newest", "random")
+    If newest is true the query will have a sort desc on createdAt. If false, sort will be asc
     If "random" key is provided, "seed" can be provided too if desired, for seeded random queries
     If "restrict" is provided, should point to list of ES queries to add to the and part of the query filter
     Any other keys in the options object should be directly attributable to an ES query object
@@ -391,6 +446,10 @@ API.collection._translate = (q, opts) ->
     delete q.apikey if q.apikey?
     delete q._ if q._?
     delete q.callback if q.callback?
+    # some URL params that may be commonly used in this API along with valid ES URL query params will be removed here by default too
+    # this makes it easy to handle them in routes whilst also just passing the whole queryParams object into this translation method and still get back a valid ES query
+    delete q.key if q.key?
+    delete q.counts if q.counts?
     if JSON.stringify(q).indexOf('[') is 0
       qry.query.filtered.filter.bool.should = []
       for m in q
@@ -454,6 +513,9 @@ API.collection._translate = (q, opts) ->
     if opts.newest is true
       delete opts.newest
       opts.sort = {createdAt:{order:'desc'}}
+    else if opts.newest is false
+      delete opts.newest
+      opts.sort = {createdAt:{order:'asc'}}
     delete opts._ # delete anything that may have come from query params but are not handled by ES
     delete opts.apikey
     if opts.random

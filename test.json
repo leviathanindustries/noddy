@@ -1,0 +1,7 @@
+{
+  "hello": "world",
+  "goodbye": "cruel world",
+  "list": {
+    "internal": ["123.456.78.9","2.34.56.789"]
+  }
+}

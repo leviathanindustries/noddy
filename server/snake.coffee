@@ -21,4 +21,7 @@ API.snake.run = (path='snake_example.py', input=[1,2,3], cmd='python', limit=100
     Meteor.setTimeout (() -> future.return()), limit
     future.wait()
 
-  return JSON.parse output
+  try
+    return JSON.parse output
+  catch
+    return output

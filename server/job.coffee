@@ -1,8 +1,8 @@
 
 import { Random } from 'meteor/random'
 import Future from 'fibers/future'
-import moment from 'moment'
 import crypto from 'crypto'
+import moment from 'moment'
 
 API.job = {}
 
@@ -141,15 +141,18 @@ API.add 'job/clear/:which',
   get:
     authRequired: 'root'
     action: () ->
+      pq = _.clone this.queryParams
+      delete pq.apikey if pq.apikey?
+      pq = '*' if _.isEmpty pq
       if this.urlParams.which is 'results'
-        return job_result.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
+        return job_result.remove pq
       else if this.urlParams.which is 'processes'
-        res = job_process.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
+        res = job_process.remove pq
         return res
       else if this.urlParams.which is 'processing'
-        return job_processing.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
+        return job_processing.remove pq
       else if this.urlParams.which is 'jobs'
-        return job_job.remove if _.isEmpty(this.queryParams) then '*' else this.queryParams
+        return job_job.remove pq
       else
         return false
 
@@ -200,7 +203,7 @@ API.job.create = (job) ->
     proc.args ?= job.args # args to pass to the function, if any
     proc.args = JSON.stringify(proc.args) if proc.args? and typeof proc.args isnt 'string' # args stored in index as string so can handle different types
     if job.order is true
-      job.refresh = true # an ordered job has to use fresh results, so that it uses results created in order (else why bother ordering it?)
+      job.refresh = 0 # an ordered job has to use fresh results, so that it uses results created in order (else why bother ordering it?)
       proc.job = job._id # only needed if job has order, and otherwise should not be set as processes can be shared across jobs
       proc.order = parseInt(i)
       proc.available = not proc.order # only first process is available to start
@@ -225,8 +228,9 @@ API.job.create = (job) ->
     proc.callback ?= job.callback # optional callback name string per job or process, will call when process completes. Processes do return too, so either way is good
     proc.signature = API.job._sign proc.function, proc.args # combines with refresh to decide if need to run process or just pick up result from a same recent process
 
+    job.refresh = 0 if job.refresh is true
     job.refresh = parseInt(job.refresh) if typeof job.refresh is 'string'
-    if job.refresh is true or job.refresh is 0 or proc.callback? or proc.repeat?
+    if job.refresh is 0 or proc.callback? or proc.repeat?
       proc._id = Random.id()
       imports.push proc
     else
@@ -263,8 +267,94 @@ API.job.create = (job) ->
     API.job.complete job
   return job
 
+API.job.time = (cron,hhmm) -> # hhmm just allows a simple way to pass in daily 0500 (will also accept 500)
+  res = {provided: cron, expanded: {}, next: {}}
+  d = new Date()
+  if cron is 'delete' or cron is 'remove' or cron is false
+    res.cron = ''
+  else if cron is 'yearly' or cron is 'annually'
+    res.cron = '0 0 1 1 *'
+  else if cron is 'monthly'
+    res.cron = '0 0 1 * *'
+  else if cron is 'weekly'
+    res.cron = '0 0 * * 0'
+  else if cron is 'daily' or cron is 'midnight'
+    hhmm = hhmm.toString() if typeof hhmm is 'number'
+    if typeof hhmm is 'string'
+      if hhmm.length < 3
+        cron = '0 ' + cron
+      else if hhmm.length is 3
+        cron = hhmm.substring(1,3) + ' ' + hhmm.substring(0,1)
+      else if hhmm.length < 5
+        cron = hhmm.substring(2,4) + ' ' + hhmm.substring(0,2).replace('0','') # replace a leading 0 with nothing, does not affect 00 because only replaces the first one
+    else
+      res.cron = '0 0'
+    res.cron += ' * * *'
+  else if cron is 'hourly'
+    res.cron = '0 * * * *'
+  else if cron.indexOf('minute') is 0 or cron is '*'
+    res.cron = '* * * * *'
+  parts = res.cron.split(' ')
+  res.parts = 
+    minute: parts[0] # 0-59 also allow comma separations e.g. 1,2,3,5-7,9. And * for everything
+    hour: parts[1] # 0-23
+    monthday: parts[2] # 1-31
+    month: parts[3] # 1-12 or jan-dec or january-december
+    weekday: parts[4] # 0-6 or sun-sat or sunday-saturday
+  months = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec']
+  weekdays = ['su','mo','tu','we','th','fr','sa']
+  for p of res.parts
+    res.parts[p] = res.parts[p].replace(/ /g,'').toLowerCase()
+    if res.parts[p] is '*'
+      res.parts[p] = if p is 'minute' then '0-59' else if p is 'hour' then '0-23' else if p is 'monthday' then '1-31' else if p is month then '1-12' else '0-6'
+    res.expanded[p] = []
+    for val in res.parts[p].split(',')
+      vd = val.split('-')
+      left = vd[0]
+      right = if vd.length is 2 then vd[1] else undefined
+      for m of months
+        left = m if left.indexOf(months[m]) is 0
+        right = m if right? and right.indexOf(months[m]) is 0
+      for w of weekdays
+        left = w if left.indexOf(weekdays[w]) is 0
+        right = w if right? and right.indexOf(weekdays[w]) is 0
+      left = parseInt(left)
+      res.expanded[p].push left
+      res.next[p] = left if (d['get'+(if p is 'minute' then 'Minutes' else if p is 'hour' then 'Hours' else if p is 'monthday' then 'Date' else if p is 'month' then 'Month' else 'Day')]() + (if p is 'month' then 1 else 0)) < left
+      if right?
+        right = parseInt(right)
+        while left < right
+          left += 1
+          res.expanded[p].push left
+          res.next[p] ?= left if (d['get'+(if p is 'minute' then 'Minutes' else if p is 'hour' then 'Hours' else if p is 'monthday' then 'Date' else if p is 'month' then 'Month' else 'Day')]() + (if p is 'month' then 1 else 0)) < left
+      # could add checking here to see if left or right is out of acceptable range for the given time part
+    res.next[p] ?= res.expanded[p][0]
+  nd = new Date(d.getFullYear(), res.next['month']-1, res.next['hour'], res.next['minute'])
+  # if nd is not one of the allowed weekdays, roll it forward until it is
+  # TODO handle year rollover
+  res.next.timestamp = nd.valueOf()
+  if nd.getDay() isnt res.next.weekday
+    wdf = res.next.weekday-nd.getDay()
+    res.next.timestamp += 86400000 * (if wdf < 0 then (7-wdf) else wdf)
+  res.next.date = moment(res.next.timestamp, "x").format "YYYY-MM-DD HHmm.ss"
+  res.now = Date.now()
+  res.next.limit = res.next.timestamp - res.now
+  return res
+  
+API.job.cron = (fn, args, title, cron, repeat=true) -> # repeat could be a timestamp to repeat until, or a time string for a simple way to create dailies, or a number of repeats, e.g. could do every day until ten have been done
+  title ?= fn
+  cron = API.job.time(cron,repeat) if typeof cron isnt 'object'
+  if not fn?
+    return job_process.fetch 'cron:*', true
+  else if cron.parsed is '' and jp = job_process.get(title)?
+    job_process.remove {group:title}
+    return true
+  else
+    job_limit.insert {_id: p.group, group: p.group, limit: cron.next.limit}
+    return job_process.insert {priority: 10000, group: title, function: fn, args: args, signature: API.job._sign(fn,args), cron: cron.parsed, repeat: repeat, limit: cron.next.limit}
+  
 API.job.limit = (limitms,fn,args,group,refresh=0) -> # directly create a sync throttled process
-  pr = {priority:10000,_id:Random.id(),group:(group ? fn), function: fn, args: args, signature: API.job._sign(fn,args), limit: limitms}
+  pr = {priority:10000, _id:Random.id(), group:(group ? fn), function: fn, args: args, signature: API.job._sign(fn,args), limit: limitms}
   if typeof refresh is 'number' and refresh isnt 0
     match = {must:[{term:{'signature.exact':pr.signature}},{range:{createdAt:{gt:Date.now() - refresh}}}], must_not:[{exists:{field:'_raw_result.error'}}]}
     jr = job_result.find match, true
@@ -345,14 +435,16 @@ API.job.process = (proc) ->
     proc._raw_result[proc.function] = _original # put the original result back on, for return later
 
   job_processing.remove proc._id
-  if proc.repeat
+  # keep repeating if repeat is true, or if it is a number greater than 0 and less than a datestamp of before around 16092017, or not a number (unlikely), or a datestamp number after now
+  if proc.repeat and (typeof proc.repeat isnt 'number' or proc.repeat > Date.now() or proc.repeat < 1505519916316)
     proc.original ?= proc._id
     pn = JSON.parse(JSON.stringify(proc))
     pn.previous = proc._id
     delete pn._raw_result
-    pn.repeat -= 1 if pn.repeat? and typeof pn.repeat is 'number'
+    pn.repeat -= 1 if pn.repeat? and typeof pn.repeat is 'number' and pn.repeat < Date.now() # repeat can be a future timestamp to keep repeating until
     pn.counter ?= 1
     pn.counter += 1
+    pn.limit = API.job.time(pn.cron) if pn.cron
     pn._id = Random.id()
     job_process.insert pn
   else if proc.order
@@ -388,7 +480,13 @@ API.job.next = () ->
     # and if legit and being hit on every available machine in the cluster, should trigger alert to start more cluster machines?
     API.log {msg:'Not running more jobs, job max memory reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
   else
-    API.log {msg:'Checking for jobs to run', ignores: {groups:API.job._ignoregroups,ids:API.job._ignoreids}, function:'API.job.next', level:'debug'}
+    # use console.log on dev because otherwise having a job check log every second gets in the way of other logs
+    # but it is still handy to see on dev to easily know things are running. Only create an API.log if log level is all
+    if API.settings.dev
+      console.log 'Checking for jobs to run'
+      console.log API.job._ignoregroups
+      console.log API.job._ignoreids
+    API.log {msg:'Checking for jobs to run', ignores: {groups:API.job._ignoregroups,ids:API.job._ignoreids}, function:'API.job.next', level:'all'}
     match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
     match.must_not.push({term: 'group.exact':g}) for g of API.job._ignoregroups
     match.must_not.push({term: '_id':m}) for m of API.job._ignoreids
@@ -423,27 +521,26 @@ API.job.next = () ->
       return false
 
 API.job.reload = (q='*') ->
+  # reload everything that was not done if q is true, or reload every process that 
+  # matches the job id if q is a job id, or reload every processing that matches the 
+  # query if it is a query. Default is a * query which means everything already 
+  # processing will be reloaded
   ret = 0
   reloads = []
-  if q isnt '*' and job = job_job.get q
+  _reload_job_processes = (job) ->
     for p in job.processes
-      proc = if p._id? then job_processing.get(p._id) else undefined
-      if proc?
+      job_processing.remove(p._id) if job_processing.get(p._id)?
+      if not job_result.get(p._id)? and not job_process.get(p._id)?
         ret += 1
-        job_processing.remove proc._id
-        if not job_result.get(proc._id)? and not job_process.get(proc._id)?
-          proc.reloaded ?= []
-          proc.reloaded.push proc.createdAt
-          reloads.push proc
+        p.reloaded ?= []
+        p.reloaded.push p.createdAt
+        reloads.push p
+  if q is true
+    job_job.each 'NOT done:true', ((job) -> _reload_job_processes(job))
+  else if q isnt '*' and job = job_job.get q
+    _reload_job_processes job
   else
-    job_processing.each q, ((proc) ->
-      ret += 1
-      if not job_result.get(proc._id)? and not job_process.get(proc._id)?
-        proc.reloaded ?= []
-        proc.reloaded.push proc.createdAt
-        reloads.push proc
-    )
-    job_processing.remove q
+    job_processing.each q, ((proc) -> _reload_job_processes {processes:[proc]})
   if reloads.length
     job_process.import(reloads)
   return ret
@@ -528,7 +625,7 @@ API.job.complete = (jobid) ->
 API.job.rerun = (jobid,uid) ->
   job = job_job.get jobid
   job.user = uid if uid
-  job.refresh = true
+  job.refresh = 0
   _id: job_job.insert {new:true, user:job.user, processed: 0}
   Meteor.setTimeout (() -> API.job.create job), 5
   return data: {job:job._id}

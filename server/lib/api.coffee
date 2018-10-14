@@ -123,6 +123,7 @@ API.add '/',
     res =
       name: if API.settings.name then API.settings.name else 'API'
       version: if API.settings.version then API.settings.version else "0.0.1"
+      dev: API.settings.dev
       listing: []
     rts = {}
     for k in API._routes

@@ -6,6 +6,7 @@ import html2txt from 'html-to-text'
 import textract from 'textract' # note this requires installs on the server for most conversions
 import xml2js from 'xml2js'
 import PDFParser from 'pdf2json'
+import stream from 'stream'
 
 import canvg from 'canvg'
 import atob from 'atob'
@@ -176,7 +177,8 @@ API.convert.csv2json = Async.wrap (url,content,opts,callback) ->
     return recs # this probably needs to be on end of data stream
   else
     converter = new Converter({})
-    converter.fromString content, (err,result) -> return callback(null,result)
+    converter.fromString content, (err,result) -> 
+      return callback(null,result)
 
 API.convert.table2json = (url,content,opts) ->
   content = HTTP.call('GET', url).content if url?
@@ -248,11 +250,31 @@ API.convert.pdf2txt = Async.wrap (url, content, opts={}, callback) ->
   if typeof opts isnt 'object'
     callback = opts
     opts = {}
+  opts.timeout ?= 20000
   pdfParser = new PDFParser(this,1)
   pdfParser.on "pdfParser_dataReady", (pdfData) ->
     return callback(null,pdfParser.getRawTextContent())
-  content = new Buffer (if url? then HTTP.call('GET',url,{npmRequestOptions:{encoding:null}}).content else content)
-  pdfParser.parseBuffer(content)
+  pdfParser.on "pdfParser_dataError", () ->
+    return callback(null,'')
+  try
+    content = new Buffer (if url? then HTTP.call('GET',url,{timeout:20000,npmRequestOptions:{encoding:null}}).content else content)
+    pdfParser.parseBuffer(content)
+  catch
+    return callback(null,'')
+  # some PDF seem to cause an endless wait, such as 
+  # https://www.carolinaperformingarts.org/wp-content/uploads/2015/04/Butoh-Bibliography-guide.pdf
+  # so only wait for up to a minute
+  # but still found a worse problem. This URL:
+  # https://www.thoracic.org/patients/patient-resources/breathing-in-america/resources/chapter-23-sleep-disordered-breathing.pdf
+  # spikes cpu to 100% and never times out... weird. It does not take long to download normally. Have not figured out how to catch this...
+  # and it makes the system unusable
+  waited = 0
+  while waited < opts.timeout
+    future = new Future()
+    Meteor.setTimeout (() -> future.return()), 5000
+    future.wait()
+    waited += 5000
+  return callback(null,'')
 
 API.convert.pdf2json = Async.wrap (url, content, opts={}, callback) ->
   if typeof content is 'function'
@@ -261,11 +283,24 @@ API.convert.pdf2json = Async.wrap (url, content, opts={}, callback) ->
   if typeof opts isnt 'object'
     callback = opts
     opts = {}
+  opts.timeout ?= 20000
   pdfParser = new PDFParser();
   pdfParser.on "pdfParser_dataReady", (pdfData) ->
     return callback(null,pdfData)
-  content = new Buffer (if url? then HTTP.call('GET',url,{npmRequestOptions:{encoding:null}}).content else content)
-  pdfParser.parseBuffer(content)
+  pdfParser.on "pdfParser_dataError", () ->
+    return callback(null,{})
+  try
+    content = new Buffer (if url? then HTTP.call('GET',url,{timeout:20000,npmRequestOptions:{encoding:null}}).content else content)
+    pdfParser.parseBuffer(content)
+  catch
+    return callback(null,{})
+  waited = 0
+  while waited < opts.timeout
+    future = new Future()
+    Meteor.setTimeout (() -> future.return()), 5000
+    future.wait()
+    waited += 5000
+  return callback(null,{})
 
 API.convert.xml2txt = (url,content) ->
   return API.convert.file2txt(url,content,{from:'application/xml'})
@@ -279,13 +314,7 @@ API.convert.xml2json = Async.wrap (url, content, callback) ->
   parser.parseString content, (err, result) -> return callback(null,result)
 
 # using meteorhacks:async and Async.wrap seems to work better than using Meteor.wrapAsync
-API.convert.json2csv = Async.wrap (opts={}, url, content, callback) ->
-  if typeof url is 'function'
-    content = url
-    url = undefined
-  if typeof content is 'function'
-    callback = content
-    content = undefined
+API.convert.json2csv = (opts={}, url, content) ->
   console.log(content.length) if content # KEEP THIS HERE - oddly, having this here stops endpoints throwing a write before end error and crashing the app when they try to serve out the csv, so just keep this here
   content = JSON.parse(HTTP.call('GET', url).content) if url?
   if opts.subset
@@ -299,13 +328,29 @@ API.convert.json2csv = Async.wrap (opts={}, url, content, callback) ->
         content = c
       else
         content = content[p]
+  fields = []
   for l in content
-    for k in l
-      k = k.join(',') if Array.isArray(k)
-  opts.data = content
-  json2csv opts, (err, result) ->
-    result = result.replace(/\\r\\n/g,'\r\n') if result
-    return callback(null,result)
+    for k of l
+      fields.push(k) if fields.indexOf(k) is -1
+      l[k] = l[k].join(',') if Array.isArray l[k]
+  opts.fields ?= fields
+  # an odd use of a stream here, passing it what is already a variable. But this 
+  # avoids json2csv OOM errors which seem to occur even if the memory is not all used
+  # moving to all stream at some point would be nice, but not done yet...
+  tf = new json2csv.Transform opts
+  res = ''
+  rs = new stream.Readable
+  rs.push JSON.stringify content
+  rs.push null
+  rs.pipe tf
+  done = false
+  tf.on 'data', (chunk) -> res += chunk
+  tf.on 'end', () -> done = true
+  while not done
+    future = new Future()
+    Meteor.setTimeout (() -> future.return()), 500
+    future.wait()
+  return res
 
 API.convert.json2json = (opts,url,content) ->
   content = HTTP.call('GET', url).content if url?

@@ -25,17 +25,48 @@ _log_flush = () ->
     _ls[_wl] = []
     if API.settings.dev
       console.log 'Flushed logs from stack ' + _wl
-      console.log imported
+      #console.log imported
       console.log 'Log stack lengths now a:' + _ls.a.length + ' b:' + _ls.b.length
   ), 5
 
 
-
+# although the log endpoint is close to what a mounted collection endpoint intends to be, 
+# and although collection mounting allows customising actions and auth, the log is sufficiently 
+# different, and is core to functionality, that it is expressly defined here instead of being a mount
 API.add 'log',
   get:
     authRequired: if API.settings.dev then undefined else 'root'
     action: () ->
-      return _log_index.search this.queryParams
+      q = API.collection._translate this.queryParams
+      res = API.es.call 'POST', API.settings.es.index + '_log/_search', q
+      res.q = q if API.settings.dev
+      return res
+
+API.add 'log/days',
+  get: () ->
+    days = []
+    mapping = API.es.call 'GET', API.settings.es.index + '_log/_mapping'
+    for m of mapping
+      if mapping[m].mappings?
+        for t of mapping[m].mappings
+          days.push t
+    return days
+
+API.add 'log/:yyyymmdd',
+  get:
+    authRequired: if API.settings.dev then undefined else 'root'
+    action: () -> 
+      q = API.collection._translate this.queryParams
+      res API.es.call 'POST', API.settings.es.index + '_log/' + (if this.urlParams.yyyymmdd is 'today' then _log_today else this.urlParams.yyyymmdd) + '/_search', q
+      res.q = q if API.settings.dev
+      return res
+  post:
+    authRequired: if API.settings.dev then undefined else 'root'
+    action: () -> 
+      q = API.collection._translate this.request.body
+      res API.es.call 'POST', API.settings.es.index + '_log/' + (if this.urlParams.yyyymmdd is 'today' then _log_today else this.urlParams.yyyymmdd) + '/_search', q
+      res.q = q if API.settings.dev
+      return res
 
 API.add 'log/stack',
   get:
@@ -71,25 +102,38 @@ API.add 'log/stack/flush',
       else
         return {info: 'Log stack is not in use'}
 
-API.add 'log/clear',
+API.add 'log/:yyyymmdd/clear',
   get:
     authRequired: if API.settings.dev then undefined else 'root'
     action: () ->
-      _ls.a = []
-      _ls.b = []
-      _log_index.remove '*'
+      if this.urlParams.yyyymmdd is 'today' or this.urlParams.yyyymmdd is _log_today
+        _ls.a = []
+        _ls.b = []
+        _log_index.remove '*'
+      else if this.urlParams.yyyymmdd is '_all'
+        _ls.a = []
+        _ls.b = []
+        API.es.call 'DELETE', API.settings.es.index + '_log'
+        _log_today = moment(Date.now(), "x").format "YYYYMMDD"
+        _log_index = new API.collection index: API.settings.es.index + '_log', type: _log_today
+      else
+        API.es.call 'DELETE', API.settings.es.index + '_log/' + this.urlParams.yyyymmdd
       return true
 
-API.add 'log/clear/_all',
-  get:
-    authRequired: if API.settings.dev then undefined else 'root'
-    action: () ->
-      _ls.a = []
-      _ls.b = []
-      API.es.call 'DELETE', API.settings.es.index + '_log'
-      _log_today = moment(Date.now(), "x").format "YYYYMMDD"
-      _log_index = new API.collection index: API.settings.es.index + '_log', type: _log_today
-      return true
+API.add 'log/:yyyymmdd/count', get: () -> return API.es.count API.settings.es.index + '_log', (if this.urlParams.yyyymmdd is 'today' then _log_today else if this.urlParams.yyyymmdd is '_all' then '' else this.urlParams.yyyymmdd), '', API.collection._translate(this.queryParams)
+
+API.add 'log/:yyyymmdd/keys', get: () -> return API.es.keys API.settings.es.index + '_log', (if this.urlParams.yyyymmdd is 'today' then _log_today else if this.urlParams.yyyymmdd is '_all' then '' else this.urlParams.yyyymmdd)
+
+API.add 'log/:yyyymmdd/:key/count', get: () -> return API.es.count API.settings.es.index + '_log', (if this.urlParams.yyyymmdd is 'today' then _log_today else if this.urlParams.yyyymmdd is '_all' then '' else this.urlParams.yyyymmdd), this.urlParams.key, API.collection._translate(this.queryParams)
+
+API.add 'log/:yyyymmdd/:key/min', get: () -> return API.es.min API.settings.es.index + '_log', (if this.urlParams.yyyymmdd is 'today' then _log_today else if this.urlParams.yyyymmdd is '_all' then '' else this.urlParams.yyyymmdd), this.queryParams.key, API.collection._translate(this.queryParams)
+
+API.add 'log/:yyyymmdd/:key/max', get: () -> return API.es.max API.settings.es.index + '_log', (if this.urlParams.yyyymmdd is 'today' then _log_today else if this.urlParams.yyyymmdd is '_all' then '' else this.urlParams.yyyymmdd), this.queryParams.key, API.collection._translate(this.queryParams)
+
+API.add 'log/:yyyymmdd/:key/range', get: () -> return API.es.range API.settings.es.index + '_log', (if this.urlParams.yyyymmdd is 'today' then _log_today else if this.urlParams.yyyymmdd is '_all' then '' else this.urlParams.yyyymmdd), this.queryParams.key, API.collection._translate(this.queryParams)
+
+API.add 'log/:yyyymmdd/:key/terms', get: () -> return API.es.terms API.settings.es.index + '_log', (if this.urlParams.yyyymmdd is 'today' then _log_today else if this.urlParams.yyyymmdd is '_all' then '' else this.urlParams.yyyymmdd), this.urlParams.key, API.collection._translate(this.queryParams), this.queryParams.size, this.queryParams.counts
+
 
 
 API.log = (opts, fn, lvl='debug') ->
@@ -152,6 +196,24 @@ API.log = (opts, fn, lvl='debug') ->
   catch err
     console.log 'API LOG ERROR\n', opts, '\n', fn, '\n', lvl, '\n', err
 
+API.logstack = (key,val) ->
+  if not key? and not val?
+    return _log_stack
+  else
+    logs = []
+    if key?
+      if val?
+        for ln in _log_stack
+          logs.push(ln) if ln[key]? and ln[key] is val
+      else
+        for ln in _log_stack
+          logs.push(ln) if ln[key]?
+    else if val
+      for ln in _log_stack
+        if val in JSON.stringify ln
+          logs.push ln
+    return logs
+    
 API.notify = (opts) ->
   try
     note = opts.notify

@@ -5,9 +5,13 @@ API.add 'use/microsoft', get: () -> return {info: 'returns microsoft things a bi
 
 API.add 'use/microsoft/academic/evaluate', get: () -> return API.use.microsoft.academic.evaluate this.queryParams
 
+API.add 'use/microsoft/bing/search', get: () -> return API.use.microsoft.bing.search this.queryParams.q
+API.add 'use/microsoft/bing/entities', get: () -> return API.use.microsoft.bing.entities this.queryParams.q
+
 API.use ?= {}
 API.use.microsoft = {}
 API.use.microsoft.academic = {}
+API.use.microsoft.bing = {}
 
 # https://docs.microsoft.com/en-gb/azure/cognitive-services/academic-knowledge/queryexpressionsyntax
 # https://docs.microsoft.com/en-gb/azure/cognitive-services/academic-knowledge/paperentityattributes
@@ -22,7 +26,7 @@ API.use.microsoft.academic.evaluate = (qry, attributes='Id,Ti,Y,D,CC,W,AA.AuN,J.
   expr = ''
   for t of qry
     expr = encodeURIComponent("Ti='" + qry[t] + "'") if t is 'title'
-  url = 'https://westus.api.cognitive.microsoft.com/academic/v1.0/evaluate?expr='+expr + '&attributes=' + attributes
+  url = 'https://api.labs.cognitive.microsoft.com/academic/v1.0/evaluate?expr='+expr + '&attributes=' + attributes
   API.log 'Using microsoft academic for ' + url
   try
     res = HTTP.call 'GET', url, {headers: {'Ocp-Apim-Subscription-Key': API.settings.use.microsoft.academic.key}}
@@ -38,6 +42,37 @@ API.use.microsoft.academic.evaluate = (qry, attributes='Id,Ti,Y,D,CC,W,AA.AuN,J.
         try r.converted.url = r.extended.S[0].U
         # TODO could parse more of extended into converted, and change result to just converted if we don't need the original junk
       return res.data
+    else
+      return { status: 'error', data: res.data}
+  catch err
+    return { status: 'error', data: 'error', error: err}
+
+
+
+# https://docs.microsoft.com/en-gb/rest/api/cognitiveservices/bing-entities-api-v7-reference
+API.use.microsoft.bing.entities = (q) ->
+  url = 'https://api.cognitive.microsoft.com/bing/v7.0/entities?mkt=en-GB&q=' + q
+  API.log 'Using microsoft entities for ' + url
+  try
+    res = HTTP.call 'GET', url, {timeout: 10000, headers: {'Ocp-Apim-Subscription-Key': API.settings.use.microsoft.bing.key}}
+    if res.statusCode is 200
+      return res.data
+    else
+      return { status: 'error', data: res.data}
+  catch err
+    return { status: 'error', data: 'error', error: err}
+
+
+# https://docs.microsoft.com/en-gb/rest/api/cognitiveservices/bing-web-api-v7-reference#endpoints
+# annoyingly Bing search API does not provide exactly the same results as the actual Bing UI.
+# and it seems the bing UI is sometimes more accurate
+API.use.microsoft.bing.search = (q) ->
+  url = 'https://api.cognitive.microsoft.com/bing/v7.0/search?mkt=en-GB&count=20&q=' + q
+  API.log 'Using microsoft bing for ' + url
+  try
+    res = HTTP.call 'GET', url, {timeout: 10000, headers: {'Ocp-Apim-Subscription-Key': API.settings.use.microsoft.bing.key}}
+    if res.statusCode is 200 and res.data.webPages?.value
+      return {total: res.data.webPages.totalEstimatedMatches, data: res.data.webPages.value}
     else
       return { status: 'error', data: res.data}
   catch err

@@ -46,7 +46,6 @@ _oab_requests_sherpa = (res) ->
   return res
 
 
-
 API.add 'scripts/2noddy/catchup',
   get:
     authRequired: 'root'

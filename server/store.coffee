@@ -239,7 +239,7 @@ API.store.retrieve = (path, user, token) ->
       str = fs.createWriteStream fn # TODO need to check that cluster docker machines will have somewhere to write
       done = false
       str.on 'close', () -> done = true
-      request.get(API.settings.store.local + path + '?token=' + token + '&apikey=' + user?.api.keys[0].key).pipe str
+      request.get(API.settings.store.local + path + '?token=' + token + '&apikey=' + user?.api.keys[0].key).pipe str # TODO can this be changed away from using request yet?
       while not done
         future = new Future();
         Meteor.setTimeout (() -> future.return()), 500

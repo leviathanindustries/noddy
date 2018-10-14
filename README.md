@@ -195,7 +195,7 @@ node main.js
 
 ### The main gateway machine will need more
 
-The main gateway machine also needs nginx and squid, and ufw rules to allow routing connections to the ES cluster
+The main gateway machine also needs nginx and squid
 
 apt-get install mcelog nginx sysv-rc-conf bc vnstat
 

@@ -52,7 +52,7 @@ API.add 'ping/:shortid',
     if this.urlParams.shortid is 'random' and this.queryParams.url
       # may want to disbale this eventually as it makes it easy to flood the server, if auth is added on other routes
       return API.ping this.queryParams.url, this.urlParams.shortid
-    else if exists = pings.get this.urlParams.shortid and exists.url?
+    else if exists = pings.get(this.urlParams.shortid) and exists.url?
         count = exists.count ? 0
         count += 1
         pings.update exists._id, {count:count}
