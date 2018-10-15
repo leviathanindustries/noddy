@@ -66,14 +66,21 @@ API.use.microsoft.bing.entities = (q) ->
 # https://docs.microsoft.com/en-gb/rest/api/cognitiveservices/bing-web-api-v7-reference#endpoints
 # annoyingly Bing search API does not provide exactly the same results as the actual Bing UI.
 # and it seems the bing UI is sometimes more accurate
-API.use.microsoft.bing.search = (q) ->
-  url = 'https://api.cognitive.microsoft.com/bing/v7.0/search?mkt=en-GB&count=20&q=' + q
-  API.log 'Using microsoft bing for ' + url
-  try
-    res = HTTP.call 'GET', url, {timeout: 10000, headers: {'Ocp-Apim-Subscription-Key': API.settings.use.microsoft.bing.key}}
-    if res.statusCode is 200 and res.data.webPages?.value
-      return {total: res.data.webPages.totalEstimatedMatches, data: res.data.webPages.value}
-    else
-      return { status: 'error', data: res.data}
-  catch err
-    return { status: 'error', data: 'error', error: err}
+API.use.microsoft.bing.search = (q, cache=false, refresh, key=API.settings.use.microsoft.bing.key) ->
+  if cache and cached = API.http.cache q, 'bing_search', undefined, refresh
+    cached.cache = true
+    return cached
+  else
+    url = 'https://api.cognitive.microsoft.com/bing/v7.0/search?mkt=en-GB&count=20&q=' + q
+    API.log 'Using microsoft bing for ' + url
+    try
+      res = HTTP.call 'GET', url, {timeout: 10000, headers: {'Ocp-Apim-Subscription-Key': key}}
+      if res.statusCode is 200 and res.data.webPages?.value
+        ret = {total: res.data.webPages.totalEstimatedMatches, data: res.data.webPages.value}
+        API.http.cache(pmcid, 'bing_search', ret) if cache and ret.total
+        return ret
+      else
+        return { status: 'error', data: res.data}
+    catch err
+      return { status: 'error', data: 'error', error: err}
+
