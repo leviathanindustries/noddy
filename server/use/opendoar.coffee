@@ -6,6 +6,8 @@
 # example:
 # http://opendoar.org/api13.php?fields=rname&kwd=Aberdeen%20University%20Research%20Archive
 
+opendoar_record = new API.collection {index:"opendoar",type:"record"}
+
 API.use ?= {}
 API.use.opendoar = {}
 
@@ -15,10 +17,29 @@ API.add 'use/opendoar/search',
 API.add 'use/opendoar/search/:qry',
   get: () -> return API.use.opendoar.search this.urlParams.qry,this.queryParams.show,this.queryParams.raw
 
+API.add 'use/opendoar/download', 
+  get: 
+    roleRequired:'root'
+    action: () -> 
+      return API.use.opendoar.download()
+
+API.add 'use/opendoar/download.csv', 
+  get: 
+    roleRequired:'root'
+    action: () -> 
+      API.convert.json2csv2response(this,API.use.opendoar.download().data)
+
 API.add 'use/opendoar/index',
   get:
-    #roleRequired: 'root'
-    action: () -> return API.use.opendoar.index()
+    roleRequired: 'root'
+    action: () ->
+      res = API.use.opendoar.index()
+      API.mail.send {to: 'alert@cottagelabs.com', subject: 'Opendoar index complete', text: 'Done'}
+      return res
+
+API.add 'use/opendoar', { get: (() -> return opendoar_record.search(this.queryParams)), post: (() -> return opendoar_record.search(this.bodyParams)) }
+API.add 'use/opendoar.csv', { get: (() -> API.convert.json2csv2response(this, opendoar_record.search(this.queryParams ? this.bodyParams))), post: (() -> API.convert.json2csv2response(this, opendoar_record.search(this.queryParams ? this.bodyParams))) }
+
 
 
 API.use.opendoar.parse = (rec) ->
@@ -119,16 +140,8 @@ API.use.opendoar.download = (show='max') ->
     return { status: 'error', error: err}
 
 API.use.opendoar.index = () ->
-  dl = API.use.opendoar.download()
-  ret = {total:dl.total,success:0,error:0,errors:[]}
-  for rec in dl.data
-    res = API.es.insert '/opendoar/repository/' + rec._id, rec
-    if not res.info?
-      ret.success += 1
-    else
-      ret.errors.push res
-      ret.error += 1
-  return ret
+  opendoar_record.remove '*'
+  return opendoar_record.import API.use.opendoar.download().data
 
 
 

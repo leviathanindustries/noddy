@@ -10,12 +10,45 @@
 # and <romeoapi version="2.9.9"><publishers><publisher><romeocolour> gives the romeo colour
 # (interestingly Elsevier is green...)
 
+import moment from 'moment'
+import fs from 'fs'
+
+
+sherpa_romeo = new API.collection {index:"sherpa",type:"romeo"}
+
 API.use ?= {}
 API.use.sherpa = {romeo:{}}
 
 API.add 'use/sherpa/romeo/search', get: () -> return API.use.sherpa.romeo.search this.queryParams
 
 API.add 'use/sherpa/romeo/colour/:issn', get: () -> return API.use.sherpa.romeo.colour this.urlParams.issn
+
+API.add 'use/sherpa/romeo/updated', get: () -> return API.use.sherpa.romeo.updated()
+
+API.add 'use/sherpa/romeo/download', 
+  get: 
+    roleRequired:'root'
+    action: () -> 
+      return API.use.sherpa.romeo.download()
+
+API.add 'use/sherpa/romeo/download.csv', 
+  get: 
+    roleRequired:'root'
+    action: () -> 
+      API.convert.json2csv2response(this,API.use.sherpa.romeo.download().data)
+
+API.add 'use/sherpa/romeo/index', 
+  get: 
+    roleRequired:'root'
+    action: () -> 
+      res = API.use.sherpa.romeo.index()
+      API.mail.send {to: 'alert@cottagelabs.com', subject: 'Sherpa Romeo index complete', text: 'Done'}
+      return res
+
+API.add 'use/sherpa/romeo', { get: (() -> return sherpa_romeo.search(this.queryParams)), post: (() -> return sherpa_romeo.search(this.bodyParams)) }
+API.add 'use/sherpa/romeo.csv', { get: (() -> API.convert.json2csv2response(this, sherpa_romeo.search(this.queryParams ? this.bodyParams))), post: (() -> API.convert.json2csv2response(this, sherpa_romeo.search(this.queryParams ? this.bodyParams))) }
+# INFO: sherpa romeo is one dataset, and fact and ref are built from it. Opendoar is the repo directory, a separate dataset
+
 
 
 API.use.sherpa.romeo.search = (params) ->
@@ -24,46 +57,115 @@ API.use.sherpa.romeo.search = (params) ->
   url = 'http://www.sherpa.ac.uk/romeo/api29.php?ak=' + apikey + '&'
   url += q + '=' + params[q] + '&' for q of params
   API.log 'Using sherpa romeo for ' + url
-  res = HTTP.call 'GET', url
-  if res.statusCode is 200
-    result = API.convert.xml2json undefined, res.content
-    return {journals: result.romeoapi.journals, publishers: result.romeoapi.publishers}
-  else
-    return { status: 'error', data: result}
-
-API.use.sherpa.romeo.colour = (issn) ->
-	resp = API.use.sherpa.romeo.search {issn:issn}
-	try
-		return resp.publishers[0].publisher[0].romeocolour[0]
-	catch err
-		return { status: 'error', data: resp, error: err}
-
-# TODO download and index are just copies of opendoar, should actually find out how to download and index sherpa
-API.use.sherpa.romeo.download = () ->
-  url = ''
   try
     res = HTTP.call 'GET', url
     if res.statusCode is 200
-      js = API.convert.xml2json undefined,res.content
+      result = API.convert.xml2json undefined, res.content
+      return {journals: result.romeoapi.journals, publishers: result.romeoapi.publishers}
+    else
+      return { status: 'error', data: result}
+  catch err
+    return { status: 'error', error: err}
+
+API.use.sherpa.romeo.colour = (issn) ->
+  if rec = sherpa_romeo.find({issn: issn}) and rec.publisher?.colour?
+    return rec.publisher.colour
+  else
+    resp = API.use.sherpa.romeo.search {issn:issn}
+    try
+      return resp.publishers[0].publisher[0].romeocolour[0]
+    catch err
+      return { status: 'error', data: resp, error: err}
+
+API.use.sherpa.romeo.updated = () ->
+  apikey = API.settings.use?.romeo?.apikey
+  return { status: 'error', data: 'NO ROMEO API KEY PRESENT!'} if not apikey
+  url = 'http://www.sherpa.ac.uk/downloads/download-dates.php?ak=' + apikey
+  try
+    res = HTTP.call 'GET', url
+    if res.statusCode is 200
+      result = API.convert.xml2json undefined, res.content
+      ret = 
+        publishers:
+          added: result['download-dates'].publisherspolicies[0].latestaddition[0]
+          updated: result['download-dates'].publisherspolicies[0].latestupdate[0]
+        journals:
+          added: result['download-dates'].journals[0].latestaddition[0]
+          updated: result['download-dates'].journals[0].latestupdate[0]
+      ret.latest = if moment(ret.publishers.added).valueOf() > moment(ret.publishers.updated).valueOf() then ret.publishers.added else ret.publishers.updated
+      ret.latest = if moment(ret.latest).valueOf() > moment(ret.journals.added).valueOf() then ret.latest else ret.journals.added
+      ret.latest = if moment(ret.latest).valueOf() > moment(ret.journals.updated).valueOf() then ret.latest else ret.journals.updated
+      try ret.last = sherpa_romeo.find('*', true).created_date
+      ret.new = not ret.last? or moment(ret.latest).valueOf() > moment(ret.last,'YYYY-MM-DD HHmm.ss').valueOf()
+      return ret
+    else
+      return { status: 'error', data: result}
+  catch err
+    return { status: 'error', error: err}
+
+API.use.sherpa.romeo.download = () ->
+  apikey = API.settings.use?.romeo?.apikey
+  return { status: 'error', data: 'NO ROMEO API KEY PRESENT!'} if not apikey
+  updated = API.use.sherpa.updated()
+  localcopy = '.sherpa_romeo_journal_issns.csv'
+  if fs.existsSync(localcopy) and moment(updated.latest).valueOf() < fs.statSync(localcopy).mtime
+    local = JSON.parse fs.readFileSync localcopy 
+    return {total: local.length, data: local}
+  try
+    url = 'http://www.sherpa.ac.uk/downloads/journal-issns.php?format=csv&ak=' + apikey
+    res = HTTP.call 'GET', url # gets a list of journal ISSNs
+    if res.statusCode is 200
+      js = API.convert.csv2json undefined, local ? res.content
       data = []
-      data.push(r) for r in js.
-      return { total: js.length, data: data}
+      for r in js
+        res = API.use.sherpa.romeo.search {issn:r.ISSN.trim().replace(' ','-')}
+        rec = {sherpa_id: r['RoMEO Record ID']}
+        for j of res.journals[0].journal[0]
+          rec[j] = res.journals[0].journal[0][j]
+        rec.publisher = {}
+        for p of res.publishers[0].publisher[0]
+          if p is '$'
+            rec.publisher.sherpa_id = res.publishers[0].publisher[0][p].id
+          else if p in ['preprints','postprints','pdfversion']
+            for ps of res.publishers[0].publisher[0][p][0]
+              if ps.indexOf('restrictions') isnt -1
+                rec.publisher[ps] = []
+                for psr in res.publishers[0].publisher[0][p][0][ps]
+                  rec.publishers[ps].push psr[ps.replace('restrictions','restriction')][0].replace(/\<.*?\>/g,'')
+              else
+                rec.publisher[ps] = res.publishers[0].publisher[0][p][ps]
+          else if p is 'conditions'
+            rec.publisher.conditions = res.publishers[0].publisher[0].conditions[0].condition
+          else if p is 'mandates'
+            rec.publisher.mandates = []
+            for pm in res.publishers[0].publisher[0].mandates
+              rec.publisher.mandates.push(pm) if pm
+          else if p is 'paidaccess'
+            for pm of res.publishers[0].publisher[0].paidaccess[0]
+              rec.publisher[pm] = res.publishers[0].publisher[0].paidaccess[0][pm][0] if res.publishers[0].publisher[0].paidaccess[0][pm].length and res.publishers[0].publisher[0].paidaccess[0][pm][0]
+          else if p is 'copyrightlinks'
+            for pc of res.publishers[0].publisher[0][p][0].copyrightlink[0]
+              rec.publisher[pc] = res.publishers[0].publisher[0][p][0].copyrightlink[0][pc][0]
+          else if p is 'romeocolour'
+            rec.publisher.colour = res.publishers[0].publisher[0][p][0]
+          else
+            rec.publisher[p] = res.publishers[0].publisher[0][p][0]
+        data.push rec
+      fs.writeFileSync localcopy, JSON.stringify(res.content)
+      return { total: data.length, data: data}
     else
       return { status: 'error', data: res}
   catch err
     return { status: 'error', error: err}
 
 API.use.sherpa.romeo.index = () ->
-  dl = API.use.sherpa.romeo.download()
-  ret = {total:dl.total,success:0,error:0,errors:[]}
-  for rec in dl.data
-    res = API.es.insert '/opendoar/repository/' + rec._id, rec
-    if not res.info?
-      ret.success += 1
-    else
-      ret.errors.push res
-      ret.error += 1
-  return ret
+  update = true
+  try update = API.use.sherpa.updated().new isnt true
+  if update
+    sherpa_romeo.remove('*') if sherpa_romeo.count() isnt 0
+    return sherpa_romeo.import API.use.sherpa.romeo.download().data
+  else
+    return 'Already up to date'
 
 
 

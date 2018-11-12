@@ -656,8 +656,9 @@ API.job.result = (jr,full) ->
 
 API.job.results = (jobid,full) ->
   results = []
-  for ji in job_job.get(jobid)?.processes
-    results.push API.job.result ji._id, full
+  try
+    for ji in job_job.get(jobid).processes
+      results.push API.job.result ji._id, full
   return results
 
 

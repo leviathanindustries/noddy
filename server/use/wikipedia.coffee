@@ -5,24 +5,65 @@ API.use.wikipedia = {}
 API.use.wikidata = {}
 API.use.wikinews = {}
 
-API.add 'use/wikipedia', get: () -> return API.use.wikipedia.lookup this.queryParams,this.queryParams.type
+API.add 'use/wikipedia', get: () -> return API.use.wikipedia.lookup this.queryParams, this.queryParams.type
 
-API.add 'use/wikidata/:qid', get: () -> return API.use.wikidata.retrieve this.urlParams.qid,this.queryParams.all
+API.add 'use/wikidata/:qid', get: () -> return API.use.wikidata.retrieve this.urlParams.qid, this.queryParams.all
 
-API.add 'use/wikidata/find', get: () -> return API.use.wikidata.find this.queryParams.q,this.queryParams.url
+API.add 'use/wikidata/find', get: () -> return API.use.wikidata.find this.queryParams.q, this.queryParams.url
+
+API.add 'use/wikidata/simplify', get: () -> return API.use.wikidata.simplify this.queryParams.qid, this.queryParams.q, this.queryParams.url
+API.add 'use/wikidata/simplify/:qid', get: () -> return API.use.wikidata.simplify this.urlParams.qid
 
 API.add 'use/wikidata/properties', get: () -> return wikidata_properties
 
 API.add 'use/wikidata/properties/:prop', get: () -> return wikidata_properties[this.urlParams.prop]
 
+API.add 'use/wikinews', get: () -> return API.use.wikinews.about this.queryParams.qid, this.queryParams.q, this.queryParams.url, this.queryParams.text?
+API.add 'use/wikinews/:qid', get: () -> return API.use.wikinews.about this.urlParams.qid, undefined, undefined, this.queryParams.text?
+API.add 'use/wikinews/text/:qid', 
+  get: () ->
+    this.response.writeHead 200,
+      'Content-type': 'text/html'
+    this.response.end API.use.wikinews.about(this.urlParams.qid, undefined, undefined, true).text
+    this.done()
+
 
 # https://en.wikinews.org/wiki/Category:Apple_Inc.
-API.use.wikinews.about = (entity) ->
-  # given the entity name, look up the wikinews category
-  # get the list of all relevant articles
-  # get all relevant articles, or just the list?
-  # process them in some way?
-  return
+API.use.wikinews.about = (qid, q, url, text=false) ->
+  news = {news: []}
+  try
+    data = API.use.wikidata.simplify qid, q, url
+    news.category = data["topic's main category"].replace('Category:','')
+    news.label = data.label
+    news.qid = data.qid
+    news.text = '' if text
+    if news.category?
+      pg = API.http.puppeteer 'https://en.wikinews.org/wiki/Category:' + news.category, 0
+      pg = pg.split('wikidialog-alternative')[1].split('<ul>')[1].split('</ul>')[0]
+      items = pg.split('</li>')
+      for item in items
+        try
+          news.news.push
+            date: item.split('<li>')[1].split(':')[0]
+            title: item.split('title="')[1].split('"')[0]
+            url: 'https://en.wikinews.org' + item.split('href="')[1].split('"')[0]
+          if text
+            news.text += '<br><br>' if news.text.length
+            news.text += API.use.wikinews.article 'https://en.wikinews.org/' + item.split('href="')[1].split('"')[0]
+  return news
+
+API.use.wikinews.article = (url) ->
+  article = ''
+  txt = API.http.puppeteer url, 0
+  txt = txt.split('id="firstHeading"')[1].split('id="Related_articles"')[0]
+  article += '<h2><a target="_blank" href="' + url + '">' + txt.split('>')[1].split('<')[0] + '</a></h2>'
+  paras = txt.split('<p>')
+  paras.shift()
+  article += '<p>' if paras.length
+  for para in paras
+    article += para.split('</p>')[0] + '</p>'
+  article += '</p>' if paras.length
+  return article
 
 API.use.wikidata.retrieve = (qid,all) ->
   if not all
@@ -58,6 +99,46 @@ API.use.wikidata.find = (entity,wurl,retrieve=true) ->
   w = API.use.wikipedia.lookup {title:entity}
   res.qid = w.data?.pageprops?.wikibase_item
   res.data = API.use.wikidata.retrieve(res.qid) if res.qid? and retrieve
+  return res
+
+API.use.wikidata.drill = (qid) ->
+  return undefined if not qid?
+  console.log 'drilling ' + qid
+  #res = {}
+  try
+    data = API.use.wikidata.retrieve qid
+    return data.label
+    #res.type = data.type
+    #res.label = data.label
+    #res.description = data.description
+    #res.wikipedia = data.wikipedia
+    #res.wid = data.wid
+    # how deep can this safely run, does it loop?
+    #for key in data.infokeys
+    #  try
+    #    res[key] = API.use.wikidata.drill data.info[key][0].mainsnak.datavalue.value.id
+  #return res
+  
+API.use.wikidata.simplify = (qid,q,url) ->
+  res = {}
+  if qid
+    res.qid = qid
+    data = API.use.wikidata.retrieve qid
+  else
+    q ?= url?.split('wiki/').pop()
+    w = API.use.wikipedia.lookup {title:q}
+    res.qid = w.data?.pageprops?.wikibase_item
+    data = API.use.wikidata.retrieve(res.qid) if res.qid?
+  if data
+    res.type = data.type
+    res.label = data.label
+    res.description = data.description
+    res.wikipedia = data.wikipedia
+    res.wid = data.wid
+    for key in data.infokeys
+      try
+        dk = API.use.wikidata.drill data.info[key][0].mainsnak.datavalue.value.id
+        res[key] = dk if dk
   return res
 
 # https://www.mediawiki.org/wiki/API:Main_page

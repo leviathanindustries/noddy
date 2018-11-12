@@ -24,6 +24,9 @@ API.add 'use/crossref/works/published/:startdate',
 API.add 'use/crossref/works/published/:startdate/:enddate',
   get: () -> return API.use.crossref.works.published this.urlParams.startdate, this.urlParams.enddate, this.queryParams.from, this.queryParams.size, this.queryParams.filter
 
+API.add 'use/crossref/types',
+  get: () -> return API.use.crossref.types()
+
 API.add 'use/crossref/journals/:issn',
   get: () -> return API.use.crossref.journals.issn this.urlParams.issn
 
@@ -41,6 +44,16 @@ API.add 'use/crossref/resolve/:doipre/:doipost', get: () -> return API.use.cross
 API.add 'use/crossref/resolve', get: () -> return API.use.crossref.resolve this.queryParams.doi
 
 
+
+API.use.crossref.types = () ->
+  url = 'https://api.crossref.org/types'
+  API.log 'Using crossref for ' + url
+  try
+    res = HTTP.call 'GET', url, {headers: header}
+    if res.statusCode is 200
+      return res.data.message.items
+    else
+      return undefined
 
 API.use.crossref.reverse = (citations,score=80) ->
   citations = [citations] if typeof citations is 'string'

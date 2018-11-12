@@ -449,7 +449,9 @@ API.es.keys = (index, type, dev=API.settings.dev, url=API.settings.es.url) ->
   catch err
     return {info: 'the call to es returned an error', err:err}
 
-API.es.import = (index, type, data, bulk=50000, dev=API.settings.dev, url=API.settings.es.url) ->
+API.es.bulk = (index, type, data, action='index', bulk=50000, dev=API.settings.dev, url=API.settings.es.url) ->
+  # https://www.elastic.co/guide/en/elasticsearch/reference/1.4/docs-bulk.html
+  # https://www.elastic.co/guide/en/elasticsearch/reference/1.4/docs-update.html
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
   index += '_dev' if dev and index.indexOf('_dev') is -1
   rows = if typeof data is 'object' and not Array.isArray(data) and data?.hits?.hits? then data.hits.hits else data
@@ -464,11 +466,17 @@ API.es.import = (index, type, data, bulk=50000, dev=API.settings.dev, url=API.se
   for r of rows
     counter += 1
     row = rows[r]
-    row._index += '_dev' if row._index? and row._index.indexOf('_dev') is -1 and dev
-    meta = {"index": {"_index": (if row._index? then row._index else index), "_type": (if row._type? then row._type else type) }}
-    meta.index._id = row._id if row._id?
+    row._index += '_dev' if typeof row isnt 'string' and row._index? and row._index.indexOf('_dev') is -1 and dev
+    meta = {}
+    meta[action] = {"_index": (if typeof row isnt 'string' and row._index? then row._index else index), "_type": (if typeof row isnt 'string' and row._type? then row._type else type) }
+    meta[action]._id = if action is 'delete' and typeof row is 'string' then row else (row._id if row._id?) # what if action is delete but can't set an ID?
     pkg += JSON.stringify(meta) + '\n'
-    pkg += JSON.stringify(if row._source then row._source else row) + '\n'
+    if action is 'create' or action is 'index'
+      pkg += JSON.stringify(if row._source then row._source else row) + '\n'
+    else if action is 'update'
+      delete row._id if row._id?
+      pkg += JSON.stringify({doc: row}) + '\n' # is it worth expecting other kinds of update in bulk import?
+    # don't need a second row for deletes
     if counter is bulk or parseInt(r) is (rows.length - 1)
       hp = RetryHttp.call 'POST', url + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
       responses.push hp

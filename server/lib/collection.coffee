@@ -40,7 +40,7 @@ API.collection.prototype.delete = (confirm, history, dev=API.settings.dev) ->
   # TODO who should be allowed to do this, and how should it be recorded in history, if history is not itself removed?
   this.remove('*') if confirm is '*'
   API.es.call('DELETE', this._route, undefined, undefined, undefined, undefined, undefined, undefined, dev) if confirm is true
-  API.es.call('DELETE', this._route + '_history', undefined, undefined, undefined, undefined, undefined, undefined, dev) if history is true and this._history
+  API.es.call('DELETE', this._route + '_history', undefined, undefined, undefined, undefined, undefined, undefined, dev) if confirm is true and history is true and this._history
   return true
 
 API.collection.prototype.history = (action, doc, uid, dev=API.settings.dev) ->
@@ -62,6 +62,7 @@ API.collection.prototype.history = (action, doc, uid, dev=API.settings.dev) ->
       delete doc.retrievedAt
       delete doc.retrieved_date
       record = false if _.isEmpty doc
+    # NOTE the bulk method below also does its own history writing if bulk changes are made to a collection with history enabled
     if record
       change =
         action: action
@@ -69,12 +70,13 @@ API.collection.prototype.history = (action, doc, uid, dev=API.settings.dev) ->
         createdAt: Date.now()
         uid: uid
       change.created_date = moment(change.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
-      change[action] = doc
+      change[action] = doc if action isnt 'remove'
       ret = API.es.call 'POST', this._route + '_history', change, undefined, undefined, undefined, undefined, undefined, dev
       if not ret?
-        change.string = JSON.stringify change[action]
-        delete change[action]
-        ret = API.es.call 'POST', this._route + '_history', change, undefined, undefined, undefined, undefined, undefined, dev
+        if change[action]?
+          change.string = JSON.stringify change[action]
+          delete change[action]
+          ret = API.es.call 'POST', this._route + '_history', change, undefined, undefined, undefined, undefined, undefined, dev
         if not ret?
           API.log msg:'History logging failing',error:err,action:action,doc:doc,uid:uid
 
@@ -92,10 +94,15 @@ API.collection.prototype.fetch_history = (q, opts={}, dev=API.settings.dev) ->
   return results if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
   while (res.hits.hits.length)
     for h in res.hits.hits
-      results.push h._source ? h.fields
+      hr = h._source ? h.fields
+      hr[hr.action] = JSON.parse(hr.string) if hr.string? and hr.action?
+      results.push hr
     res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, undefined, undefined, dev
   this.refresh(dev)
   return results
+
+# TODO add rewind and replay functions that can work through history records and apply / remove them in order to / from a given record, and allow to specify the date range to play
+# and as it is a doc with history, would need to record the last state of the doc change, and record that as a rewind / replay history event
 
 API.collection.prototype.get = (rid, versioned, dev=API.settings.dev) ->
   # TODO is there any case for recording who has accessed certain documents?
@@ -103,9 +110,6 @@ API.collection.prototype.get = (rid, versioned, dev=API.settings.dev) ->
     check = API.es.call 'GET', this._route + '/' + rid, undefined, undefined, undefined, undefined, undefined, undefined, dev
     return (if versioned then check else check._source) if check?.found isnt false and check?.status isnt 'error' and check?.statusCode isnt 404 and check?._source?
   return undefined
-
-API.collection.prototype.import = (recs, dev=API.settings.dev) ->
-  return API.es.import this._index, this._type, recs, undefined, dev
 
 API.collection.prototype.insert = (q, obj, uid, refresh, dev=API.settings.dev) ->
   if typeof q is 'string' and typeof obj is 'object'
@@ -151,7 +155,8 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial, dev
         this.history 'update', obj, uid
       return rs._version
   else
-    return this.each q, undefined, ((res) -> this.update res._id, obj, uid, refresh, versioned, partial, dev), undefined, dev
+    # TODO alter this to return something and set action to 'update' to get a bulk each instead of individual record updates
+    return this.each q, undefined, ((res) -> this.update res._id, obj, uid, refresh, versioned, partial, dev), undefined, uid, undefined, dev
 
 API.collection.prototype.remove = (q, uid, dev=API.settings.dev) ->
   if (typeof q is 'string' or typeof q is 'number') and this.get q
@@ -165,16 +170,8 @@ API.collection.prototype.remove = (q, uid, dev=API.settings.dev) ->
     API.es.map this._index, this._type, omp, undefined, dev
     return true
   else
-    return this.each q, undefined, ((res) -> this.remove res._id, uid, dev), undefined, dev
-
-API.collection.prototype.bulk = (q, fn, dev=API.settings.dev) ->
-  # TODO a way to do bulk updates and/or removes, in a way that should do something to every record in the query
-  # like an each on the update and remove functions, but it does not write after each one, instead it collects all 
-  # the changes and applies them in bulk at the end - NOTE need to consider how this impacts writing history changes 
-  # in bulk, and also versioning and version clashes
-  # it may be better for update and remove to just behave in this way anyway, depends what actions have to occur on 
-  # those records. Write this first then see what suits best
-  return false
+    # TODO alter this to return the record ID and set action to 'remove' to get a bulk each instead of individual record removes
+    return this.each q, undefined, ((res) -> this.remove res._id, uid, dev), undefined, uid, undefined, dev
 
 API.collection.prototype.search = (q, opts, versioned, dev=API.settings.dev) ->
   # NOTE is there any case for recording who has done searches? - a write for every search could be a heavy load...
@@ -212,7 +209,45 @@ API.collection.prototype.find = (q, opts, versioned, dev=API.settings.dev) ->
       API.log({ msg: 'Collection find threw error', q: q, level: 'error', error: err }) if this._route.indexOf('_log') is -1
       return undefined
 
-API.collection.prototype.each = (q, opts, fn, scroll, dev=API.settings.dev) ->
+API.collection.prototype.import = (recs, uid, dev=API.settings.dev) ->
+  return this.bulk recs, 'index', uid, undefined, dev
+
+API.collection.prototype.bulk = (recs, action, uid, bulk, dev=API.settings.dev) ->
+  # ES uses index/update/delete whereas I've used insert/update/remove in collections, so accept either her them
+  # ES accepts create too, which will only create if not already existing whereas index overwrites - but difference not needed yet
+  return false if not action? or not recs? or recs.length < 1 or typeof recs isnt 'object' or ['insert','index','update','remove','delete'].indexOf(action) is -1
+  # recs must be a list of records, or change docs, or ID strings
+  # NOTE what about versioning and version clashes
+  # is it worth the bulk process "locking" other collection writes while it runs? How would that work across a cluster? Would need a lock index...
+  # it may be better for update and remove to just behave in this way anyway, depends what actions have to occur on those records
+  # NOTE that for bulk update this so far only works with docs. Also, docs don't work on dot notation - to replace a value in an object, whole object must be specified
+  ret = API.es.bulk this._index, this._type, recs, (if action is 'insert' then 'index' else if action is 'remove' then 'delete' else action), bulk, dev
+  if ret? # what is the best check here?
+    if this._history
+      histories = []
+      for rec in recs
+        change =
+          action: if action is 'index' then 'insert' else if action is 'delete' then 'remove' else action
+          bulk: true
+          document: if typeof rec is 'object' then rec._id else rec
+          createdAt: Date.now()
+          uid: uid
+          string: JSON.stringify rec
+        change.created_date = moment(change.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
+        histories.push change
+      historied = API.es.bulk this._index, this._type + '_history', histories, undefined, undefined, dev
+      if not historied?
+        API.log msg:'Bulk history logging failing',error:err,action:action,doc:doc,uid:uid
+    return ret
+  else
+    return false
+
+API.collection.prototype.each = (q, opts, fn, action, uid, scroll, dev=API.settings.dev) ->
+  # each executes the function for each record. If the function makes changes to a record and saves those changes, 
+  # this can cause many writes to the collection. So, instead, that sort of function could return something
+  # and if the action has also been specified then all the returned values will be used to do a bulk write to the collection index.
+  # suitable returns would be entire records for insert, record update objects for update, or record IDs for remove
+  # this does not allow different actions for different records that are operated on - so has to be bulks of the same action
   if fn is undefined and typeof opts is 'function'
     fn = opts
     opts = undefined
@@ -226,18 +261,23 @@ API.collection.prototype.each = (q, opts, fn, scroll, dev=API.settings.dev) ->
   scrollids.push(res._scroll_id) if scroll?
   res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
   return 0 if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
+  total = res.hits.total
   processed = 0
+  updates = []
   while (res.hits.hits.length)
     scrollids.push(res._scroll_id) if scroll?
     processed += res.hits.hits.length
     for h in res.hits.hits
       fn = fn.bind this
-      fn h._source ? h.fields
+      fr = fn h._source ? h.fields
+      updates.push(fr) if fr? and (typeof fr is 'object' or typeof fr is 'string')
     res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
   for sid in scrollids
     try API.es.call 'DELETE', '_search/scroll', undefined, undefined, undefined, sid, undefined, undefined, dev
+  if action? and updates.length
+    this.bulk updates, action, uid, undefined, dev
   this.refresh(dev)
-  return processed
+  return if action then {total: total, updated:updates.length, processed:processed} else processed
 
 API.collection.prototype.fetch = (q, opts={}, dev=API.settings.dev) ->
   qy = API.collection._translate q, opts

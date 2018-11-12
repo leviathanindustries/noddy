@@ -13,6 +13,7 @@ import atob from 'atob'
 import Canvas from 'canvas' # not canvas requires sudo apt-get install libcairo2-dev libjpeg-dev libpango1.0-dev libgif-dev build-essential g++
 
 import Future from 'fibers/future'
+import moment from 'moment'
 
 
 
@@ -352,6 +353,21 @@ API.convert.json2csv = (opts={}, url, content) ->
     future.wait()
   return res
 
+# this does not really belong as a convert function, 
+# but it seems to have no better place, as multiple browser endpoints would want this on a collection endpoint
+API.convert.json2csv2response = (ths, data) ->
+  rows = []
+  for dr in (if data?.hits?.hits? then data.hits.hits else data)
+    rows.push if dr._source? then dr._source else if dr._fields then dr._fields else dr # should collapse fields values out of lists?
+  csv = API.convert.json2csv {fields:ths.queryParams?.fields ? ths.bodyParams?.fields}, undefined, rows
+  return API.convert.csv2response(ths,csv)
+
+API.convert.csv2response = (ths,csv) ->
+  ths.response.writeHead(200, {'Content-disposition': "attachment; filename=export_" + moment(Date.now(), "x").format("YYYY_MM_DD_HHmm_ss") + ".csv", 'Content-type': 'text/csv; charset=UTF-8', 'Content-length': csv.length, 'Content-Encoding': 'UTF-8'})
+  ths.response.end(csv)
+  ths.done()
+  return
+  
 API.convert.json2json = (opts,url,content) ->
   content = HTTP.call('GET', url).content if url?
   if opts.subset
