@@ -338,18 +338,18 @@ API.accounts.auth = (grl, user, cascade=true) ->
       API.log 'user ' + user._id + ' has role root'
       return 'root'
 
-    if user.roles[group]?.indexOf role isnt -1
+    if user.roles[group]? and role in user.roles[group]
       API.log 'user ' + user._id + ' has role ' + g
       return role
 
     # check for higher auth in cascading roles for group - TODO allow cascade on global?
-    if cascade
+    if cascade and user.roles[group]?
       cascade = ['root', 'service', 'super', 'owner', 'admin', 'auth', 'publish', 'edit', 'read', 'user', 'info', 'public'] if cascade is true
       ri = cascade.indexOf role
       if ri isnt -1
         cascs = cascade.splice 0, ri
         for rl in cascs
-          if rl in user.roles[group]?
+          if rl in user.roles[group]
             API.log 'user ' + user._id + ' has cascaded role ' + group + '.' + rl + ' overriding ' + g
             return rl
 

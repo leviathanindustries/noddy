@@ -29,13 +29,13 @@ API.add 'use/sherpa/romeo/download',
   get: 
     roleRequired:'root'
     action: () -> 
-      return API.use.sherpa.romeo.download()
+      return API.use.sherpa.romeo.download(this.queryParams.disk)
 
 API.add 'use/sherpa/romeo/download.csv', 
   get: 
     roleRequired:'root'
     action: () -> 
-      API.convert.json2csv2response(this,API.use.sherpa.romeo.download().data)
+      API.convert.json2csv2response(this,API.use.sherpa.romeo.download(this.queryParams.disk).data)
 
 API.add 'use/sherpa/romeo/index', 
   get: 
@@ -103,21 +103,25 @@ API.use.sherpa.romeo.updated = () ->
   catch err
     return { status: 'error', error: err}
 
-API.use.sherpa.romeo.download = () ->
+API.use.sherpa.romeo.download = (disk=false) ->
   apikey = API.settings.use?.romeo?.apikey
   return { status: 'error', data: 'NO ROMEO API KEY PRESENT!'} if not apikey
-  updated = API.use.sherpa.updated()
-  localcopy = '.sherpa_romeo_journal_issns.csv'
-  if fs.existsSync(localcopy) and moment(updated.latest).valueOf() < fs.statSync(localcopy).mtime
-    local = JSON.parse fs.readFileSync localcopy 
-    return {total: local.length, data: local}
+  updated = API.use.sherpa.romeo.updated()
+  localcopy = '.sherpa_romeo_data.csv'
+  if fs.existsSync(localcopy) and (disk or moment(updated.latest).valueOf() < fs.statSync(localcopy).mtime)
+    try
+      local = JSON.parse fs.readFileSync localcopy
+      if local.length
+        return {total: local.length, data: local}
   try
     url = 'http://www.sherpa.ac.uk/downloads/journal-issns.php?format=csv&ak=' + apikey
     res = HTTP.call 'GET', url # gets a list of journal ISSNs
     if res.statusCode is 200
-      js = API.convert.csv2json undefined, local ? res.content
+      js = API.convert.csv2json undefined, res.content
+      js = js.slice(0,50)
       data = []
       for r in js
+        #try
         res = API.use.sherpa.romeo.search {issn:r.ISSN.trim().replace(' ','-')}
         rec = {sherpa_id: r['RoMEO Record ID']}
         for j of res.journals[0].journal[0]
@@ -150,8 +154,10 @@ API.use.sherpa.romeo.download = () ->
             rec.publisher.colour = res.publishers[0].publisher[0][p][0]
           else
             rec.publisher[p] = res.publishers[0].publisher[0][p][0]
+        console.log rec
         data.push rec
-      fs.writeFileSync localcopy, JSON.stringify(res.content)
+      fs.writeFileSync localcopy, JSON.stringify(data,"",2)
+      API.mail.send {to: 'alert@cottagelabs.com', subject: 'Sherpa Romeo download complete', text: 'Done'}
       return { total: data.length, data: data}
     else
       return { status: 'error', data: res}
@@ -160,7 +166,7 @@ API.use.sherpa.romeo.download = () ->
 
 API.use.sherpa.romeo.index = () ->
   update = true
-  try update = API.use.sherpa.updated().new isnt true
+  try update = API.use.sherpa.romeo.updated().new isnt true
   if update
     sherpa_romeo.remove('*') if sherpa_romeo.count() isnt 0
     return sherpa_romeo.import API.use.sherpa.romeo.download().data

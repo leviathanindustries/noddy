@@ -152,8 +152,8 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial, dev
     else
       if this._history
         obj._id = rec._id
-        this.history 'update', obj, uid
-      return rs._version
+        this.history 'update', (if partial then obj else rec), uid
+      return if rs?._version? then rs._version else rs
   else
     # TODO alter this to return something and set action to 'update' to get a bulk each instead of individual record updates
     return this.each q, undefined, ((res) -> this.update res._id, obj, uid, refresh, versioned, partial, dev), undefined, uid, undefined, dev
