@@ -703,7 +703,7 @@ API.collection.test = (verbose) ->
       future.wait()
       return result.remove1 is true
     () -> #13
-      result.helloWorlds = tc.count {hello:'world'}
+      result.helloWorlds = tc.count undefined, {hello:'world'}
       return result.helloWorlds is 0
     () -> #14
       result.remove2 = tc.remove {hello:'sunshine'}
