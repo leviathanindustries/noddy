@@ -1,4 +1,29 @@
 
+# ALTERING PRODUCTION DEPLOYMENT TO PM2 INSTEAD OF FOREVER
+# THE BELOW SCRIPT IS STILL IN TESTING AND NEEDS TO BE UPDATED TO USE PM2 INSTEAD
+# HERE ARE THE INSTRUCTIONS FOR INSTALLING PM2
+
+# npm install pm2 -g
+# pm2 install pm2-logrotate
+# pm2 set pm2-logrotate:compress true
+# pm2 set pm2-logrotate:max_size 1G
+# pm2 set pm2-logrotate:retain 10
+
+# and will make a pm2 ecosystem file, which will be loaded when pm2 starts the app (which it must do from inside the folder)
+# if pm2 env has to change, must specifically start/restart with the --update-env flag
+# pm2 will restart apps after machine restart by running pm2 startup (and later running apps can be added with pm2 save)
+
+# https://pm2.io/doc/en/runtime/guide/ecosystem-file
+# https://github.com/keymetrics/pm2-logrotate
+# https://github.com/Unitech/pm2
+
+# deploying with pm2 will need the unzipped meteor bundle and the ecosystem file, as well as the meteor settings.
+# Meteor env vars should go in the ecosystem file. These things should all go in one folder, and pm2 should be called from there
+# should use datestamped noddy_* folder names and then a noddy folder name symlinked to that, so can try fresh installs but roll back on failure just by changing the symlink
+# so meteor settings will have to be written into the env settings if pm2 ecosystem config file
+# or could build the entire pm2 file from settings file
+# pm2 has deployment ecosystem configs too - can that be used to deploy instead of this script?
+
 # should have an arg parse to optionally just run a settings update instead of full deploy
 SETTINGS_ONLY=false
 if [ "$1" == "-settings" ]

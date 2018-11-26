@@ -20,19 +20,6 @@ API.http = {}
 
 API.add 'http/resolve', get: () -> return API.http.resolve this.queryParams.url, this.queryParams.refresh
 
-API.add 'http/phantom',
-  get: () ->
-    refresh = if this.queryParams.refresh? then (try(parseInt(this.queryParams.refresh))) else undefined
-    res = API.http.phantom this.queryParams.url, this.queryParams.delay ? 1000, refresh
-    if typeof res is 'number'
-      return res
-    else
-      return
-        statusCode: 200
-        headers:
-          'Content-Type': 'text/' + this.queryParams.format ? 'plain'
-        body: res
-
 API.add 'http/puppeteer',
   get: () ->
     refresh = if this.queryParams.refresh? then (try(parseInt(this.queryParams.refresh))) else undefined
@@ -180,7 +167,7 @@ API.http.resolve = (url,refresh=false) ->
 # goes through, so FOR ACTUALLY ACCESSING THE CONTENT OF THE PAGE PROGRAMMATICALLY, USE THE phantom.get method instead
 # here is an odd one that seems to stick forever:
 # https://kclpure.kcl.ac.uk/portal/en/publications/superior-temporal-activation-as-a-function-of-linguistic-knowledge-insights-from-deaf-native-signers-who-speechread(4a9db251-4c8e-4759-b0eb-396360dc897e).html
-
+# phantom does not work any more, just leaving the code here in case useful for reference later
 _phantom = (url,delay=1000,refresh=86400000,callback) ->
   if typeof refresh is 'function'
     callback = refresh
@@ -256,7 +243,7 @@ _phantom = (url,delay=1000,refresh=86400000,callback) ->
       return callback(null,'')
     )
 
-API.http.phantom = Meteor.wrapAsync(_phantom)
+#API.http.phantom = Meteor.wrapAsync(_phantom)
 
 
 # switch phantom completely for puppeteer using chrome instead
@@ -321,19 +308,19 @@ API.http.puppeteer = Meteor.wrapAsync(_puppeteer)
 
 ################################################################################
 
-API.add 'http/phantom/test',
+API.add 'http/puppeteer/test',
   get:
     roleRequired: (if API.settings.dev then undefined else 'root')
-    action: () -> return API.http.phantom.test this.queryParams.verbose, this.queryParams.url, this.queryParams.find
+    action: () -> return API.http.puppeteer.test this.queryParams.verbose, this.queryParams.url, this.queryParams.find
 
-API.http.phantom.test = (verbose,url='https://cottagelabs.com',find='cottage labs') ->
+API.http.puppeteer.test = (verbose,url='https://cottagelabs.com',find='cottage labs') ->
   console.log('Starting http test') if API.settings.dev
 
   result = {passed:[],failed:[]}
 
   tests = [
     () ->
-      rs = API.http.phantom(url)
+      rs = API.http.puppeteer(url)
       return typeof rs isnt 'number' and rs.toLowerCase().indexOf(find) isnt -1
   ]
 

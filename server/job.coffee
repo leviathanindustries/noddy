@@ -26,7 +26,7 @@ API.add 'job',
         j._id = job_job.insert j # jobs created to provide immediate info to user
         j.processes = if this.request.body.processes then this.request.body.processes else this.request.body
         j.refresh ?= this.queryParams.refresh
-        Meteor.setTimeout (() -> API.job.create j), 5
+        Meteor.setTimeout (() -> API.job.create j), 2
         return job:j._id
 
 API.add 'job/:job',
@@ -53,48 +53,52 @@ API.add 'job/:job/results',
     action: () ->
       job = job_job.get this.urlParams.job
       # return 401 if not API.job.allowed job,this.user
-      return 404 if not job
-      res = API.job.results this.urlParams.job, this.queryParams.full
-      if this.queryParams.format is 'csv'
-        res = API.convert.json2csv undefined,undefined,res
-        this.response.writeHead 200,
-          'Content-disposition': "attachment; filename="+(if job.name then job.name.split('.')[0].replace(/ /g,'_') + '_results' else 'results')+".csv",
-          'Content-type': 'text/csv',
-          'Content-length': res.length
-        this.response.end res
-        this.done()
-      else
-        return res
+      return API.job.results this.urlParams.job, this.queryParams.full
+API.add 'job/:job/results.csv',
+  get:
+    # authRequired: true this has to be open if people are going to share jobs, but then what about jobs is closed?
+    action: () ->
+      # return 401 if not API.job.allowed job,this.user
+      return if not job = job_job.get(this.urlParams.job) then 404 else json2csv2response this, API.job.results(this.urlParams.job, this.queryParams.full), (if job.name then job.name.split('.')[0].replace(/ /g,'_') + '_results' else 'results')+".csv"
 
 API.add 'job/:job/rerun',
   get:
     authOptional: true # TODO decide proper permissions for this and pass uid to job.rerun if suitable
-    action: () -> return job: API.job.rerun(this.urlParams.job, this.userId)
+    action: () -> return API.job.rerun(this.urlParams.job, this.userId)
 
 API.add 'job/:job/reload',
   get:
     authOptional: true # TODO decide proper permissions for this and pass uid to job.rerun if suitable
-    action: () -> return job: API.job.reload(this.urlParams.job)
+    action: () -> return API.job.reload(this.urlParams.job)
 
 API.add 'job/jobs',
   get:
     authOptional: true
     action: () ->
       if this.user? and API.accounts.auth 'root', this.user
-        return job_job.search this.queryParams
+        jobs = false
+        if this.queryParams.jobs
+          delete this.queryParams.jobs
+          jobs = true
+        res = job_job.search this.queryParams
+        if not jobs
+          for r of res?.hits?.hits
+            if res.hits.hits[r]._source?.processes? then res.hits.hits[r]._source.processes = res.hits.hits[r]._source.processes.length else if res.hits.hits[r]._fields?.processes? then res.hits.hits[r]._fields.processes = res.hits.hits[r]._fields.processes.length
+        return res
       else
-        return data: job_job.count()
+        return count: job_job.count(), done: job_job.count undefined, {done: true}
 
 API.add 'job/jobs/:email',
   get:
     authRequired: not API.settings.dev
     action: () ->
-      if not API.accounts.auth('job.admin',this.user) and this.user.emails[0].address isnt this.urlParams.email
+      if this.user? and not API.accounts.auth('job.admin',this.user) and this.user.emails[0].address isnt this.urlParams.email
         return 401
       else
         results = []
-        job_job.each {email:this.urlParams.email}, ((job) -> job.processes = job.processes.length; results.push job)
-        return total:results.length, jobs: results
+        done = 0
+        job_job.each {email:this.urlParams.email}, ((job) -> job.processes = job.processes.length; done += if job.done then 1 else 0; results.push job)
+        return total: results.length, jobs: results, done: done
 
 API.add 'job/results',
   get:
@@ -103,7 +107,7 @@ API.add 'job/results',
       if this.user? and API.accounts.auth 'root', this.user
         return job_result.search this.queryParams
       else
-        return data: job_result.count()
+        return count: job_result.count()
 
 API.add 'job/limits',
   get:
@@ -112,7 +116,7 @@ API.add 'job/limits',
       if this.user? and API.accounts.auth 'root', this.user
         return job_limit.search this.queryParams
       else
-        return data: job_limit.count()
+        return count: job_limit.count()
 
 API.add 'job/processes',
   get:
@@ -121,7 +125,7 @@ API.add 'job/processes',
       if this.user? and API.accounts.auth 'root', this.user
         return job_process.search this.queryParams
       else
-        return data: job_process.count()
+        return count: job_process.count()
 
 API.add 'job/processing',
   get:
@@ -130,7 +134,7 @@ API.add 'job/processing',
       if this.user? and API.accounts.auth 'root', this.user
         return job_processing.search this.queryParams
       else
-        return data: job_processing.count()
+        return count: job_processing.count()
 
 API.add 'job/processing/reload',
   get:
@@ -174,11 +178,18 @@ API.add 'job/stop',
 
 
 
-API.job._sign = (fn,args,checksum=true) ->
-  args = JSON.stringify(args) if args? and typeof args isnt 'string'
-  sig = encodeURIComponent(fn + '_' + args) # just used to use this, but got some where args were too long
-  csig = crypto.createHash('md5').update(sig, 'utf8').digest('base64')
-  return if checksum then csig else sig
+API.job._sign = (fn='', args, checksum=true) ->
+  fn += '_'
+  if typeof args is 'string'
+    fn += args
+  else
+    try
+      for a in _.keys(args).sort()
+        fn += a + '_' + JSON.stringify args[a]
+    catch
+      fn += JSON.stringify args
+  sig = encodeURIComponent(fn) # just used to use this, but got some where args were too long
+  return if checksum then crypto.createHash('md5').update(sig, 'utf8').digest('base64') else sig
 
 API.job.allowed = (job,uacc) ->
   job = job_job.get(job) if typeof job is 'string'
@@ -227,6 +238,8 @@ API.job.create = (job) ->
     # However the returned (or callbacked) result object will still have the JSON version as normal.
     proc.callback ?= job.callback # optional callback name string per job or process, will call when process completes. Processes do return too, so either way is good
     proc.signature = API.job._sign proc.function, proc.args # combines with refresh to decide if need to run process or just pick up result from a same recent process
+    proc.createdAt = Date.now()
+    proc.created_date = moment(proc.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
 
     job.refresh = 0 if job.refresh is true
     job.refresh = parseInt(job.refresh) if typeof job.refresh is 'string'
@@ -252,7 +265,7 @@ API.job.create = (job) ->
     job.processes[i] = proc
 
   if imports.length
-    job_process.import(imports)
+    job_process.import imports
     job.processed = job.processes.length - imports.length
 
   # NOTE job can also have a "complete" function string name, which will be called when progress hits 100%, see below
@@ -438,7 +451,7 @@ API.job.process = (proc) ->
   # keep repeating if repeat is true, or if it is a number greater than 0 and less than a datestamp of before around 16092017, or not a number (unlikely), or a datestamp number after now
   if proc.repeat and (typeof proc.repeat isnt 'number' or proc.repeat > Date.now() or proc.repeat < 1505519916316)
     proc.original ?= proc._id
-    pn = JSON.parse(JSON.stringify(proc))
+    pn = _.clone proc
     pn.previous = proc._id
     delete pn._raw_result
     pn.repeat -= 1 if pn.repeat? and typeof pn.repeat is 'number' and pn.repeat < Date.now() # repeat can be a future timestamp to keep repeating until
@@ -449,16 +462,16 @@ API.job.process = (proc) ->
     job_process.insert pn
   else if proc.order
     job_process.update {job: proc.job, order: proc.order+1}, {available:true}
-
   try
-    job_job.each 'NOT done:true AND processes._id.exact:' + proc._id, (job) ->
+    job_job.each 'NOT done:true AND processes._id:' + proc._id, (job) ->
       job_job.update job._id, {processed:"+1"}
-      if job.processed? and job.processed >= job.processes.length - 1
+      if (job.processed ? 0) + 1 >= job.processes.length
         API.job.complete job
-  if proc.callback
-    cb = API
-    cb = cb[c] for c in proc.callback.replace('API.','').split('.')
-    cb null, proc # TODO should this go in timeout?
+  try
+    if proc.callback
+      cb = API
+      cb = cb[c] for c in proc.callback.replace('API.','').split('.')
+      cb null, proc # TODO should this go in timeout?
   return proc
 
 API.job._ignoregroups = {}
@@ -488,12 +501,13 @@ API.job.next = () ->
       console.log API.job._ignoreids
     API.log {msg:'Checking for jobs to run', ignores: {groups:API.job._ignoregroups,ids:API.job._ignoreids}, function:'API.job.next', level:'all'}
     match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
+    match.must = API.settings.job.match if API.settings.job?.match?
     match.must_not.push({term: 'group.exact':g}) for g of API.job._ignoregroups
     match.must_not.push({term: '_id':m}) for m of API.job._ignoreids
     p = job_process.find match, {sort:{priority:{order:'desc'}}, random:true} # TODO check if random sort works - may have to be more complex
     if p?
       if job_processing.get(p._id)? # because job_process is searched, there can be a delay before it reflects deleted jobs, so accept this extra load on ES
-        API.job._ignoreids[p._id] = now + 10000
+        API.job._ignoreids[p._id] = now + 2000
         future = new Future()
         Meteor.setTimeout (() -> future.return()), Math.floor((API.settings.job?.interval ? 1000)/2)
         future.wait()
@@ -529,9 +543,10 @@ API.job.reload = (q='*') ->
   reloads = []
   _reload_job_processes = (job) ->
     for p in job.processes
-      job_processing.remove(p._id) if job_processing.get(p._id)?
+      try job_processing.remove(p._id)
       if not job_result.get(p._id)? and not job_process.get(p._id)?
         ret += 1
+        try delete p.signature # some old jobs had bad signatures
         p.reloaded ?= []
         p.reloaded.push p.createdAt
         reloads.push p
@@ -566,37 +581,33 @@ API.job.start() if not API.job._iid? and API.settings.job?.startup
 
 API.job.running = () -> return (API.job._iid? or job_limit.get('STARTED')?) and not job_limit.get('PAUSE')?
 
-API.job.stop = () ->
-  # note that processes already processing will keep going, but no new ones will start
-  job_limit.insert _id: 'PAUSE'
-
-API.job.stuck = () ->
-  # TODO add a stuck checker
-  return false
+API.job.stop = () -> job_limit.insert _id: 'PAUSE' # note that processes already processing will keep going, but no new ones will start
 
 API.job.status = (filter='NOT group:TEST') ->
   res =
     running: API.job.running()
     jobs:
-      count: job_job.count('*')
+      count: job_job.count()
+      done: job_job.count undefined, done:true
+      waiting: 0
       oldest: {_id: jjo._id, createdAt: jjo.createdAt, created_date: jjo.created_date} if jjo = job_job.find('*', {sort:{createdAt:{order:'asc'}}})
       newest: {_id: jjn._id, createdAt: jjn.createdAt, created_date: jjn.created_date} if jjn = job_job.find('*', true)
-      done: job_job.count done:true
     processes:
-      count: job_process.count(filter)
+      count: job_process.count(undefined,filter)
       oldest: {_id: jpo._id, createdAt: jpo.createdAt, created_date: jpo.created_date} if jpo = job_process.find(filter, {sort:{createdAt:{order:'asc'}}})
       newest: {_id: jpn._id, createdAt: jpn.createdAt, created_date: jpn.created_date} if jpn = job_process.find(filter, true)
     processing:
-      count: job_processing.count(filter)
+      count: job_processing.count(undefined,filter)
       oldest: {_id: jpro._id, createdAt: jpro.createdAt, created_date: jpro.created_date} if jpro = job_processing.find(filter, {sort:{createdAt:{order:'asc'}}})
       newest: {_id: jprn._id, createdAt: jprn.createdAt, created_date: jprn.created_date} if jprn = job_processing.find(filter, true)
     results:
-      count: job_result.count(filter)
+      count: job_result.count(undefined,filter)
       oldest: {_id: jro._id, createdAt: jro.createdAt, created_date: jro.created_date} if jro = job_result.find(filter, {sort:{createdAt:{order:'asc'}}})
       newest: {_id: jrn._id, createdAt: jrn.createdAt, created_date: jrn.created_date} if jrn = job_result.find(filter, true)
       cluster: job_result.terms('_cid')
   res.limits = {} # may not be worth reporting on limit index in new structure
-  job_limit.each 'NOT last:*', (lm) -> res.limits[lm.group] = {date:lm.created_date,limit:lm.limit}
+  job_limit.each 'NOT last:*', (lm) -> res.limits[lm.group ? lm._id] = {date:lm.created_date,limit:lm.limit}
+  job_job.each 'NOT done:true', (j) -> res.jobs.waiting += j.processes.length
   return res
 
 API.job.progress = (jobid) ->
@@ -617,18 +628,16 @@ API.job.complete = (jobid) ->
       fn job
     catch
       if job.group isnt 'JOBTEST'
-        text = 'Job ' + (if job.name then job.name else job._id) + ' is complete.'
-        email = job.email ? API.accounts.retrieve(job.user)?.emails[0].address
-        API.mail.send to:email, subject:text, text:text
+        API.mail.send to: (job.email ? API.accounts.retrieve(job.user)?.emails[0].address), subject: text, text: 'Job ' + (if job.name then job.name else job._id) + ' is complete.'
   return true
 
 API.job.rerun = (jobid,uid) ->
   job = job_job.get jobid
   job.user = uid if uid
   job.refresh = 0
-  _id: job_job.insert {new:true, user:job.user, processed: 0}
-  Meteor.setTimeout (() -> API.job.create job), 5
-  return data: {job:job._id}
+  job._id = job_job.insert {new:true, user:job.user, processed: 0}
+  Meteor.setTimeout (() -> API.job.create job), 2
+  return job:job._id
 
 API.job.result = (jr,full) ->
   jr = job_result.get(jr) if typeof jr is 'string'
@@ -637,18 +646,16 @@ API.job.result = (jr,full) ->
   else
     if jr?._raw_result?[jr.function]?
       return jr._raw_result[jr.function]
-    else if jr?._raw_result?.string?
-      if jr._raw_result.string.indexOf('[') is 0 or jr._raw_result.string.indexOf('{') is 0
+    else if jr?._raw_result?.string? or jr?._raw_result?.attachment?
+      dc = if jr._raw_result.attachment? then new Buffer(jr._raw_result.attachment,'base64').toString('utf-8') else jr._raw_result.string
+      if dc.indexOf('[') is 0 or dc.indexOf('{') is 0
         try
-          return JSON.parse jr._raw_result.string
-      return jr._raw_result.string
+          return JSON.parse dc
+      return dc
     else if jr?._raw_result?.bool?
       return jr._raw_result.bool
     else if jr?._raw_result?.number?
       return jr._raw_result.number
-    else if jr?._raw_result?.attachment?
-      dc = new Buffer(jr._raw_result.attachment,'base64').toString('utf-8')
-      return JSON.parse dc
     else if jr?._raw_result?.error
       return jr._raw_result.error
     else

@@ -688,10 +688,10 @@ API.collection.test = (verbose) ->
       future = new Future()
       setTimeout (() -> future.return()), 999
       future.wait()
-      result.retrieveUpdated = tc.find({hello:'world'});
+      result.retrieveUpdated = tc.find({hello:'world'})
       return result.retrieveUpdated.goodbye is 'world'
     () -> #10
-      result.goodbyes = tc.count('goodbye:"world"');
+      result.goodbyes = tc.count(undefined,'goodbye:"world"')
       return result.goodbyes is 3
     () -> #11
       result.lessthan3 = tc.search 'lt:<3'

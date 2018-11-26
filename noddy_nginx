@@ -16,8 +16,6 @@ keepalive_timeout 600;
 # DEFINE A DEV UPSTREAM CL API
 upstream noddy_dev {
     server localhost:3002;
-    server 10.131.20.129:3000 max_fails=1 fail_timeout=60;
-    server 10.131.20.129:3001 max_fails=1 fail_timeout=60;
 }
 
 # DEFINE A LOCAL UPSTREAM CL API FOR SOME SERVICE
@@ -27,8 +25,7 @@ upstream noddy_local {
 
 # DEFINE A CLUSTER UPSTREAM CL API FOR CHECKING
 upstream noddy_cluster {
-    server 10.131.20.129:3000 max_fails=1 fail_timeout=60;
-    server 10.131.11.72:3000 max_fails=1 fail_timeout=60;
+    server 10.131.12.33:3000 max_fails=1 fail_timeout=60;
 }
 
 # LIVE API PROPER VIA CLUSTER
