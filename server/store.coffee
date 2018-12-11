@@ -51,7 +51,6 @@ for r in [0,1,2,3,4]
             API.log msg: 'User accessed store route (return file)', url: path, uid: this.userId, method: 'GET', status: 200
             this.response.writeHead 200
             this.response.end res
-            this.done()
           else
             try
               API.log msg: 'User accessed store route (return JSON)', url: path, uid: this.userId, method: 'GET', status: 200
@@ -151,12 +150,7 @@ API.store.create = (path, user, token, content, secure=false) ->
         return ret.data
     catch
       try
-        form = new formdata()
-        form.append('secure', secure) if secure
-        form.append 'file', content # TODO check does this work if content is string or buffer or object or stream?
-        form.getLength (err,length) ->
-          r = request.post API.settings.store.local + '/store' + path + '?token=' + token + '&apikey=' + user?.api.keys[0].key, { headers: { 'content-length': length } }
-          r._form = form
+        API.http.post API.settings.store.local + '/store' + path + '?token=' + token + '&apikey=' + user?.api.keys[0].key, content, (if secure then {secure: secure} else undefined)
         API.log msg: 'Store POSTed file data to storage server, and returning received response', method: 'API.store.create'
         return true
       catch

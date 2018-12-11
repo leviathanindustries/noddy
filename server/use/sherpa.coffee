@@ -103,6 +103,41 @@ API.use.sherpa.romeo.updated = () ->
   catch err
     return { status: 'error', error: err}
 
+API.use.sherpa.romeo.format = (res, romeoID) ->
+  rec = {journal:{},publisher:{}}
+  rec.sherpa_id = romeoID if romeoID
+  for j of res.journals[0].journal[0]
+    rec.journal[j] = res.journals[0].journal[0][j]
+  for p of res.publishers[0].publisher[0]
+    if p is '$'
+      rec.publisher.sherpa_id = res.publishers[0].publisher[0][p].id
+    else if p in ['preprints','postprints','pdfversion']
+      for ps of res.publishers[0].publisher[0][p][0]
+        if ps.indexOf('restrictions') isnt -1
+          rec.publisher[ps] = []
+          for psr in res.publishers[0].publisher[0][p][0][ps]
+            psrn = ps.replace('restrictions','restriction')
+            rec.publishers[ps].push(psr[psrn][0].replace(/\<.*?\>/g,'')) if psr[psrn]? and psr[psrn].length and psr[psrn][0].length
+        else
+          rec.publisher[ps] = res.publishers[0].publisher[0][p][ps] if res.publishers[0].publisher[0][p][ps]
+    else if p is 'conditions'
+      rec.publisher.conditions = res.publishers[0].publisher[0].conditions[0].condition
+    else if p is 'mandates'
+      rec.publisher.mandates = []
+      for pm in res.publishers[0].publisher[0].mandates
+        rec.publisher.mandates.push(pm) if pm
+    else if p is 'paidaccess'
+      for pm of res.publishers[0].publisher[0].paidaccess[0]
+        rec.publisher[pm] = res.publishers[0].publisher[0].paidaccess[0][pm][0] if res.publishers[0].publisher[0].paidaccess[0][pm].length and res.publishers[0].publisher[0].paidaccess[0][pm][0]
+    else if p is 'copyrightlinks'
+      for pc of res.publishers[0].publisher[0][p][0].copyrightlink[0]
+        rec.publisher[pc] = res.publishers[0].publisher[0][p][0].copyrightlink[0][pc][0]
+    else if p is 'romeocolour'
+      rec.publisher.colour = res.publishers[0].publisher[0][p][0]
+    else
+      rec.publisher[p] = res.publishers[0].publisher[0][p][0]
+  return rec
+
 API.use.sherpa.romeo.download = (disk=false) ->
   apikey = API.settings.use?.romeo?.apikey
   return { status: 'error', data: 'NO ROMEO API KEY PRESENT!'} if not apikey
@@ -123,39 +158,7 @@ API.use.sherpa.romeo.download = (disk=false) ->
       for r in js
         #try
         res = API.use.sherpa.romeo.search {issn:r.ISSN.trim().replace(' ','-')}
-        rec = {sherpa_id: r['RoMEO Record ID']}
-        for j of res.journals[0].journal[0]
-          rec[j] = res.journals[0].journal[0][j]
-        rec.publisher = {}
-        for p of res.publishers[0].publisher[0]
-          if p is '$'
-            rec.publisher.sherpa_id = res.publishers[0].publisher[0][p].id
-          else if p in ['preprints','postprints','pdfversion']
-            for ps of res.publishers[0].publisher[0][p][0]
-              if ps.indexOf('restrictions') isnt -1
-                rec.publisher[ps] = []
-                for psr in res.publishers[0].publisher[0][p][0][ps]
-                  rec.publishers[ps].push psr[ps.replace('restrictions','restriction')][0].replace(/\<.*?\>/g,'')
-              else
-                rec.publisher[ps] = res.publishers[0].publisher[0][p][ps]
-          else if p is 'conditions'
-            rec.publisher.conditions = res.publishers[0].publisher[0].conditions[0].condition
-          else if p is 'mandates'
-            rec.publisher.mandates = []
-            for pm in res.publishers[0].publisher[0].mandates
-              rec.publisher.mandates.push(pm) if pm
-          else if p is 'paidaccess'
-            for pm of res.publishers[0].publisher[0].paidaccess[0]
-              rec.publisher[pm] = res.publishers[0].publisher[0].paidaccess[0][pm][0] if res.publishers[0].publisher[0].paidaccess[0][pm].length and res.publishers[0].publisher[0].paidaccess[0][pm][0]
-          else if p is 'copyrightlinks'
-            for pc of res.publishers[0].publisher[0][p][0].copyrightlink[0]
-              rec.publisher[pc] = res.publishers[0].publisher[0][p][0].copyrightlink[0][pc][0]
-          else if p is 'romeocolour'
-            rec.publisher.colour = res.publishers[0].publisher[0][p][0]
-          else
-            rec.publisher[p] = res.publishers[0].publisher[0][p][0]
-        console.log rec
-        data.push rec
+        data.push API.use.sherpa.romeo.format res, r['RoMEO Record ID']
       fs.writeFileSync localcopy, JSON.stringify(data,"",2)
       API.mail.send {to: 'alert@cottagelabs.com', subject: 'Sherpa Romeo download complete', text: 'Done'}
       return { total: data.length, data: data}

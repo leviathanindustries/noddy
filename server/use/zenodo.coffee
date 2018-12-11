@@ -1,6 +1,7 @@
 
 
 import fs from 'fs'
+import stream from 'stream'
 
 # http://zenodo.org/dev
 # https://zenodo.org/api/deposit/depositions
@@ -8,7 +9,6 @@ import fs from 'fs'
 # requires a token be provided as query param on all requests, called ?access_token=
 
 # token set in openaccessbutton section of settings, as this zenodo use endopint is being created for oabutton first
-# API.settings.openaccessbutton.zenodo_token
 # there is a CL zenodo account, and an access token could be created for it too, as a default, but no need yet so not done
 # so expect anything using this endpoint to provide a token (or could use cl default one when it has been added)
 
@@ -43,7 +43,7 @@ API.use.zenodo.deposition.create = (metadata,up,token) ->
   try
     if up?
       c = HTTP.call 'POST', url, {data:data,headers:{'Content-Type':'application/json'}}
-      API.use.zenodo.deposition.upload c.data.id, up.content, up.file, up.name, up.url, token
+      API.use.zenodo.deposition.upload(c.data.id, up.content, up.file, up.name, up.url, token) if up.content or up.file
       API.use.zenodo.deposition.publish(c.data.id,token) if up.publish
       return c.data
     else
@@ -57,14 +57,9 @@ API.use.zenodo.deposition.upload = (id,content,file,name,url,token) ->
   return false if not token? or not id?
   uploadurl = 'https://zenodo.org/api/deposit/depositions/' + id + '/files' + '?access_token=' + token
   try
-    # returns back a deposition file, which has an id. Presumably from this we can calculate the URL of the file
-    if content?
-      fl = content # request form-data appears to handle buffers being passed straight to it... if not, just use stream passthrough
-    else
-      fl = fs.createReadStream file
-    p = HTTP.call('POST',uploadurl,{npmRequestOptions:{body:null,formData:{file:fl,name:name}},headers:{'Content-Type':'multipart/form-data'}})
-    return p.data
+    return API.http.post uploadurl, (content ? file), {name: name}
   catch err
+    console.log err
     return {status: 'error', error: err}
 
 API.use.zenodo.deposition.publish = (id,token) ->

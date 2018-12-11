@@ -12,7 +12,6 @@ API.add 'img',
       else
         this.response.writeHead 200
         this.response.end API.img this.queryParams
-        this.done()
     else
       return {} # return what? A listing of all images? A search of images?
 
@@ -24,7 +23,6 @@ API.add 'img/:fn', # is it worth sub-routing this like the ES function?
     this.queryParams.fn = this.urlParams.fn
     this.response.writeHead 200
     this.response.end API.img this.queryParams
-    this.done()
   post: () ->
     authOptional: true
     action: () ->

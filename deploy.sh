@@ -25,10 +25,18 @@
 # pm2 has deployment ecosystem configs too - can that be used to deploy instead of this script?
 
 # should have an arg parse to optionally just run a settings update instead of full deploy
+SETTINGS_FILE="settings.json"
 SETTINGS_ONLY=false
 if [ "$1" == "-settings" ]
   then
     SETTINGS_ONLY=true
+    if [ "$2" != "" ]
+      then
+        SETTINGS_FILE=$2
+    fi
+elif [ "$2" != "" ]
+  then
+    SETTINGS_FILE=$2
 fi
 
 # need meteor installed, and jq and curl
@@ -50,7 +58,7 @@ fi
 
 DATE="$(date +%Y-%m-%d_%H%M)"
 NODE_V="$(meteor node -v)"
-JSETTINGS="$(cat settings.json)"
+JSETTINGS="$(cat $SETTINGS_FILE)"
 IPS=$(echo $JSETTINGS | jq '.cluster.ip[]' | tr ',' '\n' | tr -d '"')
 INDEXES=$(echo $JSETTINGS | jq '.es.url[]' | tr ',' '\n' | tr -d '"' | tr -d 'http://' | tr -d 'https://' | tr -d ':9200')
 LN=$(echo $JSETTINGS | jq '.cluster.ip|length')
@@ -129,7 +137,7 @@ do
         #ssh $EP sudo ufw allow in on eth1 from $IP to any port 9200
       done
       
-      scp ~/noddy.tar.gz $IP:~
+      #scp ~/noddy.tar.gz $IP:~
 
       #ssh $IP "source ~/.nvm/nvm.sh && forever stopall && sudo rm -R bundle && tar -xzf noddy.tar.gz && cd bundle/programs/server && npm install"
       #ssh $IP "rm ~/noddy.tar.gz && mv ~/forever.log ~/$DATE_forever.log && mv ~/out.log ~/$DATE_out.log && mv ~/err.log ~/$DATE_err.log"
@@ -167,6 +175,6 @@ done
 
 # then can also remove the noddy tar on the main machine
 printf "\nCleaning up\n"
-rm ~/noddy.tar.gz
+#rm ~/noddy.tar.gz
 
 echo "All done"

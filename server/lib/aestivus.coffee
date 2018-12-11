@@ -59,19 +59,9 @@ responseHeaders = 'Cache-Control': 'no-store', Pragma: 'no-cache'
 JsonRoutes.setResponseHeaders = (headers) ->
   responseHeaders = headers
 
-JsonRoutes.sendResult = (res, options={}) ->
-  setHeaders(res, options.headers) if options.headers?
-  res.statusCode = options.code || 200
-  writeJsonToBody res, options.data
-  res.end()
-
 setHeaders = (res, headers) ->
   _.each headers, ((value, key) -> res.setHeader key, value )
 
-writeJsonToBody = (res, json) ->
-  if json?
-    res.setHeader 'Content-type', 'application/json'
-    res.write JSON.stringify(json, null, (if process.env.NODE_ENV is 'development' then 2 else null))
 
 
 
@@ -138,6 +128,9 @@ class share.Route
     if not @endpoints
       @endpoints = @options
       @options = {}
+      if @endpoints.csv is true
+        @options.csv = true
+        delete @endpoints.csv
 
 
   addToApi: do ->
@@ -169,12 +162,9 @@ class share.Route
       # Setup endpoints on route
       fullPath = @api._config.apiPath + @path
       _.each allowedMethods, (method) ->
+        self.endpoints[method] = self.endpoints[self.endpoints[method]] if typeof self.endpoints[method] is 'string'
         endpoint = self.endpoints[method]
         @JsonRoutes.add method, fullPath, (req, res) ->
-          # Add function to endpoint context for indicating a response has been initiated manually
-          responseInitiated = false
-          doneFunc = ->
-            responseInitiated = true
 
           endpointContext =
             urlParams: req.params
@@ -182,7 +172,6 @@ class share.Route
             bodyParams: req.body
             request: req
             response: res
-            done: doneFunc
           # Add endpoint config options to context
           _.extend endpointContext, endpoint
 
@@ -190,18 +179,11 @@ class share.Route
           responseData = null
           try
             responseData = self._callEndpoint endpointContext, endpoint
-            if (responseData is null or responseData is undefined) and not responseInitiated
+            if (responseData is null or responseData is undefined)
               responseData = 404
-            if res.headersSent and not responseInitiated
-              throw new Error "Must call this.done() after handling endpoint response manually: #{method} #{fullPath}"
           catch error
             # Do exactly what Iron Router would have done, to avoid changing the API
             ironRouterSendErrorToResponse(error, req, res);
-            return
-
-          if responseInitiated
-            # Ensure the response is properly completed
-            res.end()
             return
 
           # Generate and return the http response, handling the different endpoint response types
@@ -209,7 +191,7 @@ class share.Route
             self._respond res, responseData, responseData
           else if responseData.body? and (responseData.statusCode or responseData.headers)
             self._respond res, responseData.body, responseData.statusCode, responseData.headers
-          else
+          else if not res.headersSent
             self._respond res, responseData
       _.each rejectedMethods, (method) ->
         @JsonRoutes.add method, fullPath, (req, res) ->
@@ -248,8 +230,9 @@ class share.Route
   ###
   _configureEndpoints: ->
     _.each @endpoints, (endpoint, method) ->
-      if method not in ['options','desc']
+      if method not in ['options','desc','csv'] and typeof endpoint isnt 'string'
         # Configure acceptable roles
+        endpoint.csv = true if @options.csv is true
         if not @options?.roleRequired
           @options.roleRequired = []
         if not endpoint.roleRequired
@@ -294,7 +277,11 @@ class share.Route
       return blacklisted
     else if @_authAccepted endpointContext, endpoint
       if @_roleAccepted endpointContext, endpoint
-        endpoint.action.call endpointContext
+        if endpoint.csv is true
+          data = endpoint.action endpointContext
+          API.convert.json2csv2response endpointContext, data, endpointContext.request.url.split('/').pop().replace('.csv','') + '_' + moment(Date.now(), "x").format("YYYY_MM_DD_HHmm_ss") + '.csv'
+        else
+          endpoint.action.call endpointContext
       else
         statusCode: 403
         body: {status: 'error', message: 'You do not have permission to do this.'}
@@ -388,8 +375,7 @@ class share.Route
     # Send response
     sendResponse = ->
       response.writeHead statusCode, headers
-      response.write body
-      response.end()
+      response.end body
     if statusCode in [401, 403]
       # Hackers can measure the response time to determine things like whether the 401 response was
       # caused by bad user id vs bad password.
@@ -471,9 +457,15 @@ class @Restivus
 
   add: (path, options, endpoints) ->
     # Create a new route and add it to our list of existing routes
+    if options?.csv is true or endpoints?.csv is true
+      croute = new share.Route(this, path + '.csv', options, endpoints)
+      @_routes.push(croute)
+      croute.addToApi()
+      delete options.csv if options?
+      delete endpoints.csv if endpoints?
+      
     route = new share.Route(this, path, options, endpoints)
     @_routes.push(route)
-
     route.addToApi()
 
     return this

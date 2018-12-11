@@ -25,7 +25,6 @@ API.add 'use/wikinews/text/:qid',
     this.response.writeHead 200,
       'Content-type': 'text/html'
     this.response.end API.use.wikinews.about(this.urlParams.qid, undefined, undefined, true).text
-    this.done()
 
 
 # https://en.wikinews.org/wiki/Category:Apple_Inc.

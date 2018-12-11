@@ -45,7 +45,6 @@ API.add 'convert',
           'Content-type': to + '; charset=UTF-8'
           'Content-Encoding': 'UTF-8'
         this.response.end out
-        this.done()
       else
         return
           statusCode: 200
@@ -71,7 +70,6 @@ API.add 'convert',
         'Content-type': to + '; charset=UTF-8'
         'Content-Encoding': 'UTF-8'
       this.response.end out
-      this.done()
     else
       return
         statusCode: 200
@@ -316,7 +314,6 @@ API.convert.xml2json = Async.wrap (url, content, callback) ->
 
 # using meteorhacks:async and Async.wrap seems to work better than using Meteor.wrapAsync
 API.convert.json2csv = (opts={}, url, content) ->
-  console.log(content.length) if content # KEEP THIS HERE - oddly, having this here stops endpoints throwing a write before end error and crashing the app when they try to serve out the csv, so just keep this here
   content = JSON.parse(HTTP.call('GET', url).content) if url?
   if opts.subset
     parts = opts.subset.split('.')
@@ -354,21 +351,20 @@ API.convert.json2csv = (opts={}, url, content) ->
   return res
 
 # this does not really belong as a convert function, 
-# but it seems to have no better place, as multiple browser endpoints would want this on a collection endpoint
+# but it seems to have no better place. It is used in aestivus to wrap .csv routes, but may also be useful direclty 
+# on other custom written routes, so keep it here
 API.convert.json2csv2response = (ths, data, filename) ->
   rows = []
   for dr in (if data?.hits?.hits? then data.hits.hits else data)
     rows.push if dr._source? then dr._source else if dr._fields then dr._fields else dr # should collapse fields values out of lists?
   csv = API.convert.json2csv {fields:ths.queryParams?.fields ? ths.bodyParams?.fields}, undefined, rows
-  return API.convert.csv2response ths, csv, filename
+  API.convert.csv2response ths, csv, filename
 
 API.convert.csv2response = (ths, csv, filename) ->
   filename ?= 'export_' + moment(Date.now(), "x").format("YYYY_MM_DD_HHmm_ss") + ".csv"
-  ths.response.writeHead(200, {'Content-disposition': "attachment; filename=" + filename, 'Content-type': 'text/csv; charset=UTF-8', 'Content-length': csv.length, 'Content-Encoding': 'UTF-8'})
-  ths.response.end(csv)
-  ths.done()
-  return
-  
+  ths.response.writeHead(200, {'Content-disposition': "attachment; filename=" + filename, 'Content-type': 'text/csv; charset=UTF-8', 'Content-Encoding': 'UTF-8'})
+  ths.response.end csv
+
 API.convert.json2json = (opts,url,content) ->
   content = HTTP.call('GET', url).content if url?
   if opts.subset

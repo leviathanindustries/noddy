@@ -116,11 +116,18 @@ API.collection.prototype.insert = (q, obj, uid, refresh, dev=API.settings.dev) -
     obj._id = q
   else if typeof q is 'object' and not obj?
     obj = q
-  obj.createdAt = Date.now()
-  obj.created_date = moment(obj.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
-  obj._id ?= Random.id()
-  this.history('insert', obj, uid, dev) if this._history
-  return API.es.call('POST', this._route + '/' + obj._id, obj, refresh, undefined, undefined, undefined, undefined, dev)?._id
+  if Array.isArray obj
+    for o of obj
+      obj[o].createdAt = Date.now()
+      obj[o].created_date = moment(obj.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
+      obj[o]._id ?= Random.id()
+    return this.bulk obj, 'index', uid, undefined, dev
+  else
+    obj.createdAt = Date.now()
+    obj.created_date = moment(obj.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
+    obj._id ?= Random.id()
+    this.history('insert', obj, uid, dev) if this._history
+    return API.es.call('POST', this._route + '/' + obj._id, obj, refresh, undefined, undefined, undefined, undefined, dev)?._id
 
 API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial, dev=API.settings.dev) ->
   # versioned here can be a version number, in which case the update will only work if it can update onto that version, otherwise returns 409

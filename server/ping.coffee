@@ -35,7 +35,6 @@ API.add 'ping.png',
       'Content-type': 'image/png'
       'Content-length': img.length
     this.response.end img
-    this.done()
 
 API.add 'pings',
   get: () -> return pings.search this.queryParams
@@ -80,6 +79,7 @@ API.add 'ping/:shortid',
         return 404
 
 API.ping = (url,shortid) ->
+  return false if not url?
   url = 'http://' + url if url.indexOf('http') isnt 0
   if (not shortid? or shortid is 'random') and spre = pings.find {url:url,redirect:true}
     return spre._id

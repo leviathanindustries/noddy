@@ -45,7 +45,6 @@ API.add 'use/europepmc/pmc/:qry/xml',
         'Content-type': 'application/xml'
         'Content-length': ft.length
       this.response.end ft
-      this.done()
 
 API.add 'use/europepmc/pmc/:qry/licence', get: () -> return API.use.europepmc.licence this.urlParams.qry
 

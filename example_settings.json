@@ -57,7 +57,9 @@
     "limit": "Optional true/false, if true then limits will get run on this machine. If this is false and startup is false, no limit jobs will run, so anything using the job proceesor as a rate limiter would never get answers back. So this is useful to set to true if you only have one machine rather than a cluster, where startup could be true for other machines in the cluster that would then process the limit job",
     "interval": "Optional number of milliseconds to wait between checking for new job processes to start (if not set, 1000 is used)",
     "concurrency": "Optional max number of job processes to allow processing at the same time, across all machines",
-    "memory": "Optional max size of process memory space - stops new jobs running if already using most of the available memory"
+    "memory": "Optional max size of process memory space - stops new jobs running if already using most of the available memory",
+    "verbose": "Optional true/false, if true the job runner logs more info to console, useful for seeing what it is up to without increasing logging",
+    "match": "Optional match query to restrict what jobs the machine running this config will process, gets added to the MUST section of the API.job.next function query"
   },
   "store": {
     "api": "The API URL that will definitely go to the store route on the machine with the storage on it (nginx can configure it to always do that, but local code may still call the store code, so may still need to know this to forward it on)",

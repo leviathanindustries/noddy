@@ -253,9 +253,8 @@ API.job.create = (job) ->
           d = new Date()
           match.must.push {range:{createdAt:{gt:d.setDate(d.getDate() - job.refresh)}}}
       rs = job_result.find match, true
-      ofnd = {'signature.exact':proc.signature}
-      rs = job_processing.find(ofnd, true) if not rs?
-      rs = job_process.find(ofnd, true) if not rs?
+      rs = job_processing.find({'signature.exact':proc.signature}, true) if not rs?
+      rs = job_process.find({'signature.exact':proc.signature}, true) if not rs?
       if rs
         proc._id = rs._id
       else
@@ -265,7 +264,7 @@ API.job.create = (job) ->
     job.processes[i] = proc
 
   if imports.length
-    job_process.import imports
+    job_process.insert imports
     job.processed = job.processes.length - imports.length
 
   # NOTE job can also have a "complete" function string name, which will be called when progress hits 100%, see below
@@ -373,12 +372,9 @@ API.job.limit = (limitms,fn,args,group,refresh=0) -> # directly create a sync th
     jr = job_result.find match, true
   if not jr?
     rs = if typeof refresh is 'number' and refresh isnt 0 then job_processing.find({'signature.exact':pr.signature}, true)
-    if rs?
-      pr._id = rs._id
-    else
-      pr._id = job_process.insert pr
-      API.job.process(pr._id) if not API.settings.job?.startup and API.settings.job?.limit
+    pr._id = if rs? then rs._id else job_process.insert pr
     while not jr?
+      API.job.next() if not job_limit.get('STARTED')? and API.settings.job?.limit
       future = new Future()
       Meteor.setTimeout (() -> future.return()), limitms
       future.wait()
@@ -474,63 +470,27 @@ API.job.process = (proc) ->
       cb null, proc # TODO should this go in timeout?
   return proc
 
-API.job._ignoregroups = {}
-API.job._ignoreids = {}
 API.job.next = () ->
   if job_limit.get('PAUSE')?
     return false
-  now = Date.now()
-  for k, v of API.job._ignoregroups
-    if v <= now
-      delete API.job._ignoregroups[k]
-  for s, t of API.job._ignoreids
-    if t <= now
-      delete API.job._ignoreids[s]
   if (API.settings.job?.concurrency ?= 1000000000) <= job_processing.count()
-    API.log {msg:'Not running more jobs, job max concurrency reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
+    API.log {msg:'Not running more jobs, max concurrency reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
   else if (API.settings.job?.memory ? 1200000000) <= process.memoryUsage().rss
-    # TODO should check why this is happening, is it memory leak or just legit usage while running lots of jobs?
-    # and if legit and being hit on every available machine in the cluster, should trigger alert to start more cluster machines?
     API.log {msg:'Not running more jobs, job max memory reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
   else
-    # use console.log on dev because otherwise having a job check log every second gets in the way of other logs
-    # but it is still handy to see on dev to easily know things are running. Only create an API.log if log level is all
-    if API.settings.dev
-      console.log 'Checking for jobs to run'
-      console.log API.job._ignoregroups
-      console.log API.job._ignoreids
+    console.log('Checking for jobs to run') if API.settings.dev or API.settings.job?.verbose?
     API.log {msg:'Checking for jobs to run', ignores: {groups:API.job._ignoregroups,ids:API.job._ignoreids}, function:'API.job.next', level:'all'}
     match = must_not:[{term:{available:false}}] # TODO check this will get matched properly to something where available = false
     match.must = API.settings.job.match if API.settings.job?.match?
-    match.must_not.push({term: 'group.exact':g}) for g of API.job._ignoregroups
-    match.must_not.push({term: '_id':m}) for m of API.job._ignoreids
+    limits = job_limit.search 'NOT last:* AND expiresAt:>' + Date.now(), 1000
+    if limits.hits?.hits?
+      match.must_not.push({term: 'group.exact':g._source._id}) for g in limits.hits.hits
     p = job_process.find match, {sort:{priority:{order:'desc'}}, random:true} # TODO check if random sort works - may have to be more complex
-    if p?
-      if job_processing.get(p._id)? # because job_process is searched, there can be a delay before it reflects deleted jobs, so accept this extra load on ES
-        API.job._ignoreids[p._id] = now + 2000
-        future = new Future()
-        Meteor.setTimeout (() -> future.return()), Math.floor((API.settings.job?.interval ? 1000)/2)
-        future.wait()
-        return API.job.next()
-      else if p.limit?
-        lm = job_limit.get p.group
-        if lm? and lm.createdAt + p.limit > now
-          if not API.job._ignoregroups[p.group]?
-            API.job._ignoregroups[p.group] = lm.createdAt + p.limit
-            future = new Future()
-            Meteor.setTimeout (() -> future.return()), Math.floor((API.settings.job?.interval ? 1000)/2)
-            future.wait()
-            return API.job.next()
-          else
-            return false
-        else
-          job_limit.insert {group:lm.group,last:lm.createdAt} if lm? and API.settings.dev # keep a history of limit counters until service restarts
-          jl = job_limit.insert {_id:p.group,group:p.group,limit:p.limit} # adding the limit here is just for info in status
-          API.job._ignoreids[p._id] = now + 10000
-          return API.job.process p
-      else
-        API.job._ignoreids[p._id] = now + 10000
-        return API.job.process p
+    if p? and not job_processing.get(p._id)? # because job_process is searched, there can be a delay before it reflects deleted jobs, so accept this extra load on ES
+      if p.limit?
+        job_limit.insert {group:lm.group,last:lm.createdAt} if lm? and (API.settings.dev or API.settings.job?.verbose) # keep a history of limit counters until service restarts
+        jl = job_limit.insert {_id:p.group, group:p.group, limit:p.limit, expiresAt:Date.now() + p.limit} # adding the limit here is just for info in status
+      return API.job.process p
     else
       return false
 
@@ -557,7 +517,7 @@ API.job.reload = (q='*') ->
   else
     job_processing.each q, ((proc) -> _reload_job_processes {processes:[proc]})
   if reloads.length
-    job_process.import(reloads)
+    job_process.import reloads
   return ret
 
 API.job._iid

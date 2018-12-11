@@ -26,7 +26,6 @@
     "moment": "^2.20.1",
     "oauth": "^0.9.15",
     "pdf2json": "^1.1.7",
-    "phantom": "^2.1.21",
     "puppeteer": "^1.6.1",
     "request": "^2.88.0",
     "textract": "^1.2.1",

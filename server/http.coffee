@@ -12,9 +12,11 @@
 
 import request from 'request'
 import Future from 'fibers/future'
-#import fs from 'fs'
-#import phantom from 'phantom'
 import puppeteer from 'puppeteer'
+import fs from 'fs'
+import formdata from 'form-data'
+import stream from 'stream'
+#import phantom from 'phantom'
 
 API.http = {}
 
@@ -155,6 +157,38 @@ API.http.resolve = (url,refresh=false) ->
     catch
       return url
 
+API.http.post = (url, file, vars) ->
+  # this has only been tested where file is a buffer
+  _post = (url, file, vars, callback) ->
+    conf = {url: url, formData: form}
+    r = request.post url, (err, res, body) -> callback null, (if res? then res else err)
+    if file? or (vars? and (typeof vars is 'string' or not _.isEmpty vars))
+      form = r.form()
+      if vars? and typeof vars isnt 'string' and not _.isEmpty vars
+        for k of vars
+          form.append k, vars[k]
+      if file?
+        fl = false
+        try
+          if (typeof file.on is 'function' and typeof file.read is 'function') or file instanceof Buffer
+            fl = file # file is already a stream
+          else if typeof file is 'string'
+            try
+              fl = fs.createReadStream file # file is a string which could be a local file pointer
+            catch
+              fl = new Buffer(file) # otherwise it is just a string, so try to make a Buffer out of it
+          else if typeof file is 'object'
+            fl = new Buffer(JSON.stringify(file)) # assume it is an object to be serialised and POSTed
+        if fl
+          opts = {}
+          if typeof vars is 'string'
+            opts.filename = vars
+          else if vars? and typeof vars is 'object' and (vars.name? or vars.filename?)
+            opts.filename = vars.filename ? vars.name
+          form.append 'file', fl, (if not _.isEmpty(opts) then opts else undefined)
+  _apost = Meteor.wrapAsync _post
+  res = _apost url, file, vars
+  return res
 
 # old resolve notes:
 # using external dependency to call request.head because Meteor provides no way to access the final url from the request module, annoyingly
