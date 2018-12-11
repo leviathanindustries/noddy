@@ -439,7 +439,7 @@ class @Restivus
       if not @_config.defaultOptionsEndpoint
         @_config.defaultOptionsEndpoint = ->
           @response.writeHead 200, corsHeaders
-          @done()
+          @response.end()
 
     # Normalize the API path
     if @_config.apiPath[0] is '/'
