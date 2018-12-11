@@ -278,7 +278,7 @@ class share.Route
     else if @_authAccepted endpointContext, endpoint
       if @_roleAccepted endpointContext, endpoint
         if endpoint.csv is true
-          data = endpoint.action endpointContext
+          data = endpoint.action.call endpointContext
           API.convert.json2csv2response endpointContext, data, endpointContext.request.url.split('/').pop().replace('.csv','') + '_' + moment(Date.now(), "x").format("YYYY_MM_DD_HHmm_ss") + '.csv'
         else
           endpoint.action.call endpointContext
