@@ -119,7 +119,7 @@ API.collection.prototype.insert = (q, obj, uid, refresh, dev=API.settings.dev) -
   if Array.isArray obj
     for o of obj
       obj[o].createdAt = Date.now()
-      obj[o].created_date = moment(obj.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
+      obj[o].created_date = moment(obj[o].createdAt, "x").format "YYYY-MM-DD HHmm.ss"
       obj[o]._id ?= Random.id()
     return this.bulk obj, 'index', uid, undefined, dev
   else

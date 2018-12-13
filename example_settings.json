@@ -27,9 +27,12 @@
     "auth": {}
   },
   "cluster": {
-    "machines": [
+    "ip": [
       "so far only used by the status API, should be a list of cluster machine IP addresses. These will be used to check cluster status"
-    ]
+    ],
+    "settings": {
+      "should be keys in this settings file that need to be altered for deployment on a cluster - e.g. cluster settings may need job.startup: true whereas this setting file may have that as false for a UI machine (this just saves replicating many similar settings into multiple files"
+    }
   },
   "accounts": {
     "xsrf": "true/false if true any POST to change user account data has to first request and receive an xsrf token, which it then provides in the POST"

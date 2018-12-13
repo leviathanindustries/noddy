@@ -567,7 +567,7 @@ API.job.status = (filter='NOT group:TEST') ->
       cluster: job_result.terms('_cid')
   res.limits = {} # may not be worth reporting on limit index in new structure
   job_limit.each 'NOT last:*', (lm) -> res.limits[lm.group ? lm._id] = {date:lm.created_date,limit:lm.limit}
-  job_job.each 'NOT done:true', (j) -> res.jobs.waiting += j.processes.length
+  job_job.each 'NOT done:true', (j) -> res.jobs.waiting += (j.processes.length - (job.processed ? 0))
   return res
 
 API.job.progress = (jobid) ->

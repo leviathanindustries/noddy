@@ -1,4 +1,5 @@
 
+
 # ALTERING PRODUCTION DEPLOYMENT TO PM2 INSTEAD OF FOREVER
 # THE BELOW SCRIPT IS STILL IN TESTING AND NEEDS TO BE UPDATED TO USE PM2 INSTEAD
 # HERE ARE THE INSTRUCTIONS FOR INSTALLING PM2
@@ -49,8 +50,8 @@ if [ "$SETTINGS_ONLY" == false ]
     # in the meteor app file on the dev machine (assuming building on same arch):
     # (or can clone the repo onto the cluster machine and build it there, BUT would need to install meteor and also have any service and other API files copied into it)
     echo "Starting meteor build"
-    #npm install --production
-    #meteor build ~ --server-only
+    npm install --production
+    meteor build ~ --server-only
     echo "Finished build"
   else
     echo "Starting settings update"
@@ -109,10 +110,10 @@ do
   if [ "$SETTINGS_ONLY" == true ]
     then
       printf "\n$COUNTER: Updating cluster IP $IP with new settings\n"
-      #ssh $IP "source ~/.nvm/nvm.sh && forever stopall"
+      ssh $IP "source ~/.nvm/nvm.sh && forever stopall"
       #ssh $IP "source ~/.nvm/nvm.sh && MONGO_URL=http://nowhere CID=$COUNTER ROOT_URL=$ROOT PORT=$PORT METEOR_SETTINGS=$CSETTINGS forever start -l ~/forever.log -o ~/out.log -e ~/err.log ~/bundle/main.js"
     else
-      CV=$(curl -s -X GET http://$IP:3000/api | jq '.version')
+      CV=$(curl -s -X GET http://$IP:$PORT/api | jq '.version')
       printf "\n$COUNTER: Updating cluster IP $IP from version $CV to version $NODDY_V\n"
     
       # update the node version running on the cluster machine if necessary. node -v will output it, then nvm install x will change it
@@ -121,7 +122,7 @@ do
       if [ "$CNV" != "$NODE_V" ]
         then
           echo "Updating cluster machine node version to" $NODE_V
-          #ssh $IP "source ~/.nvm/nvm.sh && forever stopall && nvm install $NODE_V"
+          ssh $IP "source ~/.nvm/nvm.sh && forever stopall && nvm install $NODE_V"
       fi
     
       # check that the cluster machine has the necessary firewall settings
