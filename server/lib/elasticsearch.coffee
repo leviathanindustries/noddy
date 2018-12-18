@@ -386,9 +386,9 @@ API.es.terms = (index, type, key, qry, size=100, counts=true, dev=API.settings.d
     console.log(err) if API.settings.log?.level is 'debug'
     return []
 
-API.es.min = (index, type, key, dev=API.settings.dev, url=API.settings.es.url) ->
+API.es.min = (index, type, key, qry, dev=API.settings.dev, url=API.settings.es.url) ->
   try
-    query = if typeof key is 'object' then key else {query:{"filtered":{"filter":{"exists":{"field":key}}}}}
+    query = if typeof key is 'object' then key else if qry? then qry else {query:{"filtered":{"filter":{"exists":{"field":key}}}}}
     query.size = 0
     query.aggs = {"min":{"min":{"field":key}}}
     ret = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
@@ -396,9 +396,9 @@ API.es.min = (index, type, key, dev=API.settings.dev, url=API.settings.es.url) -
   catch err
     return {info: 'the call to es returned an error', err:err}
 
-API.es.max = (index, type, key, dev=API.settings.dev, url=API.settings.es.url) ->
+API.es.max = (index, type, key, qry, dev=API.settings.dev, url=API.settings.es.url) ->
   try
-    query = if typeof key is 'object' then key else {query:{"filtered":{"filter":{"exists":{"field":key}}}}}
+    query = if typeof key is 'object' then key else if qry? then qry else {query:{"filtered":{"filter":{"exists":{"field":key}}}}}
     query.size = 0
     query.aggs = {"max":{"max":{"field":key}}}
     ret = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
@@ -406,9 +406,9 @@ API.es.max = (index, type, key, dev=API.settings.dev, url=API.settings.es.url) -
   catch err
     return {info: 'the call to es returned an error', err:err}
   
-API.es.range = (index, type, key, dev=API.settings.dev, url=API.settings.es.url) ->
+API.es.range = (index, type, key, qry, dev=API.settings.dev, url=API.settings.es.url) ->
   try
-    query = if typeof key is 'object' then key else {query:{"filtered":{"filter":{"exists":{"field":key}}}}}
+    query = if typeof key is 'object' then key else if qry? then qry else {query:{"filtered":{"filter":{"exists":{"field":key}}}}}
     query.size = 0
     query.aggs = {"min":{"min":{"field":key}}, "max":{"max":{"field":key}}}
     ret = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url

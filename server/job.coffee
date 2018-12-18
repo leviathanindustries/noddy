@@ -567,7 +567,7 @@ API.job.status = (filter='NOT group:TEST') ->
       cluster: job_result.terms('_cid')
   res.limits = {} # may not be worth reporting on limit index in new structure
   job_limit.each 'NOT last:*', (lm) -> res.limits[lm.group ? lm._id] = {date:lm.created_date,limit:lm.limit}
-  job_job.each 'NOT done:true', (j) -> res.jobs.waiting += (j.processes.length - (job.processed ? 0))
+  job_job.each 'NOT done:true', (j) -> res.jobs.waiting += (j.processes.length - (j.processed ? 0))
   return res
 
 API.job.progress = (jobid) ->
@@ -576,7 +576,23 @@ API.job.progress = (jobid) ->
   progress = 100 if progress > 100
   if progress is 100 and job.done isnt true
     API.job.complete job
-  return {createdAt:job.createdAt, progress:progress, name:job.name, email:job.email, _id:job._id, new:job.new}
+  res = {running: API.job.running(), createdAt:job.createdAt, progress:progress, name:job.name, email:job.email, _id:job._id, new:job.new, processes: job.processes.length, processed: job.processed ? 0}
+  if progress isnt 100
+    if res.running
+      if Date.now() > (job.createdAt + (2000 * job.processes.length)) and (Date.now() - (job.updatedAt ? 0)) > ((job.processes.length - (job.processed ? 0)) * 2000)
+        res.stuck = true
+        res.missing = []
+        res.waiting = 0
+        res.processing = 0
+        res.results = 0
+        for p in job.processes
+          if job_processing.get(p._id) then res.processing += 1 else if job_process.get(p._id) then res.waiting += 1 else if job_result.get(p._id)? then res.result += 1 else res.missing.push(p._id)
+        res.missing_count = res.missing.length
+        if res.missing.length
+          API.log 'Job progress checked for job ' + job._id + ', but processes are missing...' # TODO should this send an email warning to admin, to the job submitter, should it resubmit the missing processes?
+    else
+      API.log 'Job progress checked for job ' + job._id + ', but job runner is not running...' # TODO should this send an email warning to admin?
+  return res
 
 API.job.complete = (jobid) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
