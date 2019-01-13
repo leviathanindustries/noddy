@@ -15,17 +15,24 @@ API.use.crossref = {works:{},journals:{}}
 API.add 'use/crossref/works/doi/:doipre/:doipost',
   get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost
 
+API.add 'use/crossref/works',
+  get: () -> return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter
 API.add 'use/crossref/works/search',
-  get: () -> return API.use.crossref.works.search this.queryParams.q, this.queryParams.from, this.queryParams.size, this.queryParams.filter
+  get: () -> return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter
 
 API.add 'use/crossref/works/published/:startdate',
-  get: () -> return API.use.crossref.works.published this.urlParams.startdate, undefined, this.queryParams.from, this.queryParams.size, this.queryParams.filter
+  get: () -> return API.use.crossref.works.published this.urlParams.startdate, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter
 
 API.add 'use/crossref/works/published/:startdate/:enddate',
-  get: () -> return API.use.crossref.works.published this.urlParams.startdate, this.urlParams.enddate, this.queryParams.from, this.queryParams.size, this.queryParams.filter
+  get: () -> return API.use.crossref.works.published this.urlParams.startdate, this.urlParams.enddate, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter
 
 API.add 'use/crossref/types',
   get: () -> return API.use.crossref.types()
+
+API.add 'use/crossref/journals',
+  get: () -> return API.use.crossref.journals.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter
+API.add 'use/crossref/journals/search',
+  get: () -> return API.use.crossref.journals.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter
 
 API.add 'use/crossref/journals/:issn',
   get: () -> return API.use.crossref.journals.issn this.urlParams.issn
@@ -37,7 +44,7 @@ API.add 'use/crossref/journals/:issn/works/dois',
   get: () -> return API.use.crossref.journals.dois this.urlParams.issn
 
 API.add 'use/crossref/reverse',
-  get: () -> return API.use.crossref.reverse [this.queryParams.q], this.queryParams.score
+  get: () -> return API.use.crossref.reverse [this.queryParams.q ? this.queryParams.query], this.queryParams.score
   post: () -> return API.use.crossref.reverse this.request.body
 
 API.add 'use/crossref/resolve/:doipre/:doipost', get: () -> return API.use.crossref.resolve this.urlParams.doipre + '/' + this.urlParams.doipost
@@ -151,6 +158,19 @@ API.use.crossref.journals.dois = (issn) ->
     return dois
   catch
     return undefined
+
+API.use.crossref.journals.search = (qrystr,from,size,filter) ->
+  url = 'https://api.crossref.org/journals?';
+  if qrystr and qrystr isnt 'all'
+    qry = qrystr.replace(/\w+?\:/g,'').replace(/ AND /g,'+').replace(/ OR /g,' ').replace(/ NOT /g,'-').replace(/ /g,'+')
+    url += 'query=' + qry
+  url += '&offset=' + from if from?
+  url += '&rows=' + size if size?
+  url += '&filter=' + filter if filter?
+  url = url.replace('?&','?') # tidy any params coming immediately after the start of search query param signifier, as it makes crossref error out
+  API.log 'Using crossref for ' + url
+  res = HTTP.call 'GET', url, {headers: header}
+  return if res.statusCode is 200 then { total: res.data.message['total-results'], data: res.data.message.items, facets: res.data.message.facets} else { status: 'error', data: res}
 
 
 

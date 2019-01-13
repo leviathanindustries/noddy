@@ -43,7 +43,12 @@ API.add 'mail/progress',
 API.add 'mail/progress/:mid',
   get: () ->
     try
-      rm = mail_progress.find {'Message-Id.exact':this.urlParams.mid}
+      if '@' in this.urlParams.mid
+        rm = mail_progress.find {'recipient.exact':this.urlParams.mid}, true
+        if rm.createdAt < Date.now() - 60000 # progress checks via email are not exact, so limit to events in the last minute
+          return ''
+      else
+        rm = mail_progress.find {'Message-Id.exact':this.urlParams.mid}, true
       return rm.event
     catch
       return ''
@@ -61,8 +66,24 @@ API.mail.send = (opts,mail_url) ->
     delete opts.template
 
   if not opts.text and not opts.html
-    opts.text = opts.content ? ""
+    opts.text = opts.content ? opts.body ? ""
   delete opts.content
+
+  if opts.append
+    if typeof opts.append is 'string'
+      if opts.html
+        opts.html += opts.append
+      else
+        opts.text += opts.append
+    else
+      opts.html += opts.append.html if opts.append.html? and opts.html?
+      opts.text += opts.append.text if opts.append.text? and opts.text?
+    delete opts.append
+
+  if opts.html and opts.html.indexOf('<body') is -1 # these are needed to make well-formed html emails for action buttons to work in gmail
+    opts.html = '<body>' + opts.html + '</body>'
+  if opts.html and opts.html.indexOf('<html') is -1
+    opts.html = '<html>' + opts.html + '</html>'
 
   # can also take opts.headers
   # also takes opts.attachments, but not required. Should be a list of objects as per

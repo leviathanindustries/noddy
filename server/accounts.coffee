@@ -167,14 +167,51 @@ API.accounts.token = (tok, send=true) ->
         snd.text = snd.text.replace(settings.timeout + ' minutes',rp)
         snd.html = snd.html.replace(settings.timeout + ' minutes',rp) if snd.html
     try
-      # allows things to continue if e.g. on dev and email not configured
-      sent = API.mail.send snd
-      future = new Future()
-      Meteor.setTimeout (() -> future.return()), 333
-      future.wait()
-      return mid: sent?.data?.id ? true
-    catch
-      return false
+      # https://developers.google.com/gmail/markup/reference/one-click-action
+      if ex = API.accounts.retrieve tok.email
+        if false #ex.createdAt < Date.now() - 300000
+          # if not a new account creation in the last 5 mins, try to add a gmail login action button
+          # 7bit encoding is necessary to get the schema data for the inline gmail buttons to display properly
+          # normal email quoted=printable encoding converts = to 3D= and breaks the schema data, whether done in json-ld or microdata
+          # so this is only useful for login emails that are not too long or complex, as 7bit encoding only allows for max 1000 char lines
+          # NOTE annoyingly this does not work with mailgun to set the encoding header, so this still does not work. May have to send full mime messages to mailgun, which is annoying
+          # Requiring the email template to have a confirmaction var is not too useful either - when this is fixed, look at a different way to handle it
+          #snd['h:Content-Transfer-Encoding'] = '7bit'
+          #snd['headers'] = {'Content-Transfer-Encoding':'7bit'}
+          #snd['encoding'] = '7bit' # use this to force my mail code to use a mailcomposer object directly with 7bit Content-Transfer-Encoding
+          #snd.text ?= 'Login at ' + tok.url # this forces a multipart to get the transfer encodings onto
+          # none of the attempts to pass options to mailcomposer worked, including using a mailcomposer object directly in the mail method
+          # only remaining option would be to build the MIME directly, but just not worth the hassle right now for a simple convenience in gmail
+          snd.smtp = true
+          btn = '<br><br>
+<script type="application/ld+json">
+{
+  "@context": "http://schema.org", 
+  "@type": "EmailMessage",
+  "potentialAction": { 
+    "@type": "ConfirmAction",
+    "name": "Login",
+    "handler": {
+      "@type": "HttpActionHandler",
+      "url": "' + tok.url + '"
+    }
+  },
+  "description": "Login to ' + tok.service + '"
+}
+</script>'
+          if snd.vars
+            snd.append = btn
+          else if snd.html?
+            snd.html += btn
+    #try
+    # allows things to continue if e.g. on dev and email not configured
+    sent = API.mail.send snd
+    future = new Future()
+    Meteor.setTimeout (() -> future.return()), 333
+    future.wait()
+    return mid: sent?.data?.id ? (if typeof snd.to is 'string' then snd.to else JSON.stringify snd.to)
+    #catch
+    #  return false
   else
     return tok
 

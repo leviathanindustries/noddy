@@ -269,6 +269,8 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll, dev=API.setti
   res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
   return 0 if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
   total = res.hits.total
+  console.log q
+  console.log 'each found ' + total
   processed = 0
   updates = []
   while (res.hits.hits.length)
