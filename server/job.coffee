@@ -71,20 +71,21 @@ API.add 'job/:job/reload',
     authOptional: true # TODO decide proper permissions for this and pass uid to job.rerun if suitable
     action: () -> return API.job.reload(this.urlParams.job)
 
+API.add 'job/reload',
+  get:
+    roleRequired: if API.settings.dev then undefined else 'job.admin'
+    action: () -> return API.job.reload(true) # reloads every process from every job that is not done, if there is not already a process or a result matching it
+
 API.add 'job/jobs',
   get:
     authOptional: true
     action: () ->
       if this.user? and API.accounts.auth 'root', this.user
-        jobs = false
-        if this.queryParams.jobs
-          delete this.queryParams.jobs
-          jobs = true
-        res = job_job.search this.queryParams
-        if not jobs
-          for r of res?.hits?.hits
-            if res.hits.hits[r]._source?.processes? then res.hits.hits[r]._source.processes = res.hits.hits[r]._source.processes.length else if res.hits.hits[r]._fields?.processes? then res.hits.hits[r]._fields.processes = res.hits.hits[r]._fields.processes.length
-        return res
+        processes = false
+        if this.queryParams.processes
+          delete this.queryParams.processes
+          processes = true
+        return job_job.search this.queryParams, (if processes or this.queryParams.fields or this.queryParams._source then undefined else {_source:{exclude:['processes']}})
       else
         return count: job_job.count(), done: job_job.count undefined, {done: true}
 
@@ -97,7 +98,7 @@ API.add 'job/jobs/:email',
       else
         results = []
         done = 0
-        job_job.each {email:this.urlParams.email}, ((job) -> job.processes = job.processes.length; done += if job.done then 1 else 0; results.push job)
+        job_job.each {email:this.urlParams.email}, (if this.queryParams.processes then {size:this.queryParams.size ? 50} else {_source: {exclude:['processes']}}), ((job) -> done += if job.done then 1 else 0; results.push job)
         return total: results.length, jobs: results, done: done
 
 API.add 'job/results',
@@ -177,6 +178,11 @@ API.add 'job/stop',
     action: () -> API.job.stop(); return true
 
 
+if job_job.search('NOT count:*').hits.total isnt 0
+  console.log 'Adding count to jobs'
+  job_job.each 'NOT count:*', {size:50}, (j) -> job_job.update j._id, {count: j.processes.length}
+else
+  console.log  'All jobs have count'
 
 API.job._sign = (fn='', args, checksum=true) ->
   fn += '_'
@@ -198,9 +204,11 @@ API.job.allowed = (job,uacc) ->
 
 API.job.create = (job) ->
   job = job_job.get(job) if typeof job isnt 'object'
+  job.processes ?= []
+  job.count = job.processes.length
   # A job can set the "service" value to indicate which service it belongs to, so that queries about jobs only related to the service can be performed
   # NOTE there is a process priority field which can be set from the job too - how to decide who can set priorities?
-  job.priority ?= if job.processes.length <= 10 then 11 - job.processes.length else 0 # set high priority for short jobs more likely to be from a UI
+  job.priority ?= if job.count <= 10 then 11 - job.count else 0 # set high priority for short jobs more likely to be from a UI
   # A job can have order:true if so, processes will be set to available:false and only run once their previous process completes and changes this
   # TODO what is best default refresh for job? And should it change from current use as days down to ms?
   job.args = JSON.stringify(job.args) if job.args? and typeof job.args isnt 'string' # store args as string so can handle multiple types
@@ -265,11 +273,11 @@ API.job.create = (job) ->
 
   if imports.length
     job_process.insert imports
-    job.processed = job.processes.length - imports.length
+    job.processed = job.count - imports.length
 
   # NOTE job can also have a "complete" function string name, which will be called when progress hits 100%, see below
   # the "complete" function will receive the whole job object as the only argument (so can look up results by the process IDs)
-  job.done = job.processes.length is 0 # bit pointless submitting empty jobs, but theoretically possible. Could make impossible...
+  job.done = job.count is 0 # bit pointless submitting empty jobs, but theoretically possible. Could make impossible...
   job.new = false
   if job._id
     job_job.update job._id, job
@@ -459,9 +467,9 @@ API.job.process = (proc) ->
   else if proc.order
     job_process.update {job: proc.job, order: proc.order+1}, {available:true}
   try
-    job_job.each 'NOT done:true AND processes._id:' + proc._id, (job) ->
+    job_job.each 'NOT done:true AND processes._id:' + proc._id, {_source:['processed','count']}, (job) ->
       job_job.update job._id, {processed:"+1"}
-      if (job.processed ? 0) + 1 >= job.processes.length
+      if (job.processed ? 0) + 1 >= job.count
         API.job.complete job
   try
     if proc.callback
@@ -511,12 +519,14 @@ API.job.reload = (q='*') ->
         p.reloaded.push p.createdAt
         reloads.push p
   if q is true
-    job_job.each 'NOT done:true', ((job) -> _reload_job_processes(job))
+    job_job.each 'NOT done:true', {size:50}, ((job) -> _reload_job_processes(job))
   else if q isnt '*' and job = job_job.get q
     _reload_job_processes job
   else
     job_processing.each q, ((proc) -> _reload_job_processes {processes:[proc]})
   if reloads.length
+    API.log 'Job runner reloading ' + reloads.length + ' jobs for ' + (if q is true then 'all jobs' else if typeof q is 'string' then 'query ' + q else ' complex query object')
+    console.log 'doing reload for ' + reloads.length
     job_process.import reloads
   return ret
 
@@ -566,44 +576,42 @@ API.job.status = (filter='NOT group:TEST') ->
       newest: {_id: jrn._id, createdAt: jrn.createdAt, created_date: jrn.created_date} if jrn = job_result.find(filter, true)
       cluster: job_result.terms('_cid')
   res.limits = {} # may not be worth reporting on limit index in new structure
-  console.log 'going to count job limits'
-  job_limit.each 'NOT last:*', (lm) -> 
-    res.limits[lm.group ? lm._id] = {date:lm.created_date,limit:lm.limit}
-    console.log _.keys(res.limits).length
-  console.log 'going to count job waiting'
-  job_job.each 'NOT done:true', (j) -> 
-    res.jobs.waiting += (j.processes.length - (j.processed ? 0))
-    console.log res.jobs.waiting
+  job_limit.each 'NOT last:*', (lm) -> res.limits[lm.group ? lm._id] = {date:lm.created_date,limit:lm.limit}
+  job_job.each 'NOT done:true', {_source:['count','processed']}, (j) -> res.jobs.waiting += (j.count - (j.processed ? 0))
   return res
 
 API.job.progress = (jobid) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
-  progress = if job.done then 100 else if job.new then 0 else (job.processed ? 0)/job.processes.length*100
+  progress = if job.done then 100 else if job.new then 0 else (job.processed ? 0)/job.count*100
   progress = 100 if progress > 100
   if progress is 100 and job.done isnt true
     API.job.complete job
-  res = {running: API.job.running(), createdAt:job.createdAt, progress:progress, name:job.name, email:job.email, _id:job._id, new:job.new, processes: job.processes.length, processed: job.processed ? 0}
+  res = {running: API.job.running(), createdAt:job.createdAt, progress:progress, name:job.name, email:job.email, _id:job._id, new:job.new, count: job.count, processes: job.count, processed: job.processed ? 0}
   if progress isnt 100
     if res.running
-      if Date.now() > (job.createdAt + (2000 * job.processes.length)) and (Date.now() - (job.updatedAt ? 0)) > ((job.processes.length - (job.processed ? 0)) * 2000)
+      if Date.now() > (job.createdAt + (2000 * job.count)) and (Date.now() - (job.updatedAt ? 0)) > ((job.count - (job.processed ? 0)) * 2000)
         res.stuck = true
         res.missing = []
         res.waiting = 0
         res.processing = 0
         res.results = 0
         for p in job.processes
-          if job_processing.get(p._id) then res.processing += 1 else if job_process.get(p._id) then res.waiting += 1 else if job_result.get(p._id)? then res.result += 1 else res.missing.push(p._id)
-        res.missing_count = res.missing.length
-        if res.missing.length
+          if job_processing.get(p._id) then res.processing += 1 else if job_process.get(p._id) then res.waiting += 1 else if job_result.get(p._id)? then res.results += 1 else res.missing.push(p._id)
+        res.missed = res.missing.length
+        if res.missed
           API.log 'Job progress checked for job ' + job._id + ', but processes are missing...' # TODO should this send an email warning to admin, to the job submitter, should it resubmit the missing processes?
     else
       API.log 'Job progress checked for job ' + job._id + ', but job runner is not running...' # TODO should this send an email warning to admin?
+    if res.count is res.results
+      res.progress = 100
+      API.job.complete job
   return res
 
 API.job.complete = (jobid) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
   if job.done isnt true
     job_job.update job._id, {done: true}
+    job = job_job.get(job._id) if not job.processes? # we try not to pass round big process lists any more, but for passing to completion, need to get the full record
     try
       fn = if job.complete.indexOf('API.') is 0 then API else global
       fn = fn[f] for f in job.complete.replace('API.','').split('.')

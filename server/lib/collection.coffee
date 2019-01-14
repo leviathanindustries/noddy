@@ -88,13 +88,13 @@ API.collection.prototype.fetch_history = (q, opts={}, dev=API.settings.dev) ->
   res = API.es.call 'POST', this._route + '_history/_search', qy, undefined, undefined, true, undefined, undefined, dev
   if res.hits.hits.length
     for h in res.hits.hits
-      results.push h._source ? h.fields
+      results.push h._source ? h.fields ? {_id: h._id}
   return results if not res?._scroll_id?
   res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, undefined, undefined, dev
   return results if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
   while (res.hits.hits.length)
     for h in res.hits.hits
-      hr = h._source ? h.fields
+      hr = h._source ? h.fields ? {_id: h._id}
       hr[hr.action] = JSON.parse(hr.string) if hr.string? and hr.action?
       results.push hr
     res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, undefined, undefined, dev
@@ -211,7 +211,7 @@ API.collection.prototype.find = (q, opts, versioned, dev=API.settings.dev) ->
   else
     try
       hits = this.search(q, opts, versioned, dev).hits.hits
-      return if hits.length isnt 0 then (if versioned then hits[0] else hits[0]._source ? hits[0].fields) else undefined
+      return if hits.length isnt 0 then (if versioned then hits[0] else hits[0]._source ? hits[0].fields ? {_id: hits[0]._id}) else undefined
     catch err
       API.log({ msg: 'Collection find threw error', q: q, level: 'error', error: err }) if this._route.indexOf('_log') is -1
       return undefined
@@ -261,7 +261,7 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll, dev=API.setti
   opts ?= {}
   qy = API.collection._translate q, opts
   qy.from ?= 0
-  qy.size ?= if scroll then 300 else 1000
+  qy.size ?= if scroll then 250 else 500
   res = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, true, undefined, undefined, dev
   return 0 if not res?._scroll_id?
   scrollids = []
@@ -269,8 +269,6 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll, dev=API.setti
   res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
   return 0 if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
   total = res.hits.total
-  console.log q
-  console.log 'each found ' + total
   processed = 0
   updates = []
   while (res.hits.hits.length)
@@ -278,7 +276,7 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll, dev=API.setti
     processed += res.hits.hits.length
     for h in res.hits.hits
       fn = fn.bind this
-      fr = fn h._source ? h.fields
+      fr = fn h._source ? h.fields ? {_id: h._id}
       updates.push(fr) if fr? and (typeof fr is 'object' or typeof fr is 'string')
     res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
   for sid in scrollids
@@ -296,14 +294,14 @@ API.collection.prototype.fetch = (q, opts={}, dev=API.settings.dev) ->
   res = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, true, undefined, undefined, dev
   if res.hits.hits.length
     for h in res.hits.hits
-      results.push h._source ? h.fields
+      results.push h._source ? h.fields ? {_id: h._id}
     # scroll queries that are not of scan type will have results in the first request, whereas scan queries will not
   return results if not res?._scroll_id?
   res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, undefined, undefined, dev
   return results if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
   while (res.hits.hits.length)
     for h in res.hits.hits
-      results.push h._source ? h.fields
+      results.push h._source ? h.fields ? {_id: h._id}
     res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, undefined, undefined, dev
   this.refresh(dev)
   return results
@@ -525,9 +523,9 @@ API.collection._translate = (q, opts) ->
         delete opts.source
     else if q.q?
       qry.query.filtered.query.bool.must.push query_string: query: q.q
-      if not opts?
-        opts = q
-        delete opts.q
+      opts ?= {}
+      for o of q
+        opts[o] ?= q[o] if o not in ['q']
     else
       if q.must?
         qry.query.filtered.filter.bool.must = q.must
