@@ -37,7 +37,8 @@ API.add 'job/:job',
         if not API.job.allowed job, this.user
           return 401
         else
-          job.progress = API.job.progress job
+          job.progress = API.job.progress(job) if this.queryParams.progress
+          delete job.processes if this.queryParams.processes
           return job
       else
         return 404
@@ -98,7 +99,7 @@ API.add 'job/jobs/:email',
       else
         results = []
         done = 0
-        job_job.each {email:this.urlParams.email}, (if this.queryParams.processes then {size:this.queryParams.size ? 50} else {_source: {exclude:['processes']}}), ((job) -> done += if job.done then 1 else 0; results.push job)
+        job_job.each {email:this.urlParams.email}, (if this.queryParams.processes then {size:this.queryParams.size ? 20} else {_source: {exclude:['processes']}}), ((job) -> done += if job.done then 1 else 0; results.push job)
         return total: results.length, jobs: results, done: done
 
 API.add 'job/results',
@@ -514,7 +515,7 @@ API.job.reload = (q='*') ->
         p.reloaded.push p.createdAt
         reloads.push p
   if q is true
-    job_job.each 'NOT done:true', {size:50}, ((job) -> _reload_job_processes(job))
+    job_job.each 'NOT done:true', {size:20}, ((job) -> _reload_job_processes(job))
   else if q isnt '*' and job = job_job.get q
     _reload_job_processes job
   else
