@@ -52,7 +52,13 @@ API.add 'job/:job',
         return 404
   delete:
     roleRequired: 'job.user' # who if anyone can remove jobs?
-    action: () -> return if not API.job.allowed(this.urlParams.job,this.user) then 401 else job_job.remove this.urlParams.job
+    action: () -> 
+      if not API.job.allowed(this.urlParams.job,this.user)
+        return 401
+      else if job = job_job.get this.urlParams.job
+        return API.job.remove job
+      else
+        return 404
 
 API.add 'job/:job/progress', get: () -> return if not job = job_job.get(this.urlParams.job) then 404 else API.job.progress job
 
@@ -119,6 +125,21 @@ API.add 'job/results',
       else
         return count: job_result.count()
 
+API.add 'job/results/orphans',
+  get: () ->
+    counter = 0
+    job_result.each '*', (p) -> 
+      if job_job.search('processes._id:' + p._id).hits.total is 0
+        counter += 1
+    return counter
+  delete: () ->
+    counter = 0
+    job_result.each '*', (p) -> 
+      if job_job.search('processes._id:' + p._id).hits.total is 0
+        counter += 1
+        job_result.remove p._id
+    return counter
+
 API.add 'job/limits',
   get:
     authOptional: true
@@ -137,6 +158,21 @@ API.add 'job/processes',
       else
         return count: job_process.count()
 
+API.add 'job/processes/orphans',
+  get: () ->
+    counter = 0
+    job_process.each '*', (p) -> 
+      if job_job.search('processes._id:' + p._id).hits.total is 0
+        counter += 1
+    return counter
+  delete: () ->
+    counter = 0
+    job_process.each '*', (p) -> 
+      if job_job.search('processes._id:' + p._id).hits.total is 0
+        counter += 1
+        job_process.remove p._id
+    return counter
+    
 API.add 'job/processing',
   get:
     authOptional: true
@@ -290,6 +326,16 @@ API.job.create = (job) ->
   if imports.length is 0
     API.job.complete job
   return job
+
+API.job.remove = (jobid) ->
+  job = if typeof jobid is 'object' then jobid else job_job.get jobid
+  for p in job.processes
+    if job_job.search('NOT _id:' + job._id + ' AND processes._id:' + p._id).hits.total is 0
+      try job_process.remove p._id
+      try job_processing.remove p._id
+      try job_result.remove p._id
+  job_job.remove this.urlParams.job
+  return true
 
 API.job.time = (cron,hhmm) -> # hhmm just allows a simple way to pass in daily 0500 (will also accept 500)
   res = {provided: cron, expanded: {}, next: {}}
@@ -527,7 +573,9 @@ API.job.reload = (q='*') ->
   else if q isnt '*' and job = job_job.get q
     _reload_job_processes job
   else
-    job_processing.each q, ((proc) -> _reload_job_processes {processes:[proc]})
+    job_processing.each q, (proc) -> 
+      if job_job.search('processes._id:' + proc._id).hits.total isnt 0
+        _reload_job_processes {processes:[proc]}
   if reloads.length
     API.log 'Job runner reloading ' + reloads.length + ' jobs for ' + (if q is true then 'all jobs' else if typeof q is 'string' then 'query ' + q else ' complex query object')
     console.log 'doing reload for ' + reloads.length
