@@ -180,7 +180,11 @@ API.add 'job/stop',
 
 if job_job.search('NOT count:*').hits.total isnt 0
   console.log 'Adding count to jobs'
-  job_job.each 'NOT count:*', {size:50}, (j) -> job_job.update j._id, {count: j.processes.length}
+  counter = 0
+  job_job.each 'NOT count:*', {size:50}, (j) -> 
+    counter += 1
+    console.log counter
+    job_job.update j._id, {count: j.processes.length}
 else
   console.log  'All jobs have count'
 
