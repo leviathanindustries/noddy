@@ -184,7 +184,7 @@ if job_job.search('NOT count:*').hits.total isnt 0
   job_job.each 'NOT count:*', {size:50}, (j) -> 
     counter += 1
     console.log counter
-    job_job.update j._id, {count: j.processes.length}
+    job_job.update j._id, {count: if j.processes then j.processes.length else 0}
 else
   console.log  'All jobs have count'
 
