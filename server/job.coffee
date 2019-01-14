@@ -178,15 +178,15 @@ API.add 'job/stop',
     action: () -> API.job.stop(); return true
 
 
-if job_job.search('NOT count:*').hits.total isnt 0
-  console.log 'Adding count to jobs'
-  counter = 0
-  job_job.each 'NOT count:*', {size:50}, (j) -> 
-    counter += 1
-    console.log counter
-    job_job.update j._id, {count: if j.processes then j.processes.length else 0}
-else
-  console.log  'All jobs have count'
+#if job_job.search('NOT count:*').hits.total isnt 0
+#  console.log 'Adding count to jobs'
+#  counter = 0
+#  job_job.each 'NOT count:*', {size:50}, (j) -> 
+#    counter += 1
+#    console.log counter
+#    job_job.update j._id, {count: if j.processes then j.processes.length else 0}
+#else
+#  console.log  'All jobs have count'
 
 API.job._sign = (fn='', args, checksum=true) ->
   fn += '_'
