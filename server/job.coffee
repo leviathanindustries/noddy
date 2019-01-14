@@ -38,7 +38,15 @@ API.add 'job/:job',
           return 401
         else
           job.progress = API.job.progress(job) if this.queryParams.progress
-          delete job.processes if this.queryParams.processes
+          if this.queryParams.processes
+            if typeof this.queryParams.processes is 'number'
+              try job.processes = job.processes.slice(0,this.queryParams.processes)
+            else if '-' in this.queryParams.processes
+              try job.processes = job.processes.slice(parseInt(this.queryParams.processes.split('-')[0]),parseInt(this.queryParams.processes.split('-')[1]))
+            else
+              try job.processes = job.processes.slice(0,parseInt(this.queryParams.processes))
+          else
+            delete job.processes 
           return job
       else
         return 404
