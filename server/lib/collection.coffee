@@ -261,26 +261,27 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll, dev=API.setti
   opts ?= {}
   qy = API.collection._translate q, opts
   qy.from ?= 0
-  qy.size ?= if scroll then 250 else 500
+  qy.size ?= 800
   res = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, true, undefined, undefined, dev
   return 0 if not res?._scroll_id?
-  scrollids = []
-  scrollids.push(res._scroll_id) if scroll?
+  # scrolling to the end of the scroll results closes the scrolls anyway even if the timeout is not reached, so no need to track and delete them
+  #scrollids = []
+  #scrollids.push(res._scroll_id) if scroll?
   res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
   return 0 if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
   total = res.hits.total
   processed = 0
   updates = []
   while (res.hits.hits.length)
-    scrollids.push(res._scroll_id) if scroll?
+    #scrollids.push(res._scroll_id) if scroll?
     processed += res.hits.hits.length
     for h in res.hits.hits
       fn = fn.bind this
       fr = fn h._source ? h.fields ? {_id: h._id}
       updates.push(fr) if fr? and (typeof fr is 'object' or typeof fr is 'string')
     res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
-  for sid in scrollids
-    try API.es.call 'DELETE', '_search/scroll', undefined, undefined, undefined, sid, undefined, undefined, dev
+  #for sid in scrollids
+  #  try API.es.call 'DELETE', '_search/scroll', undefined, undefined, undefined, sid, undefined, undefined, dev
   if action? and updates.length
     this.bulk updates, action, uid, undefined, dev
   this.refresh(dev)

@@ -4,7 +4,7 @@ import diskspace from 'diskspace'
 
 API.add 'stats',
   get: () ->
-    return {
+    ret = {
       cid: process.env.CID, 
       appid: process.env.APP_ID, 
       updated: process.env.LAST_UPDATED,
@@ -15,6 +15,10 @@ API.add 'stats',
       version: (if API.settings.version then API.settings.version else "0.0.1"),
       dev: API.settings.dev
     }
+    try
+      ret.disk.human = Math.round(ret.disk.used/ret.disk.total*100) + '% used of ' + Math.round(ret.disk.total/1024/1024/1024) + 'G'
+      ret.memory.human = Math.round(ret.memory.heapUsed/ret.memory.heapTotal*100) + '% used of ' + Math.round(ret.memory.rss/1024/1024) + 'M allocated (max default that node will allow this to go up to is 1.7G)'
+    return ret
 
 API.add 'status', get: () -> return API.status(false)
 
@@ -26,7 +30,7 @@ API.status = (email=true) ->
       local: false
       cluster: false
       dev: false
-    memory: []
+    machines: []
     accounts:
       total: Users.count()
     job: false
@@ -46,13 +50,13 @@ API.status = (email=true) ->
     if lm.data.cid is process.env.CID
       reported = true
       lm.data.served = true
-    ret.memory.push lm.data
+    ret.machines.push lm.data
   if dm?.data?
     dm.data.machine = 'dev'
     if dm.data.cid is process.env.CID
       reported = true
       dm.data.served = true
-    ret.memory.push dm.data
+    ret.machines.push dm.data
   try
     HTTP.call 'HEAD','https://cluster.api.cottagelabs.com', {timeout:2000}
     ret.up.cluster = true
@@ -66,12 +70,12 @@ API.status = (email=true) ->
           if cm.data.cid is process.env.CID
             reported = true
             cm.data.served = true
-          ret.memory.push cm.data
+          ret.machines.push cm.data
           ccount += 1
       ret.up.cluster = ccount if ccount isnt 0
       ret.status = 'yellow' if ccount isnt API.settings.cluster.ip.length
   if not reported
-    ret.memory.push {served:true, cid:process.env.CID, appid:process.env.APP_ID, memory:process.memoryUsage()}
+    ret.machines.push {served:true, cid:process.env.CID, appid:process.env.APP_ID, memory:process.memoryUsage()}
   ret.status = 'red' if API.settings.cluster?.machines and API.settings.cluster.ip.length and (ret.up.cluster is false or ret.up.cluster is 0)
 
   try ret.job = API.job.status()

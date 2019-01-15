@@ -263,7 +263,7 @@ API.es.types = (index, url=API.settings.es.url) ->
   try types.push(t) for t of HTTP.call('GET', url + '/' + index + '/_mapping').data[index].mappings
   return types
 
-API.es.call = (action, route, data, refresh, version, scan, scroll='5m', partial=false, dev=API.settings.dev, url=API.settings.es.url) ->
+API.es.call = (action, route, data, refresh, version, scan, scroll='10m', partial=false, dev=API.settings.dev, url=API.settings.es.url) ->
   return undefined if data? and typeof data is 'object' and data.script? and partial is false
   scroll = '120m' if scroll is true
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
@@ -308,14 +308,14 @@ API.es.call = (action, route, data, refresh, version, scan, scroll='5m', partial
     opts.retry = API.es._retries
     ret = RetryHttp.call action, url + route, opts
     API.es.refresh('/' + routeparts[0], dev, url) if refresh and action in ['POST','PUT']
-    if API.settings.log?.level is 'all'
+    if API.settings.log?.level in ['all','debug']
       ld = JSON.parse(JSON.stringify(ret.data))
-      ld.hits?.NOTE = 'Results length reduced from ' + ld.hits.hits.length + ' to 1 for logging example, does not affect output'
-      ld.hits?.hits = ld.hits?.hits.splice(0,1)
-      if route.indexOf('_log') is -1
-        API.log msg:'ES query info', options:opts, url: url, route: route, result: ld, level: 'all'
-      else
-        console.log('ES SEARCH DEBUG INFO\n' + JSON.stringify(opts),'\n',JSON.stringify(ld),'\n')
+      ld.hits.hits = ld.hits.hits.length if ld.hits?.hits?
+      if route.indexOf('_log') is -1 and API.settings.log.level is 'all'
+        API.log msg:'ES query info', options:opts, url: url, route: route, res: ld, level: 'all'
+      else if '_search' in route and not ret.data?.hits?.hits?
+        console.log JSON.stringify opts
+        console.log JSON.stringify ld
     return ret.data
   catch err
     # if version and versions don't match, there will be a 409 thrown here - pass it back so collection can handle it
@@ -323,10 +323,15 @@ API.es.call = (action, route, data, refresh, version, scan, scroll='5m', partial
     lg = level: 'debug', msg: 'ES error, but may be OK, 404 for empty lookup, for example', action: action, url: url, route: route, opts: opts, error: err.toString()
     if err.response?.statusCode isnt 404 and route.indexOf('_log') is -1
       API.log lg
+      console.log(lg) if API.settings.log?.level? is 'debug'
     if API.settings.log?.level is 'all'
       console.log lg
-      console.log JSON.stringify(opts)
-      console.log JSON.stringify(err)
+      console.log JSON.stringify opts
+      console.log JSON.stringify err
+      try console.log err.toString()
+    if API.settings.log?.level is 'debug' and err.response?.statusCode not in [404,409]
+      console.log JSON.stringify opts
+      console.log JSON.stringify err
       try console.log err.toString()
     # is it worth returning false for 404 and undefined otherwise? If so would need to check if undefined is expected anywhere, and how the API would return a false as 404, at the moment it only assumes that undefined is a 404 because false could be a valid response
     return if err.response?.statusCode is 409 then 409 else undefined

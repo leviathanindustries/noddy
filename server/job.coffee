@@ -38,13 +38,15 @@ API.add 'job/:job',
           return 401
         else
           job.progress = API.job.progress(job) if this.queryParams.progress
-          if this.queryParams.processes
+          if this.queryParams.processes?
             if typeof this.queryParams.processes is 'number'
               try job.processes = job.processes.slice(0,this.queryParams.processes)
             else if '-' in this.queryParams.processes
               try job.processes = job.processes.slice(parseInt(this.queryParams.processes.split('-')[0]),parseInt(this.queryParams.processes.split('-')[1]))
-            else
-              try job.processes = job.processes.slice(0,parseInt(this.queryParams.processes))
+            else if this.queryParams.processes isnt true
+              try
+                pn = parseInt this.queryParams.processes
+                job.processes = job.processes.slice(0,pn) if not isNaN pn
           else
             delete job.processes 
           return job
@@ -91,6 +93,14 @@ API.add 'job/reload',
     roleRequired: if API.settings.dev then undefined else 'job.admin'
     action: () -> return API.job.reload(true) # reloads every process from every job that is not done, if there is not already a process or a result matching it
 
+API.add 'job/orphans',
+  get:
+    roleRequired: if API.settings.dev then undefined else 'job.admin'
+    action: () -> return API.job.orphans(this.queryParams.remove?) # removes any process or result that does not appear in a job currently in the system
+  delete:
+    roleRequired: if API.settings.dev then undefined else 'job.admin'
+    action: () -> return API.job.orphans(true) # removes any process or result that does not appear in a job currently in the system
+
 API.add 'job/jobs',
   get:
     authOptional: true
@@ -125,21 +135,6 @@ API.add 'job/results',
       else
         return count: job_result.count()
 
-API.add 'job/results/orphans',
-  get: () ->
-    counter = 0
-    job_result.each '*', (p) -> 
-      if job_job.search('processes._id:' + p._id).hits.total is 0
-        counter += 1
-    return counter
-  delete: () ->
-    counter = 0
-    job_result.each '*', (p) -> 
-      if job_job.search('processes._id:' + p._id).hits.total is 0
-        counter += 1
-        job_result.remove p._id
-    return counter
-
 API.add 'job/limits',
   get:
     authOptional: true
@@ -158,21 +153,6 @@ API.add 'job/processes',
       else
         return count: job_process.count()
 
-API.add 'job/processes/orphans',
-  get: () ->
-    counter = 0
-    job_process.each '*', (p) -> 
-      if job_job.search('processes._id:' + p._id).hits.total is 0
-        counter += 1
-    return counter
-  delete: () ->
-    counter = 0
-    job_process.each '*', (p) -> 
-      if job_job.search('processes._id:' + p._id).hits.total is 0
-        counter += 1
-        job_process.remove p._id
-    return counter
-    
 API.add 'job/processing',
   get:
     authOptional: true
@@ -231,7 +211,7 @@ API.job._sign = (fn='', args, checksum=true) ->
   else
     try
       for a in _.keys(args).sort()
-        fn += a + '_' + JSON.stringify args[a]
+        fn += a + '_' + JSON.stringify(args[a]) if a not in ['plugin']
     catch
       fn += JSON.stringify args
   sig = encodeURIComponent(fn) # just used to use this, but got some where args were too long
@@ -323,7 +303,7 @@ API.job.create = (job) ->
     job_job.update job._id, job
   else
     job._id = job_job.insert job
-  if imports.length is 0
+  if job.done
     API.job.complete job
   return job
 
@@ -630,6 +610,29 @@ API.job.status = (filter='NOT group:TEST') ->
   res.limits = {} # may not be worth reporting on limit index in new structure
   job_limit.each 'NOT last:*', (lm) -> res.limits[lm.group ? lm._id] = {date:lm.created_date,limit:lm.limit}
   job_job.each 'NOT done:true', {_source:['count','processed']}, (j) -> res.jobs.waiting += (j.count - (j.processed ? 0))
+  return res
+
+API.job.orphans = (remove=false) ->
+  res = 
+    process: 
+      found: 0
+      orphan: 0
+    result:
+      found: 0
+      orphan: 0
+  job_process.each '*', (p) -> 
+    res.process.found += 1
+    console.log(res) if res.process.found % 100 is 0
+    if job_job.search('processes._id:' + p._id, 0).hits.total is 0
+      res.process.orphan += 1
+      job_process.remove(p._id) if remove
+  job_result.each '*', (r) -> 
+    res.result.found += 1
+    console.log(res) if res.result.found % 100 is 0
+    if job_job.search('processes._id:' + r._id, 0).hits.total is 0
+      res.result.orphan += 1
+      job_result.remove(r._id) if remove
+  console.log res
   return res
 
 API.job.progress = (jobid) ->
