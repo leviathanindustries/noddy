@@ -537,13 +537,11 @@ API.job.reload = (q='*') ->
   # matches the job id if q is a job id, or reload every processing that matches the 
   # query if it is a query. Default is a * query which means everything already 
   # processing will be reloaded
-  ret = 0
   reloads = []
   _reload_job_processes = (job) ->
     for p in job.processes
       try job_processing.remove(p._id)
-      if not job_result.exists(p._id)? and not job_process.exists(p._id)?
-        ret += 1
+      if job_job.search('processes._id:' + p._id, 0)?.hits?.total and not job_result.exists(p._id) and not job_process.exists(p._id)
         try delete p.signature # some old jobs had bad signatures
         p.reloaded ?= []
         p.reloaded.push p.createdAt
@@ -553,14 +551,12 @@ API.job.reload = (q='*') ->
   else if q isnt '*' and job = job_job.get q
     _reload_job_processes job
   else
-    job_processing.each q, (proc) -> 
-      if job_job.search('processes._id:' + proc._id, 0).hits.total isnt 0
-        _reload_job_processes {processes:[proc]}
+    job_processing.each q, (proc) -> _reload_job_processes {processes:[proc]}
   if reloads.length
     API.log 'Job runner reloading ' + reloads.length + ' jobs for ' + (if q is true then 'all jobs' else if typeof q is 'string' then 'query ' + q else ' complex query object')
     console.log 'doing reload for ' + reloads.length
     job_process.import reloads
-  return ret
+  return reloads.length
 
 API.job._iid
 API.job.start = (interval=API.settings.job?.interval ? 1000) ->
