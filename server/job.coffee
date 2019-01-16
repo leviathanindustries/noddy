@@ -542,19 +542,19 @@ API.job.reload = (q='*') ->
   _reload_job_processes = (job) ->
     for p in job.processes
       try job_processing.remove(p._id)
-      if not job_result.get(p._id)? and not job_process.get(p._id)?
+      if not job_result.exists(p._id)? and not job_process.exists(p._id)?
         ret += 1
         try delete p.signature # some old jobs had bad signatures
         p.reloaded ?= []
         p.reloaded.push p.createdAt
         reloads.push p
   if q is true
-    job_job.each 'NOT done:true', {size:20}, ((job) -> _reload_job_processes(job))
+    job_job.each 'NOT done:true', {size:2}, ((job) -> _reload_job_processes(job))
   else if q isnt '*' and job = job_job.get q
     _reload_job_processes job
   else
     job_processing.each q, (proc) -> 
-      if job_job.search('processes._id:' + proc._id).hits.total isnt 0
+      if job_job.search('processes._id:' + proc._id, 0).hits.total isnt 0
         _reload_job_processes {processes:[proc]}
   if reloads.length
     API.log 'Job runner reloading ' + reloads.length + ' jobs for ' + (if q is true then 'all jobs' else if typeof q is 'string' then 'query ' + q else ' complex query object')

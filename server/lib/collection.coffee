@@ -104,6 +104,12 @@ API.collection.prototype.fetch_history = (q, opts={}, dev=API.settings.dev) ->
 # TODO add rewind and replay functions that can work through history records and apply / remove them in order to / from a given record, and allow to specify the date range to play
 # and as it is a doc with history, would need to record the last state of the doc change, and record that as a rewind / replay history event
 
+API.collection.prototype.exists = (rid, dev=API.settings.dev) ->
+  if typeof rid is 'number' or (typeof rid is 'string' and rid.indexOf(' ') is -1 and rid.indexOf(':') is -1 and rid.indexOf('/') is -1 and rid.indexOf('*') is -1)
+    check = API.es.call 'GET', this._route + '/' + rid + '&_source=false', undefined, undefined, undefined, undefined, undefined, undefined, dev
+    return check?.found is true
+  return false
+
 API.collection.prototype.get = (rid, versioned, dev=API.settings.dev) ->
   # TODO is there any case for recording who has accessed certain documents?
   if typeof rid is 'number' or (typeof rid is 'string' and rid.indexOf(' ') is -1 and rid.indexOf(':') is -1 and rid.indexOf('/') is -1 and rid.indexOf('*') is -1)
@@ -268,7 +274,6 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll, dev=API.setti
     # make sure that query result size does not take up more than about 1gb
     # NOTE also that in a scroll-scan size is per shard, not per result set
     max_size = Math.floor(1000000000 / (Buffer.byteLength(JSON.stringify(chk.hits.hits[0])) * chk._shards.total))
-    console.log max_size
     sz = max_size if max_size < sz
   qy.size = sz
   res = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, true, undefined, undefined, dev
