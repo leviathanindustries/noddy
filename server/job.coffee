@@ -608,7 +608,7 @@ API.job.status = (filter='NOT group:TEST') ->
   job_job.each 'NOT done:true', {_source:['count','processed']}, (j) -> 
     console.log j
     console.log (j.count - (j.processed ? 0))
-    if typeof j.processed isnt 'number'
+    if j.processed? and typeof j.processed isnt 'number'
       j.processed = j.processed.length
       res.fixprocessed ?= 0
       res.fixprocessed += 1
