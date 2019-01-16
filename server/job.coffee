@@ -605,7 +605,11 @@ API.job.status = (filter='NOT group:TEST') ->
       cluster: job_result.terms('_cid')
   res.limits = {} # may not be worth reporting on limit index in new structure
   job_limit.each 'NOT last:*', (lm) -> res.limits[lm.group ? lm._id] = {date:lm.created_date,limit:lm.limit}
-  job_job.each 'NOT done:true', {_source:['count','processed']}, (j) -> res.jobs.waiting += (j.count - (j.processed ? 0))
+  job_job.each 'NOT done:true', {_source:['count','processed']}, (j) -> 
+    console.log j
+    console.log (j.count - (j.processed ? 0))
+    res.jobs.waiting += (j.count - (j.processed ? 0))
+    console.log res.jobs.waiting
   return res
 
 API.job.orphans = (remove=false,types=['process','result']) ->
