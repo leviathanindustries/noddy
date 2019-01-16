@@ -84,7 +84,7 @@ API.collection.prototype.fetch_history = (q, opts={}, dev=API.settings.dev) ->
   qy = API.collection._translate q, opts
   qy.from ?= 0
   qy.size ?= 3000
-  results = []
+  results = [] # NOTE if results is bigger than what node can hold, which by default is 1.7G, this will fail. Also the below scrolls would fail if any one of them brings back too much data
   res = API.es.call 'POST', this._route + '_history/_search', qy, undefined, undefined, true, undefined, undefined, dev
   if res.hits.hits.length
     for h in res.hits.hits
@@ -261,7 +261,16 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll, dev=API.setti
   opts ?= {}
   qy = API.collection._translate q, opts
   qy.from ?= 0
-  qy.size ?= 800
+  sz = qy.size ? 800
+  qy.size = 1
+  chk = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, undefined, undefined, undefined, dev
+  if chk?.hits?.total? and chk.hits.total isnt 0
+    # make sure that query result size does not take up more than about 1gb
+    # NOTE also that in a scroll-scan size is per shard, not per result set
+    max_size = Math.floor(1000000000 / (Buffer.byteLength(JSON.stringify(chk.hits.hits[0])) * chk._shards.total))
+    console.log max_size
+    sz = max_size if max_size < sz
+  qy.size = sz
   res = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, true, undefined, undefined, dev
   return 0 if not res?._scroll_id?
   # scrolling to the end of the scroll results closes the scrolls anyway even if the timeout is not reached, so no need to track and delete them
@@ -291,7 +300,7 @@ API.collection.prototype.fetch = (q, opts={}, dev=API.settings.dev) ->
   qy = API.collection._translate q, opts
   qy.from ?= 0
   qy.size ?= 3000
-  results = []
+  results = [] # NOTE if results is bigger than what node can hold, which by default is 1.7G, this will fail. Also the below scrolls would fail if any one of them brings back too much data
   res = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, true, undefined, undefined, dev
   if res.hits.hits.length
     for h in res.hits.hits

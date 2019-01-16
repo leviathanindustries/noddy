@@ -96,10 +96,10 @@ API.add 'job/reload',
 API.add 'job/orphans',
   get:
     roleRequired: if API.settings.dev then undefined else 'job.admin'
-    action: () -> return API.job.orphans(this.queryParams.remove?) # removes any process or result that does not appear in a job currently in the system
+    action: () -> return API.job.orphans(this.queryParams.remove?,(if this.queryParams.types then this.queryParams.types.split(',') else undefined)) # removes any process or result that does not appear in a job currently in the system
   delete:
     roleRequired: if API.settings.dev then undefined else 'job.admin'
-    action: () -> return API.job.orphans(true) # removes any process or result that does not appear in a job currently in the system
+    action: () -> return API.job.orphans(true,(if this.queryParams.types then this.queryParams.types.split(',') else undefined)) # removes any process or result that does not appear in a job currently in the system
 
 API.add 'job/jobs',
   get:
@@ -612,26 +612,24 @@ API.job.status = (filter='NOT group:TEST') ->
   job_job.each 'NOT done:true', {_source:['count','processed']}, (j) -> res.jobs.waiting += (j.count - (j.processed ? 0))
   return res
 
-API.job.orphans = (remove=false) ->
-  res = 
-    process: 
-      found: 0
-      orphan: 0
-    result:
-      found: 0
-      orphan: 0
-  job_process.each '*', (p) -> 
-    res.process.found += 1
-    console.log(res) if res.process.found % 100 is 0
-    if job_job.search('processes._id:' + p._id, 0).hits.total is 0
-      res.process.orphan += 1
-      job_process.remove(p._id) if remove
-  job_result.each '*', (r) -> 
-    res.result.found += 1
-    console.log(res) if res.result.found % 100 is 0
-    if job_job.search('processes._id:' + r._id, 0).hits.total is 0
-      res.result.orphan += 1
-      job_result.remove(r._id) if remove
+API.job.orphans = (remove=false,types=['process','result']) ->
+  res = {}
+  if 'process' in types
+    res.process = found: 0, orphan: 0
+    job_process.each '*', {_source:['_id']}, (p) -> 
+      res.process.found += 1
+      console.log(res) if res.process.found % 100 is 0
+      if job_job.search('processes._id:' + p._id, 0).hits.total is 0
+        res.process.orphan += 1
+        job_process.remove(p._id) if remove
+  if 'result' in types
+    res.result = found: 0, orphan: 0
+    job_result.each '*', {_source: ['_id']}, (r) -> 
+      res.result.found += 1
+      console.log(res) if res.result.found % 100 is 0
+      if job_job.search('processes._id:' + r._id, 0).hits.total is 0
+        res.result.orphan += 1
+        job_result.remove(r._id) if remove
   console.log res
   return res
 
