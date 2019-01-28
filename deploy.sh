@@ -111,7 +111,7 @@ do
     then
       printf "\n$COUNTER: Updating cluster IP $IP with new settings\n"
       ssh $IP "source ~/.nvm/nvm.sh && forever stopall"
-      #ssh $IP "source ~/.nvm/nvm.sh && MONGO_URL=http://nowhere CID=$COUNTER ROOT_URL=$ROOT PORT=$PORT METEOR_SETTINGS=$CSETTINGS forever start -l ~/forever.log -o ~/out.log -e ~/err.log ~/bundle/main.js"
+      #ssh $IP "source ~/.nvm/nvm.sh && MONGO_URL=http://nowhere ROOT_URL=$ROOT PORT=$PORT METEOR_SETTINGS=$CSETTINGS forever start -l ~/forever.log -o ~/out.log -e ~/err.log ~/bundle/main.js"
     else
       CV=$(curl -s -X GET http://$IP:$PORT/api | jq '.version')
       printf "\n$COUNTER: Updating cluster IP $IP from version $CV to version $NODDY_V\n"
@@ -149,7 +149,7 @@ do
 
       # for ref, simple start is node main.js in the bundle folder
       # and for ref, settings can be set from a file by export METEOR_SETTINGS="$(cat cluster_settings.json )"
-      #ssh $IP "source ~/.nvm/nvm.sh && LAST_UPDATED=$DATE MONGO_URL=http://nowhere CID=$COUNTER ROOT_URL=$ROOT PORT=$PORT METEOR_SETTINGS=$CSETTINGS forever start -l ~/forever.log -o ~/out.log -e ~/err.log ~/bundle/main.js"
+      #ssh $IP "source ~/.nvm/nvm.sh && LAST_UPDATED=$DATE MONGO_URL=http://nowhere ROOT_URL=$ROOT PORT=$PORT METEOR_SETTINGS=$CSETTINGS forever start -l ~/forever.log -o ~/out.log -e ~/err.log ~/bundle/main.js"
     
       # could trigger a snapshot of the cluster machine as well, for future cluster machine creation
   fi

@@ -314,6 +314,10 @@ _phantom = (url,delay=1000,refresh=86400000,callback) ->
 # or even do the install? Could make this the necessary way to go for other things that include machine installations too
 # they could have an install function which must run if the which command cannot find the expected executable
 # then once the which command can find one, just use that
+# TODO use some checks to see where the installed chrome/chromium is, if it is there
+# if not, try to get it using browserFetcher https://github.com/GoogleChrome/puppeteer/blob/master/docs/api.md#class-browserfetcher
+_puppetEndpoint = false
+_puppetConnections = 0
 _puppeteer = (url,refresh=86400000,callback) ->
   if typeof refresh is 'function'
     callback = refresh
@@ -323,18 +327,29 @@ _puppeteer = (url,refresh=86400000,callback) ->
   if refresh isnt true and refresh isnt 0
     cached = API.http.cache url, 'puppeteer', undefined, refresh
     return callback(null,cached) if cached?
-  API.log('starting puppeteer retrieval of ' + url)
+  API.log 'starting puppeteer retrieval of ' + url
   try
-    browser = await puppeteer.launch({args:['--no-sandbox', '--disable-setuid-sandbox'], ignoreHTTPSErrors:true, dumpio:false, timeout:12000, executablePath: '/usr/bin/google-chrome'})
+    browser = false
+    if _puppetEndpoint isnt false
+      try browser = await puppeteer.connect({browserWSEndpoint:_puppetEndpoint})
+    if browser is false
+      browser = await puppeteer.launch({args:['--no-sandbox', '--disable-setuid-sandbox'], ignoreHTTPSErrors:true, dumpio:false, timeout:12000, executablePath: '/usr/bin/google-chrome'})
+      _puppetEndpoint = browser.wsEndpoint()
+    _puppetConnections += 1 if browser isnt false
     page = await browser.newPage()
     await page.goto(url, {timeout:12000})
     content = await page.evaluate(() => new XMLSerializer().serializeToString(document.doctype) + '\n' + document.documentElement.outerHTML)
-    await browser.close()
-    #API.http.cache(url, 'puppeteer', content) if typeof content is 'string' and content.length > 200
-    return callback(null,content)
+    _puppetConnections -= 1
+    if _puppetConnections is 0
+      try
+        await browser.close()
+    try
+      API.http.cache(url, 'puppeteer', content) if typeof content is 'string' and content.length > 200
+    return callback null, content
   catch
-    try browser.close()
-    return callback(null,'')
+    if _puppetConnections is 0
+      try browser.close()
+    return callback null, ''
 
 API.http.puppeteer = Meteor.wrapAsync(_puppeteer)
 

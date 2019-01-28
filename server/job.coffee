@@ -6,6 +6,11 @@ import moment from 'moment'
 
 API.job = {}
 
+# TODO could list _.keys process.env and for any starting with NODDY_SETTINGS_ use their remaining name to update the running settings
+if API.settings.job? and API.settings.job.startup isnt true and (process.env.NODDY_SETTINGS_JOB_STARTUP is 'true' or process.env.NODDY_SETTINGS_JOB_STARTUP is 'True' or process.env.NODDY_SETTINGS_JOB_STARTUP is 'TRUE' or process.env.NODDY_SETTINGS_JOB_STARTUP is true)
+  API.log 'Job runner altering job startup setting to true based on provided JOB_STARTUP env setting'
+  API.settings.job.startup = true
+
 @job_job = new API.collection index: API.settings.es.index + "_job", type: "job"
 @job_process = new API.collection index: API.settings.es.index + "_job", type: "process"
 @job_processing = new API.collection index: API.settings.es.index + "_job", type: "processing"
@@ -294,6 +299,8 @@ API.job.create = (job) ->
   if imports.length
     job_process.insert imports
     job.processed = job.count - imports.length
+  else
+    job.processed = 0
 
   # NOTE job can also have a "complete" function string name, which will be called when progress hits 100%, see below
   # the "complete" function will receive the whole job object as the only argument (so can look up results by the process IDs)
@@ -309,11 +316,12 @@ API.job.create = (job) ->
 
 API.job.remove = (jobid) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
-  for p in job.processes
-    if job_job.search('NOT _id:' + job._id + ' AND processes._id:' + p._id).hits.total is 0
-      try job_process.remove p._id
-      try job_processing.remove p._id
-      try job_result.remove p._id
+  if typeof job.processes is 'object'
+    for p in job.processes
+      if job_job.search('NOT _id:' + job._id + ' AND processes._id:' + p._id).hits.total is 0
+        try job_process.remove p._id
+        try job_processing.remove p._id
+        try job_result.remove p._id
   job_job.remove this.urlParams.job
   return true
 
@@ -423,7 +431,6 @@ API.job.process = (proc) ->
   proc = job_process.get(proc) if typeof proc isnt 'object'
   return false if typeof proc isnt 'object'
   proc.args = JSON.stringify proc.args if proc.args? and typeof proc.args is 'object' # in case a process is passed directly with non-string args
-  try proc._cid = process.env.CID
   try proc._appid = process.env.APP_ID
   if proc._id? # should always be the case but check anyway
     return false if job_processing.get(proc._id)? # puts extra load on ES but may catch unnecessary duplicates
@@ -512,9 +519,9 @@ API.job.next = () ->
   if job_limit.get('PAUSE')?
     return false
   if (API.settings.job?.concurrency ?= 1000000000) <= job_processing.count()
-    API.log {msg:'Not running more jobs, max concurrency reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
+    API.log {msg:'Not running more jobs, max concurrency reached', _appid: process.env.APP_ID, function:'API.job.next'}
   else if (API.settings.job?.memory ? 1200000000) <= process.memoryUsage().rss
-    API.log {msg:'Not running more jobs, job max memory reached', _cid: process.env.CID, _appid: process.env.APP_ID, function:'API.job.next'}
+    API.log {msg:'Not running more jobs, job max memory reached', _appid: process.env.APP_ID, function:'API.job.next'}
   else
     console.log('Checking for jobs to run') if API.settings.dev or API.settings.job?.verbose?
     API.log {msg:'Checking for jobs to run', ignores: {groups:API.job._ignoregroups,ids:API.job._ignoreids}, function:'API.job.next', level:'all'}
@@ -539,13 +546,14 @@ API.job.reload = (q='*') ->
   # processing will be reloaded
   reloads = []
   _reload_job_processes = (job) ->
-    for p in job.processes
-      try job_processing.remove(p._id)
-      if job_job.search('processes._id:' + p._id, 0)?.hits?.total and not job_result.exists(p._id) and not job_process.exists(p._id)
-        try delete p.signature # some old jobs had bad signatures
-        p.reloaded ?= []
-        p.reloaded.push p.createdAt
-        reloads.push p
+    if typeof job.processes is 'object'
+      for p in job.processes
+        try job_processing.remove(p._id)
+        if job_job.search('processes._id:' + p._id, 0)?.hits?.total and not job_result.exists(p._id) and not job_process.exists(p._id)
+          try delete p.signature # some old jobs had bad signatures
+          p.reloaded ?= []
+          p.reloaded.push p.createdAt
+          reloads.push p
   if q is true
     job_job.each 'NOT done:true', {size:2}, ((job) -> _reload_job_processes(job))
   else if q isnt '*' and job = job_job.get q
@@ -563,7 +571,7 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   future = new Future() # randomise start time so that cluster machines do not all start jobs at exactly the same time
   Meteor.setTimeout (() -> future.return()), Math.floor(Math.random()*interval+1)
   future.wait()
-  API.log {msg: 'Starting job runner with interval ' + interval, _cid: process.env.CID, _appid: process.env.APP_ID, function: 'API.job.start', level: 'debug'}
+  API.log {msg: 'Starting job runner with interval ' + interval, _appid: process.env.APP_ID, function: 'API.job.start', level: 'debug'}
   if not job_limit.get 'START_RELOAD'
     job_limit.insert _id: 'START_RELOAD'
     API.job.reload()
@@ -644,8 +652,9 @@ API.job.progress = (jobid) ->
         res.waiting = 0
         res.processing = 0
         res.results = 0
-        for p in job.processes
-          if job_processing.get(p._id) then res.processing += 1 else if job_process.get(p._id) then res.waiting += 1 else if job_result.get(p._id)? then res.results += 1 else res.missing.push(p._id)
+        if typeof job.processes is 'object'
+          for p in job.processes
+            if job_processing.get(p._id) then res.processing += 1 else if job_process.get(p._id) then res.waiting += 1 else if job_result.get(p._id)? then res.results += 1 else res.missing.push(p._id)
         res.missed = res.missing.length
         if res.missed
           API.log 'Job progress checked for job ' + job._id + ', but processes are missing...' # TODO should this send an email warning to admin, to the job submitter, should it resubmit the missing processes?

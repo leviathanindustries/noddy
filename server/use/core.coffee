@@ -19,7 +19,7 @@ API.use.core.doi = (doi) ->
   return API.use.core.get 'doi:"' + doi + '"'
 
 API.use.core.title = (title) ->
-  return API.use.core.get 'title:"' + doi + '"'
+  return API.use.core.get 'title:"' + title + '"'
 
 API.use.core.get = (qrystr) ->
   res = API.http.cache qrystr, 'core_get'
@@ -61,7 +61,8 @@ API.use.core.redirect = (record) ->
   res = {}
   if record.fulltextIdentifier
     res.url = record.fulltextIdentifier
-    res.redirect = API.service.oab.redirect(record.fulltextIdentifier) if API.service.oab?
+    if res.url.indexOf('core.ac.uk') is -1 and API.service.oab?
+      res.redirect = API.service.oab.redirect(record.fulltextIdentifier)
   if res.redirect is false
     for u in record.fulltextUrls
       if u.indexOf('core.ac.uk') isnt -1
