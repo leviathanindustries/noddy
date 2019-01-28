@@ -317,7 +317,7 @@ _phantom = (url,delay=1000,refresh=86400000,callback) ->
 # TODO use some checks to see where the installed chrome/chromium is, if it is there
 # if not, try to get it using browserFetcher https://github.com/GoogleChrome/puppeteer/blob/master/docs/api.md#class-browserfetcher
 _puppetEndpoint = false
-_puppetConnections = 0
+_puppetPages = 0
 _puppeteer = (url,refresh=86400000,callback) ->
   if typeof refresh is 'function'
     callback = refresh
@@ -335,20 +335,20 @@ _puppeteer = (url,refresh=86400000,callback) ->
     if browser is false
       browser = await puppeteer.launch({args:['--no-sandbox', '--disable-setuid-sandbox'], ignoreHTTPSErrors:true, dumpio:false, timeout:12000, executablePath: '/usr/bin/google-chrome'})
       _puppetEndpoint = browser.wsEndpoint()
-    _puppetConnections += 1 if browser isnt false
     page = await browser.newPage()
+    _puppetPages += 1
     await page.goto(url, {timeout:12000})
     content = await page.evaluate(() => new XMLSerializer().serializeToString(document.doctype) + '\n' + document.documentElement.outerHTML)
-    _puppetConnections -= 1
-    if _puppetConnections is 0
-      try
-        await browser.close()
+    _puppetPages -= 1
+    if _puppetPages is 0
+      await browser.close()
     try
       API.http.cache(url, 'puppeteer', content) if typeof content is 'string' and content.length > 200
     return callback null, content
   catch
-    if _puppetConnections is 0
-      try browser.close()
+    try await browser.close()
+    _puppetEndpoint = false
+    _puppetPages = 0
     return callback null, ''
 
 API.http.puppeteer = Meteor.wrapAsync(_puppeteer)
