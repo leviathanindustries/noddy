@@ -67,6 +67,8 @@ setHeaders = (res, headers) ->
 
 
 # TODO could make this only apply to certain routes, and handle it directly
+# this works with curl using the -F flag for a file, which sets the content-type too such as
+# curl -X POST 'https://dev.api.cottagelabs.com/convert?from=xls&to=csv' -F file=@anexcelfile.xlsx
 JsonRoutes.Middleware.use (req, res, next) ->
   if req.headers?['content-type']?.match(/^multipart\/form\-data/)
     busboy = new Busboy {headers: req.headers}

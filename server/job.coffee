@@ -427,6 +427,17 @@ API.job.limit = (limitms,fn,args,group,refresh=0) -> # directly create a sync th
       jr = job_result.get pr._id
   return API.job.result jr
 
+API.job.cap = () -> (cap,group,fn,args) ->
+  #limited = job_limit.get 'cap:' + cap + ' AND group:' + group
+  # should run whatever the function is, unless cap has been reached or has already had a limit set on it (which will be created when cap is reached)
+  # if it runs, need to record that it ran somewhere - in job_limit, or another collection for caps?
+  # if cap is reached, return something that lets us know we are capped - or if fn and args are provided, queue the function as a process until cap is lifted
+  # cap could be a number of minute/minutes/hour/hours/days/month/months/year/years, so would need to count the last X whatevers
+  # or could be this day (today), this week, this month, this year, so count back to the start of this whatever
+  # if cap is reached could use a limit so next time round just look that up and know to wait until then
+  # also need a way to integrate this with processes in jobs - if they come in with a cap, or in a cap group, need to check the cap status for that group
+  return true
+  
 API.job.process = (proc) ->
   proc = job_process.get(proc) if typeof proc isnt 'object'
   return false if typeof proc isnt 'object'

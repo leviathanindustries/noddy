@@ -4,13 +4,14 @@ import { Converter } from 'csvtojson'
 import json2csv from 'json2csv'
 import html2txt from 'html-to-text'
 import textract from 'textract' # note this requires installs on the server for most conversions
+import xlsx from 'xlsx'
 import xml2js from 'xml2js'
 import PDFParser from 'pdf2json'
 import stream from 'stream'
 
 import canvg from 'canvg'
 import atob from 'atob'
-import Canvas from 'canvas' # not canvas requires sudo apt-get install libcairo2-dev libjpeg-dev libpango1.0-dev libgif-dev build-essential g++
+import Canvas from 'canvas' # note canvas requires sudo apt-get install libcairo2-dev libjpeg-dev libpango1.0-dev libgif-dev build-essential g++
 
 import Future from 'fibers/future'
 import moment from 'moment'
@@ -23,20 +24,23 @@ API.add 'convert',
   desc: 'Convert files from one format to another. Provide content to convert as either "url" or "content" query param, or POST content as request body.
         Also provide "from" and "to" query params to identify the formats to convert from and to. It is also possible to provide a
         comma-separated list of "fields", which when converting from JSON will result in only those fields being used in the output (does
-        not handle deep nesting). The currently available conversions are: svg to png. table to json or csv. csv to json or text.
+        not handle deep nesting). The currently available conversions are: svg to png. table to json or csv. csv to json or html or text.
         html to text. json to csv or text (or json again, which with "fields" can simplify json data). xml to text or json.
-        pdf to text or json (which provides content and metadata). More conversions are possible, but require additional installations
-        on the API machine, which are not turned on by default.'
+        pdf to text or json (which provides content and metadata). xls to json or csv or html or txt. google sheet (sheet) to json or csv or html or txt. 
+        More conversions are possible, but require additional installations on the API machine, which are not turned on by default.'
   get: () ->
     if this.queryParams.url or this.queryParams.content or this.queryParams.es
       this.queryParams.fields = this.queryParams.fields.split(',') if this.queryParams.fields
+      this.queryParams.from = 'xls' if this.queryParams.from in ['excel','xlsx']
       this.queryParams.from = 'txt' if this.queryParams.from is 'text'
       this.queryParams.to = 'txt' if this.queryParams.to is 'text'
+      this.queryParams.to = 'html' if this.queryParams.to is 'table' and this.queryParams.from in ['json','csv']
       to = 'text/plain'
       to = 'text/csv' if this.queryParams.to is 'csv'
       to = 'image/png' if this.queryParams.to is 'png'
       to = 'application/' + this.queryParams.to if this.queryParams.to is 'json' or this.queryParams.to is 'xml'
-      out = API.convert.run this.queryParams.url, this.queryParams.from, this.queryParams.to, this.queryParams.content, this.queryParams
+      to = 'text/html' if this.queryParams.to is 'html'
+      out = API.convert.run (this.queryParams.url ? this.queryParams.content), this.queryParams.from, this.queryParams.to, this.queryParams
       to = 'application/json' if typeof out is 'object'
       try return out if out.statusCode is 401 or out.status is 'error'
       if to is 'text/csv'
@@ -55,13 +59,15 @@ API.add 'convert',
       return {data: 'Accepts URLs of content files and converts them. from csv to json,txt. from html to txt. from xml to txt, json. from pdf to txt. from file to txt. For json to csv a subset param can be provided, giving dot notation to the part of the json object that should be converted.'}
   post: () ->
     this.queryParams.fields = this.queryParams.fields.split(',') if this.queryParams.fields
+    this.queryParams.from = 'xls' if this.queryParams.from in ['excel','xlsx']
     this.queryParams.from = 'txt' if this.queryParams.from is 'text'
     this.queryParams.to = 'txt' if this.queryParams.to is 'text'
+    this.queryParams.to = 'html' if this.queryParams.to is 'table' and this.queryParams.from in ['json','csv']
     to = 'text/plain'
     to = 'text/csv' if this.queryParams.to is 'csv'
     to = 'image/png' if this.queryParams.to is 'png'
     to = 'application/' + this.queryParams.to if this.queryParams.to is 'json' or this.queryParams.to is 'xml'
-    out = API.convert.run undefined, this.queryParams.from, this.queryParams.to, this.request.body, this.queryParams
+    out = API.convert.run (if this.request.files? and this.request.files.length > 0 then this.request.files[0].data else this.request.body), this.queryParams.from, this.queryParams.to, this.queryParams
     to = 'application/json' if typeof out is 'object'
     try return out if out.statusCode is 401 or out.status is 'error'
     if to is 'text/csv'
@@ -78,25 +84,24 @@ API.add 'convert',
         body: out
   
 
-API.convert.run = (url,from,to,content,opts) ->
+API.convert.run = (content,from,to,opts={}) ->
   from ?= opts.from
   to ?= opts.to
-  if from is 'svg'
-    if to is 'png'
-      output = API.convert.svg2png(url,content,opts)
-  else if from is 'table'
-    if to.indexOf('json') isnt -1
-      output = API.convert.table2json(url,content,opts)
-    else if to.indexOf('csv') isnt -1
-      output = API.convert.table2csv(url,content,opts)
+  if from is 'svg' and to is 'png'
+    output = API.convert.svg2png(content,opts)
+  else if from is 'table' and to in ['json','csv']
+    output = API.convert['table2' + to](content,opts)
   else if from is 'csv'
     if to.indexOf('json') isnt -1
-      output = API.convert.csv2json(url,content,opts)
+      output = API.convert.csv2json(content,opts)
+    else if to.indexOf('html') isnt -1
+      content = API.convert.csv2json content, opts
+      workbook = xlsx.utils.json_to_sheet content
+      output = API.convert._workbook2 'html', workbook, opts
     else if to.indexOf('txt') isnt -1
       from = 'file'
-  else if from is 'html'
-    if to.indexOf('txt') isnt -1
-      output = API.convert.html2txt(url,content)
+  else if from is 'html' and to.indexOf('txt') isnt -1
+    output = API.convert.html2txt(content)
   else if from is 'json'
     if opts.es
       user = API.accounts.retrieve({apikey:opts.apikey}) if opts.apikey
@@ -115,26 +120,23 @@ API.convert.run = (url,from,to,content,opts) ->
       return content if content.statusCode is 401
       delete opts.es
       delete opts.apikey
-      url = undefined
     if to.indexOf('csv') isnt -1
-      output = API.convert.json2csv(opts,url,content)
+      output = API.convert.json2csv(content,opts)
+    if to.indexOf('html') isnt -1
+      workbook = xlsx.utils.json_to_sheet content
+      output = API.convert._workbook2 'html', workbook, opts
     else if to.indexOf('txt') isnt -1
       from = 'file'
     else if to.indexOf('json') isnt -1
-      output = API.convert.json2json(opts,url,content)
-  else if from is 'xml'
-    if to.indexOf('txt') isnt -1
-      output = API.convert.xml2txt(url,content)
-    else if to.indexOf('json') isnt -1
-      output = API.convert.xml2json(url,content)
-  else if from is 'pdf'
-    if to.indexOf('txt') isnt -1
-      output = API.convert.pdf2txt(url,content,opts)
-    else if to.indexOf('json') isnt -1
-      output = API.convert.pdf2json(url,content,opts)
-  if from is 'file' # some of the above switch to this, so separate loop
-    if to.indexOf('txt') isnt -1
-      output = API.convert.file2txt(url,content,opts)
+      output = API.convert.json2json(content,opts)
+  else if from is 'xml' and to in ['txt','json']
+    output = API.convert['xml2' + to](content)
+  else if from is 'pdf' and to in ['txt','json']
+    output = API.convert['pdf2' + to](content,opts)
+  else if from in ['xls','sheet'] and to in ['txt','json','html','csv']
+    output = API.convert[from + '2' + to](content,opts)
+  if from is 'file' and to.indexOf('txt') isnt -1 # some of the above switch to this, so separate loop
+    output = API.convert.file2txt(content,opts)
   if not output?
     return {status: 'error', data: 'conversion from ' + from + ' to ' + to + ' is not currently possible.'}
   else
@@ -142,8 +144,8 @@ API.convert.run = (url,from,to,content,opts) ->
 
 
 
-API.convert.svg2png = (url,content,opts) ->
-  content = if url? then HTTP.call('GET',url,{npmRequestOptions:{encoding:null}}).content else content
+API.convert.svg2png = (content,opts) ->
+  content = HTTP.call('GET',content,{npmRequestOptions:{encoding:null}}).content if content.indexOf('http') is 0
   content = content.toString('utf-8') if Buffer.isBuffer content
   content = atob(content.substring('data:image/svg+xml;base64,'.length)) if content.indexOf('data:image/svg+xml;base64,') >= 0
   canvas = new Canvas()
@@ -159,28 +161,25 @@ API.convert.svg2png = (url,content,opts) ->
     future.wait()
   return Buffer.concat data
 
-API.convert.csv2json = Async.wrap (url,content,opts,callback) ->
-  if typeof content is 'function'
-    callback = content
-    content = undefined
+API.convert.csv2json = Async.wrap (content,opts,callback) ->
   if typeof opts isnt 'object'
     callback = opts
     opts = {}
   converter
-  if not content?
+  if content.indexOf('http') is 0
     converter = new Converter({constructResult:false})
     recs = []
     converter.on "record_parsed", (row) -> recs.push(row)
-    #request.get(url).pipe(converter);
-    HTTP.call('GET',url).pipe(converter)
+    #request.get(content).pipe(converter);
+    HTTP.call('GET',content).pipe(converter)
     return recs # this probably needs to be on end of data stream
   else
     converter = new Converter({})
     converter.fromString content, (err,result) -> 
       return callback(null,result)
 
-API.convert.table2json = (url,content,opts) ->
-  content = HTTP.call('GET', url).content if url?
+API.convert.table2json = (content,opts) ->
+  content = HTTP.call('GET', content).content if content.indexOf('http') is 0
   content = content.split(opts.start)[1] if opts.start
   if content.indexOf('<table') isnt -1
     content = '<table' + content.split('<table')[1]
@@ -218,34 +217,58 @@ API.convert.table2json = (url,content,opts) ->
       results.push result
   return results
 
-API.convert.table2csv = (url,content,opts) ->
-  d = API.convert.table2json(url,content,opts)
-  return API.convert.json2csv(undefined,undefined,d)
+API.convert.table2csv = (content,opts) ->
+  d = API.convert.table2json(content,opts)
+  return API.convert.json2csv(d)
 
-API.convert.html2txt = (url,content) ->
-  # should this use phantomjs, to get text content before rendering to text?
-  content = HTTP.call('GET', url).content if url?
+API.convert.html2txt = (content,render=false) ->
+  if content.indexOf('http') is 0
+    content = if render then API.http.puppeteer(content) else HTTP.call('GET', content).content
   text = html2txt.fromString(content, {wordwrap: 130})
   return text
 
-API.convert.file2txt = Async.wrap (url, content, opts={}, callback) ->
-  if typeof content is 'function'
-    callback = content
-    content = undefined
+API.convert.file2txt = Async.wrap (content, opts={}, callback) ->
   if typeof opts isnt 'object'
     callback = opts
     opts = {}
   # NOTE for this to work, see textract on npm - requires other things (antiword for word docs) installed. May not be useful.
+  opts.from = undefined if opts.from.indexOf('/') is -1 # need a propoer mime type here
   from = opts.from ? 'application/msword'
   delete opts.from
-  content = new Buffer (if url? then HTTP.call('GET',url,{npmRequestOptions:{encoding:null}}).content else content)
+  content = new Buffer (if content.indexOf('http') is 0 then HTTP.call('GET',content,{npmRequestOptions:{encoding:null}}).content else content)
   textract.fromBufferWithMime from, content, opts, ( err, result ) ->
     return callback(null,result)
 
-API.convert.pdf2txt = Async.wrap (url, content, opts={}, callback) ->
-  if typeof content is 'function'
-    callback = content
-    content = undefined
+# xlsx has lots more useful options that could be used to get particular parts of sheets. See:
+# https://www.npmjs.com/package/xlsx
+API.convert._workbook2 = (what='csv', workbook, opts={}) ->
+  # add some options to crop to certain rows here
+  try
+    res = xlsx.utils['sheet_to_' + what] workbook # this works if just one simple sheet
+  catch
+    sheets = workbook.SheetNames # this works if it is a sheet with names
+    opts.sheet ?= sheets[0]
+    res = xlsx.utils['sheet_to_' + what] workbook.Sheets[opts.sheet]
+  res = res.split('<body>')[1].split('</body>')[0] if what is 'html'
+  return res
+API.convert._xls2 = (what='csv', content, opts={}) ->
+  content = new Buffer (if content.indexOf('http') is 0 then HTTP.call('GET',content,{npmRequestOptions:{encoding:null}}).content else content)
+  workbook = xlsx.read content
+  return API.convert._workbook2 what, workbook, opts
+API.convert._sheet2 = (what='csv', content, opts={}) ->
+  content = API.use.google.sheets.feed content, opts
+  workbook = xlsx.utils.json_to_sheet content
+  return API.convert._workbook2 what, workbook, opts
+API.convert.xls2txt = (content, opts={}) -> return API.convert._xls2 'txt', content, opts
+API.convert.xls2html = (content, opts={}) -> return API.convert._xls2 'html', content, opts
+API.convert.xls2json = (content, opts={}) -> return API.convert._xls2 'json', content, opts
+API.convert.xls2csv = (content, opts={}) -> return API.convert._xls2 'csv', content, opts
+API.convert.sheet2txt = (content, opts={}) -> return API.convert._sheet2 'txt', content, opts
+API.convert.sheet2html = (content, opts={}) -> return API.convert._sheet2 'html', content, opts
+API.convert.sheet2csv = (content, opts={}) -> return API.convert._sheet2 'csv', content, opts
+API.convert.sheet2json = (content, opts={}) -> return API.convert._sheet2 'json', content, opts
+
+API.convert.pdf2txt = Async.wrap (content, opts={}, callback) ->
   if typeof opts isnt 'object'
     callback = opts
     opts = {}
@@ -256,7 +279,7 @@ API.convert.pdf2txt = Async.wrap (url, content, opts={}, callback) ->
   pdfParser.on "pdfParser_dataError", () ->
     return callback(null,'')
   try
-    content = new Buffer (if url? then HTTP.call('GET',url,{timeout:20000,npmRequestOptions:{encoding:null}}).content else content)
+    content = new Buffer (if content.indexOf('http') is 0 then HTTP.call('GET',content,{timeout:20000,npmRequestOptions:{encoding:null}}).content else content)
     pdfParser.parseBuffer(content)
   catch
     return callback(null,'')
@@ -275,10 +298,7 @@ API.convert.pdf2txt = Async.wrap (url, content, opts={}, callback) ->
     waited += 5000
   return callback(null,'')
 
-API.convert.pdf2json = Async.wrap (url, content, opts={}, callback) ->
-  if typeof content is 'function'
-    callback = content
-    content = undefined
+API.convert.pdf2json = Async.wrap (content, opts={}, callback) ->
   if typeof opts isnt 'object'
     callback = opts
     opts = {}
@@ -289,7 +309,7 @@ API.convert.pdf2json = Async.wrap (url, content, opts={}, callback) ->
   pdfParser.on "pdfParser_dataError", () ->
     return callback(null,{})
   try
-    content = new Buffer (if url? then HTTP.call('GET',url,{timeout:20000,npmRequestOptions:{encoding:null}}).content else content)
+    content = new Buffer (if content.indexOf('http') is 0 then HTTP.call('GET',content,{timeout:20000,npmRequestOptions:{encoding:null}}).content else content)
     pdfParser.parseBuffer(content)
   catch
     return callback(null,{})
@@ -301,20 +321,17 @@ API.convert.pdf2json = Async.wrap (url, content, opts={}, callback) ->
     waited += 5000
   return callback(null,{})
 
-API.convert.xml2txt = (url,content) ->
-  return API.convert.file2txt(url,content,{from:'application/xml'})
+API.convert.xml2txt = (content) ->
+  return API.convert.file2txt(content,{from:'application/xml'})
 
-API.convert.xml2json = Async.wrap (url, content, callback) ->
-  if typeof content is 'function'
-    callback = content
-    content = undefined
-  content = HTTP.call('GET', url).content if url?
+API.convert.xml2json = Async.wrap (content, callback) ->
+  content = HTTP.call('GET', content).content if content.indexOf('http') is 0
   parser = new xml2js.Parser()
   parser.parseString content, (err, result) -> return callback(null,result)
 
 # using meteorhacks:async and Async.wrap seems to work better than using Meteor.wrapAsync
-API.convert.json2csv = (opts={}, url, content) ->
-  content = JSON.parse(HTTP.call('GET', url).content) if url?
+API.convert.json2csv = (content, opts={}) ->
+  content = JSON.parse(HTTP.call('GET', content).content) if typeof content is 'string' and content.indexOf('http') is 0
   if opts.subset
     parts = opts.subset.split('.')
     delete opts.subset
@@ -357,7 +374,7 @@ API.convert.json2csv2response = (ths, data, filename) ->
   rows = []
   for dr in (if data?.hits?.hits? then data.hits.hits else data)
     rows.push if dr._source? then dr._source else if dr._fields then dr._fields else dr # should collapse fields values out of lists?
-  csv = API.convert.json2csv {fields:ths.queryParams?.fields ? ths.bodyParams?.fields}, undefined, rows
+  csv = API.convert.json2csv rows, {fields:ths.queryParams?.fields ? ths.bodyParams?.fields}
   API.convert.csv2response ths, csv, filename
 
 API.convert.csv2response = (ths, csv, filename) ->
@@ -365,8 +382,8 @@ API.convert.csv2response = (ths, csv, filename) ->
   ths.response.writeHead(200, {'Content-disposition': "attachment; filename=" + filename, 'Content-type': 'text/csv; charset=UTF-8', 'Content-Encoding': 'UTF-8'})
   ths.response.end csv
 
-API.convert.json2json = (opts,url,content) ->
-  content = HTTP.call('GET', url).content if url?
+API.convert.json2json = (content, opts) ->
+  content = HTTP.call('GET', content).content if content.indexOf('http') is 0
   if opts.subset
     parts = opts.subset.split('.')
     content = content[s] for s in parts

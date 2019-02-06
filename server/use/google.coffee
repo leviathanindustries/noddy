@@ -15,14 +15,11 @@ API.add 'use/google/places/autocomplete',
 API.add 'use/google/places/place',
 	get: () -> return API.use.google.places.place this.queryParams.id,this.queryParams.q,this.queryParams.location,this.queryParams.radius
 
-API.add 'use/google/places/nearby',
-	get: () -> return API.use.google.places.nearby this.queryParams
+API.add 'use/google/places/nearby', get: () -> return API.use.google.places.nearby this.queryParams
 
-API.add 'use/google/places/search',
-	get: () -> return API.use.google.places.search this.queryParams
+API.add 'use/google/places/search', get: () -> return API.use.google.places.search this.queryParams
 
-API.add 'use/google/places/url',
-	get: () -> return API.use.google.places.url this.queryParams.q
+API.add 'use/google/places/url', get: () -> return API.use.google.places.url this.queryParams.q
 
 API.add 'use/google/search/custom', 
 	get:
@@ -69,6 +66,8 @@ API.add 'use/google/knowledge/search',
 	get:
 		roleRequired:'root'
 		action: () -> return API.use.google.knowledge.search this.queryParams.q,this.queryParams.limit
+
+API.add 'use/google/sheets/:sheetid', get: () -> return API.use.google.sheets.feed this.urlParams.sheetid, this.queryParams
 
 API.add 'use/google/clear',
 	get: () ->
@@ -201,15 +200,18 @@ API.use.google.places.search = (params) ->
 
 
 
-API.use.google.sheets.feed = (sheetid,stale=3600000) ->
+API.use.google.sheets.feed = (sheetid,opts={}) ->
+	opts = {stale:opts} if typeof opts is 'number'
+	opts.stale ?= 3600000
 	return [] if not sheetid?
 	# expects a google sheet ID or a URL to a google sheets feed in json format
 	# NOTE the sheet must be published for this to work, should have the data in sheet 1, and should have columns of data with key names in row 1
+	sheetid = sheetid.split('/spreadsheets/d/')[1].split('/')[0] if sheetid.indexOf('http') is 0 and sheetid.indexOf('/spreadsheets/d/') isnt -1 and sheetid.indexOf('/feeds/list/') is -1
 	url = if sheetid.indexOf('http') isnt 0 then 'https://spreadsheets.google.com/feeds/list/' + sheetid + '/od6/public/values?alt=json' else sheetid
 	sheetid = sheetid.replace('https://','').replace('http://','').replace('spreadsheets.google.com/feeds/list/','').split('/')[0]
 	localcopy = '.googlelocalcopy/' + sheetid + '.json'
 	values = []
-	if fs.existsSync(localcopy) and ((new Date()) - fs.statSync(localcopy).mtime) < stale
+	if fs.existsSync(localcopy) and ((new Date()) - fs.statSync(localcopy).mtime) < opts.stale
 		values = JSON.parse fs.readFileSync(localcopy)
 	else
 		try

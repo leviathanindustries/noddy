@@ -116,7 +116,7 @@ API.use.opendoar.search = (qrystr,show='basic',raw) ->
   try
     res = HTTP.call 'GET', url
     if res.statusCode is 200
-      js = API.convert.xml2json undefined,res.content
+      js = API.convert.xml2json res.content
       data = []
       data.push(if raw then r else API.use.opendoar.parse(r)) for r in js.OpenDOAR.repositories[0].repository
       return { total: js.OpenDOAR.repositories[0].repository.length, data: data}
@@ -130,7 +130,7 @@ API.use.opendoar.download = (show='max') ->
   try
     res = HTTP.call 'GET', url
     if res.statusCode is 200
-      js = API.convert.xml2json undefined,res.content
+      js = API.convert.xml2json res.content
       data = []
       data.push(API.use.opendoar.parse(r)) for r in js.OpenDOAR.repositories[0].repository
       return { total: js.OpenDOAR.repositories[0].repository.length, data: data}

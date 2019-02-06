@@ -21,6 +21,8 @@ API.use.sherpa = {romeo:{}}
 
 API.add 'use/sherpa/romeo/search', get: () -> return API.use.sherpa.romeo.search this.queryParams
 
+API.add 'use/sherpa/romeo/issn/:issn', get: () -> return API.use.sherpa.romeo.search {issn:this.urlParams.issn}
+
 API.add 'use/sherpa/romeo/colour/:issn', get: () -> return API.use.sherpa.romeo.colour this.urlParams.issn
 
 API.add 'use/sherpa/romeo/updated', get: () -> return API.use.sherpa.romeo.updated()
@@ -60,7 +62,7 @@ API.use.sherpa.romeo.search = (params) ->
   try
     res = HTTP.call 'GET', url
     if res.statusCode is 200
-      result = API.convert.xml2json undefined, res.content
+      result = API.convert.xml2json res.content
       return {journals: result.romeoapi.journals, publishers: result.romeoapi.publishers}
     else
       return { status: 'error', data: result}
@@ -84,7 +86,7 @@ API.use.sherpa.romeo.updated = () ->
   try
     res = HTTP.call 'GET', url
     if res.statusCode is 200
-      result = API.convert.xml2json undefined, res.content
+      result = API.convert.xml2json res.content
       ret = 
         publishers:
           added: result['download-dates'].publisherspolicies[0].latestaddition[0]
@@ -152,7 +154,7 @@ API.use.sherpa.romeo.download = (disk=false) ->
     url = 'http://www.sherpa.ac.uk/downloads/journal-issns.php?format=csv&ak=' + apikey
     res = HTTP.call 'GET', url # gets a list of journal ISSNs
     if res.statusCode is 200
-      js = API.convert.csv2json undefined, res.content
+      js = API.convert.csv2json res.content
       js = js.slice(0,50)
       data = []
       for r in js

@@ -316,8 +316,10 @@ _phantom = (url,delay=1000,refresh=86400000,callback) ->
 # then once the which command can find one, just use that
 # TODO use some checks to see where the installed chrome/chromium is, if it is there
 # if not, try to get it using browserFetcher https://github.com/GoogleChrome/puppeteer/blob/master/docs/api.md#class-browserfetcher
-_puppetEndpoint = false
-_puppetPages = 0
+# tracking and re-using open chrome browsers appears to leave more hanging and use more memory than just opening and closing one every time
+# tried with counters and also with counting the pages the browser thinks are open - not reliable enough, so go back to opening then closing every time
+#_puppetEndpoint = false
+#_puppetPages = 0
 _puppeteer = (url,refresh=86400000,callback) ->
   if typeof refresh is 'function'
     callback = refresh
@@ -329,26 +331,26 @@ _puppeteer = (url,refresh=86400000,callback) ->
     return callback(null,cached) if cached?
   API.log 'starting puppeteer retrieval of ' + url
   try
-    browser = false
-    if _puppetEndpoint isnt false
-      try browser = await puppeteer.connect({browserWSEndpoint:_puppetEndpoint})
-    if browser is false
-      browser = await puppeteer.launch({args:['--no-sandbox', '--disable-setuid-sandbox'], ignoreHTTPSErrors:true, dumpio:false, timeout:12000, executablePath: '/usr/bin/google-chrome'})
-      _puppetEndpoint = browser.wsEndpoint()
+    #browser = false
+    #if _puppetEndpoint isnt false
+    #  try browser = await puppeteer.connect({browserWSEndpoint:_puppetEndpoint})
+    #if browser is false
+    browser = await puppeteer.launch({args:['--no-sandbox', '--disable-setuid-sandbox'], ignoreHTTPSErrors:true, dumpio:false, timeout:12000, executablePath: '/usr/bin/google-chrome'})
+    #_puppetEndpoint = browser.wsEndpoint()
     page = await browser.newPage()
-    _puppetPages += 1
+    #_puppetPages += 1
     await page.goto(url, {timeout:12000})
     content = await page.evaluate(() => new XMLSerializer().serializeToString(document.doctype) + '\n' + document.documentElement.outerHTML)
-    _puppetPages -= 1
-    if _puppetPages is 0
-      await browser.close()
+    #_puppetPages -= 1
+    #if _puppetPages is 0
+    await browser.close()
     try
       API.http.cache(url, 'puppeteer', content) if typeof content is 'string' and content.length > 200
     return callback null, content
   catch
     try await browser.close()
-    _puppetEndpoint = false
-    _puppetPages = 0
+    #_puppetEndpoint = false
+    #_puppetPages = 0
     return callback null, ''
 
 API.http.puppeteer = Meteor.wrapAsync(_puppeteer)

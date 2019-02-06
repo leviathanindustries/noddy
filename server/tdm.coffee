@@ -202,7 +202,7 @@ API.tdm.extract = (opts) ->
 	# opts expects url,content,matchers (a list, or singular "match" string),start,end,convert,format,lowercase,ascii
 	opts.content = API.http.puppeteer(opts.url, true) if opts.url and not opts.content
 	try
-		text = if opts.convert then API.convert.run(opts.url,opts.convert,'txt',opts.content) else opts.content
+		text = if opts.convert then API.convert.run(opts.url ? opts.content, opts.convert, 'txt') else opts.content
 	catch
 		text = opts.content
 
