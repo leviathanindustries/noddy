@@ -19,7 +19,25 @@ sherpa_romeo = new API.collection {index:"sherpa",type:"romeo"}
 API.use ?= {}
 API.use.sherpa = {romeo:{}}
 
-API.add 'use/sherpa/romeo/search', get: () -> return API.use.sherpa.romeo.search this.queryParams
+# searches the actual romeo API, and if find then if found, saves it to local sherpa_romeo index
+# the local index can be populated using routes below, and the local index can be searched using the route below without /search
+API.add 'use/sherpa/romeo/search', 
+  get: () -> 
+    xml = false
+    format = true
+    if this.queryParams.xml?
+      xml = true
+      delete this.queryParams.xml
+    if this.queryParams.format?
+      format = false
+      delete this.queryParams.format
+    if xml
+      this.response.writeHead(200, {'Content-type': 'text/xml; charset=UTF-8', 'Content-Encoding': 'UTF-8'})
+      this.response.end API.use.sherpa.romeo.search this.queryParams, xml
+    else
+      return API.use.sherpa.romeo.search this.queryParams, xml, format
+
+API.add 'use/sherpa/romeo/find', get: () -> return API.use.sherpa.romeo.find this.queryParams
 
 API.add 'use/sherpa/romeo/issn/:issn', get: () -> return API.use.sherpa.romeo.search {issn:this.urlParams.issn}
 
@@ -31,7 +49,7 @@ API.add 'use/sherpa/romeo/download',
   get: 
     roleRequired:'root'
     action: () -> 
-      return API.use.sherpa.romeo.download(this.queryParams.disk)
+      return API.use.sherpa.romeo.download(this.queryParams.local)
 
 API.add 'use/sherpa/romeo/download.csv', 
   get: 
@@ -43,31 +61,53 @@ API.add 'use/sherpa/romeo/index',
   get: 
     roleRequired:'root'
     action: () -> 
-      res = API.use.sherpa.romeo.index()
+      res = API.use.sherpa.romeo.index (if this.queryParams.update? then true else undefined), (if this.queryParams.local? then false else undefined)
       API.mail.send {to: 'alert@cottagelabs.com', subject: 'Sherpa Romeo index complete', text: 'Done'}
       return res
+  delete:
+    roleRequired:'root'
+    action: () -> 
+      sherpa_romeo.remove('*') if sherpa_romeo.count() isnt 0
+      return true
 
-API.add 'use/sherpa/romeo', { get: (() -> return sherpa_romeo.search(this.queryParams)), post: (() -> return sherpa_romeo.search(this.bodyParams)) }
-API.add 'use/sherpa/romeo.csv', { get: (() -> API.convert.json2csv2response(this, sherpa_romeo.search(this.queryParams ? this.bodyParams))), post: (() -> API.convert.json2csv2response(this, sherpa_romeo.search(this.queryParams ? this.bodyParams))) }
 # INFO: sherpa romeo is one dataset, and fact and ref are built from it. Opendoar is the repo directory, a separate dataset
+API.add 'use/sherpa/romeo', () -> return sherpa_romeo.search this
 
 
 
-API.use.sherpa.romeo.search = (params) ->
+API.use.sherpa.romeo.search = (params,xml=false,format=true) ->
+  if params.title?
+    params.jtitle = params.title
+    delete params.title
   apikey = API.settings.use?.romeo?.apikey
   return { status: 'error', data: 'NO ROMEO API KEY PRESENT!'} if not apikey
   url = 'http://www.sherpa.ac.uk/romeo/api29.php?ak=' + apikey + '&'
   url += q + '=' + params[q] + '&' for q of params
   API.log 'Using sherpa romeo for ' + url
-  try
-    res = HTTP.call 'GET', url
-    if res.statusCode is 200
-      result = API.convert.xml2json res.content
-      return {journals: result.romeoapi.journals, publishers: result.romeoapi.publishers}
+  #try
+  res = HTTP.call 'GET', url
+  if res.statusCode is 200
+    if xml
+      return res.content
     else
-      return { status: 'error', data: result}
-  catch err
-    return { status: 'error', error: err}
+      result = API.convert.xml2json res.content
+      if format
+        return API.use.sherpa.romeo.format {journals: result.romeoapi.journals, publishers: result.romeoapi.publishers}
+      else
+        return {journals: result.romeoapi.journals, publishers: result.romeoapi.publishers}
+  else
+    return { status: 'error', data: result}
+  #catch err
+  #  return { status: 'error', error: err}
+
+API.use.sherpa.romeo.find = (q) ->
+  found = sherpa_romeo.find q
+  if not found
+    rem = API.use.sherpa.romeo.search q
+    if rem? and typeof rem is 'object' and rem.status isnt 'error'
+      sherpa_romeo.insert rem
+      found = rem
+  return found
 
 API.use.sherpa.romeo.colour = (issn) ->
   if rec = sherpa_romeo.find({issn: issn}) and rec.publisher?.colour?
@@ -107,45 +147,68 @@ API.use.sherpa.romeo.updated = () ->
 
 API.use.sherpa.romeo.format = (res, romeoID) ->
   rec = {journal:{},publisher:{}}
-  rec.sherpa_id = romeoID if romeoID
-  for j of res.journals[0].journal[0]
-    rec.journal[j] = res.journals[0].journal[0][j]
-  for p of res.publishers[0].publisher[0]
-    if p is '$'
-      rec.publisher.sherpa_id = res.publishers[0].publisher[0][p].id
-    else if p in ['preprints','postprints','pdfversion']
-      for ps of res.publishers[0].publisher[0][p][0]
-        if ps.indexOf('restrictions') isnt -1
-          rec.publisher[ps] = []
-          for psr in res.publishers[0].publisher[0][p][0][ps]
-            psrn = ps.replace('restrictions','restriction')
-            rec.publishers[ps].push(psr[psrn][0].replace(/\<.*?\>/g,'')) if psr[psrn]? and psr[psrn].length and psr[psrn][0].length
-        else
-          rec.publisher[ps] = res.publishers[0].publisher[0][p][ps] if res.publishers[0].publisher[0][p][ps]
-    else if p is 'conditions'
-      rec.publisher.conditions = res.publishers[0].publisher[0].conditions[0].condition
-    else if p is 'mandates'
-      rec.publisher.mandates = []
-      for pm in res.publishers[0].publisher[0].mandates
-        rec.publisher.mandates.push(pm) if pm
-    else if p is 'paidaccess'
-      for pm of res.publishers[0].publisher[0].paidaccess[0]
-        rec.publisher[pm] = res.publishers[0].publisher[0].paidaccess[0][pm][0] if res.publishers[0].publisher[0].paidaccess[0][pm].length and res.publishers[0].publisher[0].paidaccess[0][pm][0]
-    else if p is 'copyrightlinks'
-      for pc of res.publishers[0].publisher[0][p][0].copyrightlink[0]
-        rec.publisher[pc] = res.publishers[0].publisher[0][p][0].copyrightlink[0][pc][0]
-    else if p is 'romeocolour'
-      rec.publisher.colour = res.publishers[0].publisher[0][p][0]
-    else
-      rec.publisher[p] = res.publishers[0].publisher[0][p][0]
+  rec.romeoID = romeoID if romeoID
+  if res.journals? and res.journals.length and res.journals[0].journal? and res.journals[0].journal.length
+    for j of res.journals[0].journal[0]
+      rec.journal[j] = res.journals[0].journal[0][j][0] if res.journals[0].journal[0][j].length and res.journals[0].journal[0][j][0]
+    rec.journal.title = rec.journal.jtitle if rec.journal.jtitle? and not rec.journal.title?
+  if res.publishers? and res.publishers.length and res.publishers[0].publisher? and res.publishers[0].publisher.length
+    publisher = res.publishers[0].publisher[0]
+    for p of publisher
+      if p is '$'
+        rec.publisher.sherpa_id = publisher[p].id
+        rec.publisher.sherpa_parent_id = publisher[p].parentid
+      else if p in ['preprints','postprints','pdfversion']
+        if publisher[p].length
+          rec.publisher[p] = {}
+          for ps of publisher[p][0]
+            if publisher[p][0][ps].length
+              if publisher[p][0][ps].length > 1
+                rec.publisher[p][ps] = []
+                for psr of publisher[p][0][ps]
+                  rec.publisher[p][ps].push(publisher[p][0][ps][psr].replace(/<.*?>/g,'')) if typeof publisher[p][0][ps][psr] is 'string' and publisher[p][0][ps][psr].replace(/<.*?>/g,'')
+              else
+                rec.publisher[p][ps] = publisher[p][0][ps][0].replace(/<.*?>/g,'') if typeof publisher[p][0][ps][0] is 'string' and publisher[p][0][ps][0].replace(/<.*?>/g,'')
+                rec.publisher[p][ps] = [] if not rec.publisher[p][ps]? and ps.indexOf('restrictions') isnt -1
+            else if ps.indexOf('restrictions') isnt -1
+              rec.publisher[p][ps] = []
+      else if p is 'conditions' and publisher[p].length and typeof publisher[p][0] is 'object' and publisher[p][0].condition? and publisher[p][0].condition.length
+        rec.publisher.conditions = []
+        for c in publisher[p][0].condition
+          rec.publisher.conditions.push(c.replace(/<.*?>/g,'')) if typeof c is 'string' and c.replace(/<.*?>/g,'')
+      else if p is 'mandates' and publisher[p].length
+        rec.publisher.mandates = []
+        if typeof publisher[p][0] is 'string'
+          for pm in publisher[p]
+            rec.publisher.mandates.push(pm) if pm
+        else if typeof publisher[p][0] is 'object' and publisher[p][0].mandate? and publisher[p][0].mandate.length
+          for pm in publisher[p][0].mandate
+            rec.publisher.mandates.push(pm) if pm
+      else if p is 'paidaccess'
+        for pm of publisher[p][0]
+          rec.publisher[pm] = publisher[p][0][pm][0] if publisher[p][0][pm].length and publisher[p][0][pm][0]
+      else if p is 'copyrightlinks'
+        if publisher[p][0].copyrightlink
+          rec.publisher.copyright = []
+          for pc of publisher[p][0].copyrightlink
+            rec.publisher.copyright.push {url: publisher[p][0].copyrightlink[pc].copyrightlinkurl[0], text: publisher[p][0].copyrightlink[pc].copyrightlinktext[0]}
+      else if p is 'romeocolour'
+        rec.publisher.colour = publisher[p][0]
+        rec.colour = rec.publisher.colour
+        rec.color = rec.colour
+      else if p in ['dateadded','dateupdated']
+        rec.publisher['sherpa_' + p.replace('date','') + '_date'] = publisher[p][0] #.replace(':','').replace(':','.')
+      else
+        rec.publisher[p] = publisher[p][0]
+        rec.publisher.url = rec.publisher[p] if p is 'homeurl'
   return rec
 
-API.use.sherpa.romeo.download = (disk=false) ->
+API.use.sherpa.romeo.download = (local=true) ->
   apikey = API.settings.use?.romeo?.apikey
   return { status: 'error', data: 'NO ROMEO API KEY PRESENT!'} if not apikey
   updated = API.use.sherpa.romeo.updated()
   localcopy = '.sherpa_romeo_data.csv'
-  if fs.existsSync(localcopy) and (disk or moment(updated.latest).valueOf() < fs.statSync(localcopy).mtime)
+  if fs.existsSync(localcopy) and local and moment(updated.latest).valueOf() < fs.statSync(localcopy).mtime
     try
       local = JSON.parse fs.readFileSync localcopy
       if local.length
@@ -155,26 +218,36 @@ API.use.sherpa.romeo.download = (disk=false) ->
     res = HTTP.call 'GET', url # gets a list of journal ISSNs
     if res.statusCode is 200
       js = API.convert.csv2json res.content
-      js = js.slice(0,50)
+      #js = js.slice(50,70)
+      issns = [] # we seem to get dups from the sherpa lists...
+      dups = []
       data = []
       for r in js
-        #try
-        res = API.use.sherpa.romeo.search {issn:r.ISSN.trim().replace(' ','-')}
-        data.push API.use.sherpa.romeo.format res, r['RoMEO Record ID']
+        try
+          issn = r.ISSN.trim().replace(' ','-')
+          if issn not in issns
+            res = API.use.sherpa.romeo.search {issn:issn}
+            try res.journal?.issn ?= issn # some ISSNs in the sherpa download never resolve to anything, so store an empty record with just the ISSN
+            try res.romeoID = r['RoMEO Record ID']
+            data.push res
+            issns.push res.journal.issn
+          else
+            dups.push issn
       fs.writeFileSync localcopy, JSON.stringify(data,"",2)
-      API.mail.send {to: 'alert@cottagelabs.com', subject: 'Sherpa Romeo download complete', text: 'Done'}
-      return { total: data.length, data: data}
+      API.mail.send {to: 'alert@cottagelabs.com', subject: 'Sherpa Romeo download complete', text: 'Done, with ' + data.length + ' records and ' + dups.length + ' duplicates'}
+      return { total: data.length, duplicates: dups.length, data: data}
     else
       return { status: 'error', data: res}
   catch err
     return { status: 'error', error: err}
 
-API.use.sherpa.romeo.index = () ->
-  update = true
-  try update = API.use.sherpa.romeo.updated().new isnt true
+API.use.sherpa.romeo.index = (update=API.use.sherpa.romeo.updated().new,local) ->
   if update
     sherpa_romeo.remove('*') if sherpa_romeo.count() isnt 0
-    return sherpa_romeo.import API.use.sherpa.romeo.download().data
+    try
+      return sherpa_romeo.import API.use.sherpa.romeo.download(local).data
+    catch err
+      return {status: 'error', err: err}
   else
     return 'Already up to date'
 

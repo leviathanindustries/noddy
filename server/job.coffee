@@ -16,6 +16,7 @@ if API.settings.job? and API.settings.job.startup isnt true and (process.env.NOD
 @job_processing = new API.collection index: API.settings.es.index + "_job", type: "processing"
 @job_result = new API.collection index: API.settings.es.index + "_job", type: "result"
 @job_limit = new API.collection index: API.settings.es.index + "_job", type: "limit"
+@job_cap = new API.collection index: API.settings.es.index + "_job", type: "cap"
 
 API.add 'job',
   get: () -> return data: 'The job API'
@@ -411,7 +412,7 @@ API.job.cron = (fn, args, title, cron, repeat=true) -> # repeat could be a times
     job_limit.insert {_id: p.group, group: p.group, limit: cron.next.limit}
     return job_process.insert {priority: 10000, group: title, function: fn, args: args, signature: API.job._sign(fn,args), cron: cron.parsed, repeat: repeat, limit: cron.next.limit}
   
-API.job.limit = (limitms,fn,args,group,refresh=0) -> # directly create a sync throttled process
+API.job.limit = (limitms=1000,fn,args,group,refresh=0) -> # directly create a sync throttled process
   pr = {priority:10000, _id:Random.id(), group:(group ? fn), function: fn, args: args, signature: API.job._sign(fn,args), limit: limitms}
   if typeof refresh is 'number' and refresh isnt 0
     match = {must:[{term:{'signature.exact':pr.signature}},{range:{createdAt:{gt:Date.now() - refresh}}}], must_not:[{exists:{field:'_raw_result.error'}}]}
@@ -424,20 +425,53 @@ API.job.limit = (limitms,fn,args,group,refresh=0) -> # directly create a sync th
       future = new Future()
       Meteor.setTimeout (() -> future.return()), limitms
       future.wait()
+      limitms = 500 if not limitms? or limitms < 500
       jr = job_result.get pr._id
   return API.job.result jr
 
-API.job.cap = () -> (cap,group,fn,args) ->
-  #limited = job_limit.get 'cap:' + cap + ' AND group:' + group
-  # should run whatever the function is, unless cap has been reached or has already had a limit set on it (which will be created when cap is reached)
-  # if it runs, need to record that it ran somewhere - in job_limit, or another collection for caps?
-  # if cap is reached, return something that lets us know we are capped - or if fn and args are provided, queue the function as a process until cap is lifted
-  # cap could be a number of minute/minutes/hour/hours/days/month/months/year/years, so would need to count the last X whatevers
-  # or could be this day (today), this week, this month, this year, so count back to the start of this whatever
-  # if cap is reached could use a limit so next time round just look that up and know to wait until then
-  # also need a way to integrate this with processes in jobs - if they come in with a cap, or in a cap group, need to check the cap status for that group
-  return true
-  
+API.job.cap = (max,cap,group,fn,args) ->
+  return undefined if not max? or not cap? or not group?
+  # cap can be minute, hour, day, month in which case it will be the start of the current one
+  if cap in ['minute','hour','day','month']
+    date = new Date()
+    beginning = new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours(), date.getMinutes()).valueOf() if cap is 'minute'
+    beginning = new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours()).valueOf() if cap is 'hour'
+    beginning = new Date(date.getFullYear(), date.getMonth(), date.getDate()).valueOf() if cap is 'day'
+    beginning = new Date(date.getFullYear(), date.getMonth(), 1).valueOf() if cap is 'month'
+  else
+    # or cap should be a number in ms or a string starting with a number followed by ms/s/m/min/mins/minute/minutes/hour/hours/day/days
+    try cp = parseInt(cap.replace('s','')) * 1000
+    cp ?= parseInt(cap.replace('ms','')) if typeof cap is 'string' and 'ms' in cap
+    cp ?= cap.replace('m','min') if typeof cap is 'string' and cap.indexOf('m') is cap.length-1
+    if not cp? and typeof cap isnt 'number'
+      cp = cap.toLowerCase().replace('s','').replace('ute','')
+      format = if 'min' in cp then 'min' else if 'hour' in cp then 'hour' else 'day'
+      back = parseInt(cp.replace(format,''))
+      cp = back * (if format is 'min' then 60000 else if format is 'hour' then 360000 else 8640000)
+    beginning = Date.now() - cp
+
+  #job_cap.remove({group:group, createdAt:'<' + beginning}) if not API.settings.dev
+  res = job_cap.find 'group.exact:' + group + ' AND createdAt:>' + beginning, {newest:false,size:1}
+  earliest = if res.hits?.hits? and res.hits.hits.length then res.hits.hits[0]._source.createdAt else false
+  capping = res.hits.total + 1
+  capped = capping >= max
+  job_cap.insert({group: group, beginning: beginning, earliest: earliest, capping: capping, max: max, cap: cap}) if not capped
+  if fn?
+    if capped
+      future = new Future()
+      Meteor.setTimeout (() -> future.return()), earliest - beginning
+      future.wait()
+      return API.job.cap max,cap,group,fn,args
+    else
+      if typeof fn is 'string'
+        afn = if fn.indexOf('API.') is 0 then API else global
+        afn = fn[p] for p in fn.replace('API.','').split('.')
+        fn = afn
+      try args = JSON.parse(args) if typeof args is 'string'
+      return if _.isArray(args) then fn.apply(this, args) else fn args
+  else
+    return {capped: capped, capping: capping, beginning: beginning, earliest: earliest, wait: (if earliest then earliest - beginning else undefined)}
+
 API.job.process = (proc) ->
   proc = job_process.get(proc) if typeof proc isnt 'object'
   return false if typeof proc isnt 'object'
@@ -625,6 +659,8 @@ API.job.status = (filter='NOT group:TEST') ->
   res.limits = {} # may not be worth reporting on limit index in new structure
   job_limit.each 'NOT last:*', (lm) -> res.limits[lm.group ? lm._id] = {date:lm.created_date,limit:lm.limit}
   job_job.each 'NOT done:true', {_source:['_id','count','processed']}, (j) -> res.jobs.waiting += (j.count - (j.processed ? 0))
+  res.caps = {}
+  job_cap.each '*', (cp) -> res.caps[cp.group ? cp._id] = {date:cp.created_date}
   return res
 
 API.job.orphans = (remove=false,types=['process','result']) ->

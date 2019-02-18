@@ -343,12 +343,13 @@ API.convert.json2csv = (content, opts={}) ->
         content = c
       else
         content = content[p]
-  fields = []
-  for l in content
-    for k of l
-      fields.push(k) if fields.indexOf(k) is -1
-      l[k] = l[k].join(',') if Array.isArray l[k]
-  opts.fields ?= fields
+  opts.fields = opts.fields.split(',') if typeof opts.fields is 'string'
+  if not opts.fields?
+    opts.fields = []
+    for l in content
+      for k of l
+        opts.fields.push(k) if opts.fields.indexOf(k) is -1
+        l[k] = l[k].join(',') if Array.isArray l[k]
   # an odd use of a stream here, passing it what is already a variable. But this 
   # avoids json2csv OOM errors which seem to occur even if the memory is not all used
   # moving to all stream at some point would be nice, but not done yet...
@@ -373,7 +374,10 @@ API.convert.json2csv = (content, opts={}) ->
 API.convert.json2csv2response = (ths, data, filename) ->
   rows = []
   for dr in (if data?.hits?.hits? then data.hits.hits else data)
-    rows.push if dr._source? then dr._source else if dr._fields then dr._fields else dr # should collapse fields values out of lists?
+    rw = if dr._source? then dr._source else if dr.fields then dr.fields else dr
+    for k of rw
+      rw[k] = rw[k][0] if _.isArray(rw[k]) and rw[k].length is 1
+    rows.push rw
   csv = API.convert.json2csv rows, {fields:ths.queryParams?.fields ? ths.bodyParams?.fields}
   API.convert.csv2response ths, csv, filename
 

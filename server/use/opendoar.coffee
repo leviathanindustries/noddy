@@ -37,8 +37,7 @@ API.add 'use/opendoar/index',
       API.mail.send {to: 'alert@cottagelabs.com', subject: 'Opendoar index complete', text: 'Done'}
       return res
 
-API.add 'use/opendoar', { get: (() -> return opendoar_record.search(this.queryParams)), post: (() -> return opendoar_record.search(this.bodyParams)) }
-API.add 'use/opendoar.csv', { get: (() -> API.convert.json2csv2response(this, opendoar_record.search(this.queryParams ? this.bodyParams))), post: (() -> API.convert.json2csv2response(this, opendoar_record.search(this.queryParams ? this.bodyParams))) }
+API.add 'use/opendoar', () -> return opendoar_record.search this
 
 
 

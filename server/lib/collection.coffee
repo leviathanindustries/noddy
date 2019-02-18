@@ -492,6 +492,9 @@ API.collection.prototype.mount = (opts={}) ->
 ###
 API.collection._translate = (q, opts) ->
   console.log('Translating query',q,opts) if API.settings.log?.level is 'all'
+  opts = {random:true} if opts is 'random'
+  opts = {size:opts} if typeof opts is 'number'
+  opts = {newest: true} if opts is true
   qry = opts?.query ? {}
   qry.query ?= {}
   if not qry.query? or not qry.query.filtered?
@@ -505,6 +508,13 @@ API.collection._translate = (q, opts) ->
     qry.query.filtered.query = bool: must: ms
   qry.query.filtered.query.bool.must ?= []
   if typeof q is 'object'
+    # if a search endpoint passes its "this" contenxt then expand out the query or body params
+    if q.queryParams? or q.bodyParams?
+      qp = q.queryParams ? {}
+      if q.bodyParams?
+        for b of q.bodyParams
+          qp[b] = q.bodyParams[b]
+      q = qp
     delete q.apikey if q.apikey?
     delete q._ if q._?
     delete q.callback if q.callback?
@@ -569,9 +579,6 @@ API.collection._translate = (q, opts) ->
       q = '*' if q is ''
       qry.query.filtered.query.bool.must.push query_string: query: q
   if opts?
-    opts = {random:true} if opts is 'random'
-    opts = {size:opts} if typeof opts is 'number'
-    opts = {newest: true} if opts is true
     if opts.newest is true
       delete opts.newest
       opts.sort = {createdAt:{order:'desc'}}
@@ -595,6 +602,20 @@ API.collection._translate = (q, opts) ->
           qry.query = fq
       delete opts.random
       delete opts.seed
+    if opts._include? or opts.include? or opts._includes? or opts.includes? or opts._exclude? or opts.exclude? or opts._excludes? or opts.excludes?
+      qry._source ?= {}
+      inc = if opts._include? then '_include' else if opts.include? then 'include' else if opts._includes? then '_includes' else 'includes'
+      includes = opts[inc]
+      if includes?
+        includes = includes.split(',') if typeof includes is 'string'
+        qry._source.includes = includes
+        delete opts[inc]
+      exc = if opts._exclude? then '_exclude' else if opts.exclude? then 'exclude' else if opts._excludes? then '_excludes' else 'excludes'
+      excludes = opts[exc]
+      if excludes?
+        excludes = excludes.split(',') if typeof excludes is 'string'
+        qry._source.excludes = excludes
+        delete opts[exc]
     if opts.and?
       qry.query.filtered.filter.bool.must.push a for a in opts.and
       delete opts.and

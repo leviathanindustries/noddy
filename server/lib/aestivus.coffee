@@ -130,9 +130,6 @@ class share.Route
     if not @endpoints
       @endpoints = @options
       @options = {}
-      if @endpoints.csv is true
-        @options.csv = true
-        delete @endpoints.csv
 
 
   addToApi: do ->
@@ -232,9 +229,8 @@ class share.Route
   ###
   _configureEndpoints: ->
     _.each @endpoints, (endpoint, method) ->
-      if method not in ['options','desc','csv'] and typeof endpoint isnt 'string'
+      if method not in ['options','desc'] and typeof endpoint isnt 'string'
         # Configure acceptable roles
-        endpoint.csv = true if @options.csv is true
         if not @options?.roleRequired
           @options.roleRequired = []
         if not endpoint.roleRequired
@@ -279,9 +275,10 @@ class share.Route
       return blacklisted
     else if @_authAccepted endpointContext, endpoint
       if @_roleAccepted endpointContext, endpoint
-        if endpoint.csv is true
+        ep = endpointContext.request.url.split('/').pop().split('?')[0].split('#')[0]
+        if ep.indexOf('.') isnt -1 and ep.split('.').pop() is 'csv'
           data = endpoint.action.call endpointContext
-          API.convert.json2csv2response endpointContext, data, endpointContext.request.url.split('/').pop().replace('.csv','') + '_' + moment(Date.now(), "x").format("YYYY_MM_DD_HHmm_ss") + '.csv'
+          API.convert.json2csv2response endpointContext, data, ep.replace('.csv','') + '_' + moment(Date.now(), "x").format("YYYY_MM_DD_HHmm_ss") + '.csv'
         else
           endpoint.action.call endpointContext
       else
@@ -458,14 +455,36 @@ class @Restivus
 
 
   add: (path, options, endpoints) ->
-    # Create a new route and add it to our list of existing routes
-    if options?.csv is true or endpoints?.csv is true
+    # convenience for adding a search endpoint for a collection (and can pass a role name, or authOptional or authRequired string
+    if typeof options is 'string' and typeof endpoints is 'function'
+      auth = options
+      options = endpoints
+      endpoints = undefined
+    csv = false
+    if typeof options is 'function'
+      csv = true
+      f = action: options
+      if auth is 'authRequired'
+        f.authRequired = true
+      else if auth is 'authOptional'
+        f.authOptional = true
+      else if auth
+        f.roleRequired = auth
+      options = get: f, post: f
+
+    # if csv option is set, create an additional route that provides CSVs
+    if options?.csv
+      csv = true
+      delete options.csv
+    if endpoints?.csv
+      csv = true
+      delete endpoints.csv
+    if csv
       croute = new share.Route(this, path + '.csv', options, endpoints)
       @_routes.push(croute)
       croute.addToApi()
-      delete options.csv if options?
-      delete endpoints.csv if endpoints?
-      
+
+    # Create a new route and add it to our list of existing routes
     route = new share.Route(this, path, options, endpoints)
     @_routes.push(route)
     route.addToApi()
