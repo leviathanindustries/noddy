@@ -20,7 +20,7 @@ API.add 'use/doaj/journals/issn/:issn',
 
 API.use.doaj.journals.issn = (issn) ->
   r = API.use.doaj.journals.search 'issn:' + issn
-  return if r.results?.length then r.results[0] else 404
+  return if r.results?.length then r.results[0] else undefined
 
 # title search possible with title:MY JOURNAL TITLE
 API.use.doaj.journals.search = (qry,params) ->

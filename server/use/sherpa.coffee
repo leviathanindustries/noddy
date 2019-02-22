@@ -84,21 +84,21 @@ API.use.sherpa.romeo.search = (params,xml=false,format=true) ->
   url = 'http://www.sherpa.ac.uk/romeo/api29.php?ak=' + apikey + '&'
   url += q + '=' + params[q] + '&' for q of params
   API.log 'Using sherpa romeo for ' + url
-  #try
-  res = HTTP.call 'GET', url
-  if res.statusCode is 200
-    if xml
-      return res.content
-    else
-      result = API.convert.xml2json res.content
-      if format
-        return API.use.sherpa.romeo.format {journals: result.romeoapi.journals, publishers: result.romeoapi.publishers}
+  try
+    res = HTTP.call 'GET', url
+    if res.statusCode is 200
+      if xml
+        return res.content
       else
-        return {journals: result.romeoapi.journals, publishers: result.romeoapi.publishers}
-  else
-    return { status: 'error', data: result}
-  #catch err
-  #  return { status: 'error', error: err}
+        result = API.convert.xml2json res.content
+        if format
+          return API.use.sherpa.romeo.format {journals: result.romeoapi.journals, publishers: result.romeoapi.publishers}
+        else
+          return {journals: result.romeoapi.journals, publishers: result.romeoapi.publishers}
+    else
+      return { status: 'error', data: result}
+  catch err
+    return { status: 'error', error: err}
 
 API.use.sherpa.romeo.find = (q) ->
   found = sherpa_romeo.find q

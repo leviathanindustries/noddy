@@ -27,6 +27,7 @@ API.add 'convert',
         not handle deep nesting). The currently available conversions are: svg to png. table to json or csv. csv to json or html or text.
         html to text. json to csv or text (or json again, which with "fields" can simplify json data). xml to text or json.
         pdf to text or json (which provides content and metadata). xls to json or csv or html or txt. google sheet (sheet) to json or csv or html or txt. 
+        list to string takes a json list of objects and convert it to a string. 
         More conversions are possible, but require additional installations on the API machine, which are not turned on by default.'
   get: () ->
     if this.queryParams.url or this.queryParams.content or this.queryParams.es
@@ -133,7 +134,7 @@ API.convert.run = (content,from,to,opts={}) ->
     output = API.convert['xml2' + to](content)
   else if from is 'pdf' and to in ['txt','json']
     output = API.convert['pdf2' + to](content,opts)
-  else if from in ['xls','sheet'] and to in ['txt','json','html','csv']
+  else if from in ['xls','sheet','list'] and to in ['txt','json','html','csv','string']
     output = API.convert[from + '2' + to](content,opts)
   if from is 'file' and to.indexOf('txt') isnt -1 # some of the above switch to this, so separate loop
     output = API.convert.file2txt(content,opts)
@@ -388,9 +389,12 @@ API.convert.csv2response = (ths, csv, filename) ->
 
 API.convert.json2json = (content, opts) ->
   content = HTTP.call('GET', content).content if content.indexOf('http') is 0
+  content = JSON.parse(content) if typeof content is 'string'
   if opts.subset
     parts = opts.subset.split('.')
-    content = content[s] for s in parts
+    n = {}
+    n[s] = content[s] for s in parts
+    content = n
   if opts.fields
     recs = []
     for r in content
@@ -400,6 +404,45 @@ API.convert.json2json = (content, opts) ->
     content = recs
   return content
 
+API.convert.list2string = (content, opts={}) ->
+  opts.newline ?= '\n'
+  opts.join ?= ', '
+  st = ''
+  try
+    content = HTTP.call('GET', content).content if content.indexOf('http') is 0
+    content = API.convert.xml2json(content) if typeof content is 'string' and content.indexOf('<') is 0
+    content = API.convert.json2json(content,opts) if opts.subset? or opts.fields?
+    content = content[opts.subset] if opts.subset?
+    for row in content
+      st += opts.newline if st isnt ''
+      if typeof row is 'string'
+        st += row
+      else
+        opts.order ?= _.keys row
+        opts.order = opts.order.split(',') if typeof opts.order is 'string'
+        first = true
+        for o in opts.order
+          if row[o]?
+            if first
+              first = false
+            else
+              st += opts.join
+            if typeof row[o] is 'string'
+              dt = row[o]
+            else
+              # can't easily specify this easily and deeply enough via params, but Joe wanted affiliation data out of unpaywall 
+              # which provides affiliation as a list of objects, each of which has at least a key called name. So make some assumptions
+              dt = ''
+              ob = if _.isArray(row[o]) then row[o] else [row[o]]
+              for rw in ob
+                dt += opts.join if dt isnt ''
+                if typeof rw is 'string'
+                  dt += rw
+                else
+                  for k of rw
+                    dt += (if opts.keys then k + ': ' else '') + rw[k]
+            st += (if opts.keys then o + ': ' else '') + dt
+  return if opts.json then {text: st} else st
 
 
 ################################################################################
