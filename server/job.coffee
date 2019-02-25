@@ -91,13 +91,23 @@ API.add 'job/:job/rerun',
 
 API.add 'job/:job/reload',
   get:
-    authOptional: true # TODO decide proper permissions for this and pass uid to job.rerun if suitable
-    action: () -> return API.job.reload(this.urlParams.job)
+    authOptional: true # TODO decide proper permissions for this
+    action: () -> return API.job.reload(this.urlParams.job,this.queryParams.list)
+
+API.add 'job/:job/complete',
+  get:
+    roleRequired: if API.settings.dev then false else 'job.admin'
+    action: () -> return API.job.complete this.urlParams.job, this.queryParams.done?, this.queryParams.complete?, this.queryParams.list?, this.queryParams.known?
 
 API.add 'job/reload',
   get:
     roleRequired: if API.settings.dev then undefined else 'job.admin'
-    action: () -> return API.job.reload(true) # reloads every process from every job that is not done, if there is not already a process or a result matching it
+    action: () -> return API.job.reload(true,this.queryParams.list) # reloads every process from every job that is not done, if there is not already a process or a result matching it
+
+API.add 'job/complete',
+  get:
+    roleRequired: if API.settings.dev then false else 'job.admin'
+    action: () -> return API.job.complete this.queryParams.q, this.queryParams.done?, this.queryParams.complete?, this.queryParams.list?, this.queryParams.known?
 
 API.add 'job/orphans',
   get:
@@ -140,6 +150,11 @@ API.add 'job/results',
         return job_result.search this.queryParams
       else
         return count: job_result.count()
+
+API.add 'job/result/:_id',
+  get:
+    roleRequired: if API.settings.dev then false else 'job.admin'
+    action: () -> return job_result.get this.urlParams._id
 
 API.add 'job/limits',
   get:
@@ -300,12 +315,14 @@ API.job.create = (job) ->
   if imports.length
     job_process.insert imports
     job.processed = job.count - imports.length
+    job.reused = job.processed # just store how many were already results at the start of the job, for potential useful info later
   else
     job.processed = 0
+    job.done = true
 
   # NOTE job can also have a "complete" function string name, which will be called when progress hits 100%, see below
   # the "complete" function will receive the whole job object as the only argument (so can look up results by the process IDs)
-  job.done = job.count is 0 # bit pointless submitting empty jobs, but theoretically possible. Could make impossible...
+  job.done ?= job.count is 0 # bit pointless submitting empty jobs, but theoretically possible. Could make impossible...
   job.new = false
   if job._id
     job_job.update job._id, job
@@ -317,13 +334,14 @@ API.job.create = (job) ->
 
 API.job.remove = (jobid) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
-  if typeof job.processes is 'object'
+  job = job_job.get(job._id) if not job.processes? # just in case this is passed a job without its process list, which can occur sometiems to save passing around large job objects
+  try
     for p in job.processes
       if job_job.search('NOT _id:' + job._id + ' AND processes._id:' + p._id).hits.total is 0
         try job_process.remove p._id
         try job_processing.remove p._id
         try job_result.remove p._id
-  job_job.remove this.urlParams.job
+  job_job.remove job._id
   return true
 
 API.job.time = (cron,hhmm) -> # hhmm just allows a simple way to pass in daily 0500 (will also accept 500)
@@ -584,32 +602,36 @@ API.job.next = () ->
     else
       return false
 
-API.job.reload = (q='*') ->
-  # reload everything that was not done if q is true, or reload every process that 
+API.job.reload = (q='*',list=false) ->
+  # reload everything that was not done if q is true, or reload every process that
   # matches the job id if q is a job id, or reload every processing that matches the 
   # query if it is a query. Default is a * query which means everything already 
   # processing will be reloaded
   reloads = []
-  _reload_job_processes = (job) ->
+  _reload_job_processes = (job, injob=true) ->
     if typeof job.processes is 'object'
+      processed = 0
       for p in job.processes
         try job_processing.remove(p._id)
-        if job_job.search('processes._id:' + p._id, 0)?.hits?.total and not job_result.exists(p._id) and not job_process.exists(p._id)
+        if (injob or job_job.search('processes._id:' + p._id, 0)?.hits?.total) and not job_result.exists(p._id) and not job_process.exists(p._id)
           try delete p.signature # some old jobs had bad signatures
           p.reloaded ?= []
           p.reloaded.push p.createdAt
           reloads.push p
+        else if injob and job_result.exists(p._id)
+          processed += 1
+      API.job.complete(job) if injob and processed is job.count
   if q is true
     job_job.each 'NOT done:true', {size:2}, ((job) -> _reload_job_processes(job))
   else if q isnt '*' and job = job_job.get q
     _reload_job_processes job
   else
-    job_processing.each q, (proc) -> _reload_job_processes {processes:[proc]}
+    job_processing.each q, (proc) -> _reload_job_processes {processes:[proc]}, false
   if reloads.length
     API.log 'Job runner reloading ' + reloads.length + ' jobs for ' + (if q is true then 'all jobs' else if typeof q is 'string' then 'query ' + q else ' complex query object')
     console.log 'doing reload for ' + reloads.length
     job_process.import reloads
-  return reloads.length
+  return if list then _.pluck(reloads,'_id') else reloads.length
 
 API.job._iid
 API.job.start = (interval=API.settings.job?.interval ? 1000) ->
@@ -618,8 +640,7 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   future.wait()
   API.log {msg: 'Starting job runner with interval ' + interval, _appid: process.env.APP_ID, function: 'API.job.start', level: 'debug'}
   olds = job_limit.get 'START_RELOAD'
-  job_limit.remove('START_RELOAD') if olds?.createdAt < Date.now() - 300000
-  if not job_limit.get '_id:START_RELOAD AND createdAt:>' + Date.now() - 299999
+  if not olds? or olds.createdAt < Date.now() - 300000
     job_limit.insert _id: 'START_RELOAD'
     API.job.reload()
     job_limit.remove '*'
@@ -683,7 +704,6 @@ API.job.orphans = (remove=false,types=['process','result']) ->
       if job_job.search('processes._id:' + r._id, 0).hits.total is 0
         res.result.orphan += 1
         job_result.remove(r._id) if remove
-  console.log res
   return res
 
 API.job.progress = (jobid) ->
@@ -714,19 +734,30 @@ API.job.progress = (jobid) ->
       API.job.complete job
   return res
 
-API.job.complete = (jobid) ->
-  job = if typeof jobid is 'object' then jobid else job_job.get jobid
-  if job.done isnt true
-    job_job.update job._id, {done: true}
-    job = job_job.get(job._id) if not job.processes? # we try not to pass round big process lists any more, but for passing to completion, need to get the full record
-    try
-      fn = if job.complete.indexOf('API.') is 0 then API else global
-      fn = fn[f] for f in job.complete.replace('API.','').split('.')
-      fn job
-    catch
-      if job.group isnt 'JOBTEST'
-        API.mail.send to: (job.email ? API.accounts.retrieve(job.user)?.emails[0].address), subject: text, text: 'Job ' + (if job.name then job.name else job._id) + ' is complete.'
-  return true
+API.job.complete = (jobid='NOT done:true', set_done=true, run_complete=true, list=false, known=0) ->
+  known = job_job.count(undefined, {done:true}) if known is true
+  jobids = []
+  _complete = (job) ->
+    if job.done isnt true
+      jobids.push job._id
+      job_job.update(job._id, {done: true}) if set_done
+      if run_complete
+        job = job_job.get(job._id) if not job.processes? # we try not to pass round big process lists any more, but for passing to completion, need to get the full record
+        try
+          fn = if job.complete.indexOf('API.') is 0 then API else global
+          fn = fn[f] for f in job.complete.replace('API.','').split('.')
+          fn job
+        catch
+          if job.group isnt 'JOBTEST'
+            text = 'Job ' + (if job.name then job.name else job._id) + ' is complete.'
+            API.mail.send to: (job.email ? API.accounts.retrieve(job.user)?.emails[0].address), subject: text, text: text
+  job = if jobid is true then 'NOT done:true' else if typeof jobid is 'object' then jobid else job_job.get jobid
+  if typeof job is 'object'
+    _complete job
+    return true
+  else
+    job_job.each (job ? jobid), {size:2}, ((job) -> _complete(job))
+    return if list then jobids else jobids.length + known
 
 API.job.rerun = (jobid,uid) ->
   job = job_job.get jobid

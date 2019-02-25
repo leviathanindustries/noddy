@@ -106,7 +106,7 @@ API.collection.prototype.fetch_history = (q, opts={}, dev=API.settings.dev) ->
 
 API.collection.prototype.exists = (rid, dev=API.settings.dev) ->
   if typeof rid is 'number' or (typeof rid is 'string' and rid.indexOf(' ') is -1 and rid.indexOf(':') is -1 and rid.indexOf('/') is -1 and rid.indexOf('*') is -1)
-    check = API.es.call 'GET', this._route + '/' + rid + '&_source=false', undefined, undefined, undefined, undefined, undefined, undefined, dev
+    check = API.es.call 'GET', this._route + '/' + rid + '?_source=false', undefined, undefined, undefined, undefined, undefined, undefined, dev
     return check?.found is true
   return false
 
