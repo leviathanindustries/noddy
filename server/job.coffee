@@ -61,7 +61,7 @@ API.add 'job/:job',
   delete:
     roleRequired: 'job.user' # who if anyone can remove jobs?
     action: () -> 
-      return if not API.job.allowed(this.urlParams.job,this.user) then 401 else API.job.remove(job)
+      return if not API.job.allowed(this.urlParams.job,this.user) then 401 else API.job.remove(this.urlParams.job)
 
 API.add 'job/:job/progress', get: () -> return if not job = job_job.get(this.urlParams.job) then 404 else API.job.progress job
 
