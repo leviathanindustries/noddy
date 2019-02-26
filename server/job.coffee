@@ -77,7 +77,7 @@ API.add 'job/:job/results.csv',
     # authRequired: true this has to be open if people are going to share jobs, but then what about jobs is closed?
     action: () ->
       # return 401 if not API.job.allowed job,this.user
-      return if not job = job_job.get(this.urlParams.job) then 404 else json2csv2response this, API.job.results(this.urlParams.job, this.queryParams.full), (if job.name then job.name.split('.')[0].replace(/ /g,'_') + '_results' else 'results')+".csv"
+      return if not job = job_job.get(this.urlParams.job) then 404 else API.convert.json2csv2response this, API.job.results(this.urlParams.job, this.queryParams.full), (if job.name then job.name.split('.')[0].replace(/ /g,'_') + '_results' else 'results')+".csv"
 
 API.add 'job/:job/rerun',
   get:

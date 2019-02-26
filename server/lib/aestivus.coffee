@@ -278,7 +278,10 @@ class share.Route
         ep = endpointContext.request.url.split('/').pop().split('?')[0].split('#')[0]
         if ep.indexOf('.') isnt -1 and ep.split('.').pop() is 'csv'
           data = endpoint.action.call endpointContext
-          API.convert.json2csv2response endpointContext, data, ep.replace('.csv','') + '_' + moment(Date.now(), "x").format("YYYY_MM_DD_HHmm_ss") + '.csv'
+          # if that route already returned headers and a csv, nothing else needs to be done
+          # but if it returned an object, this convenience method switches it into a csv output
+          if typeof data is 'object'
+            API.convert.json2csv2response endpointContext, data, ep.replace('.csv','') + '_' + moment(Date.now(), "x").format("YYYY_MM_DD_HHmm_ss") + '.csv'
         else
           endpoint.action.call endpointContext
       else
