@@ -57,14 +57,14 @@ API.add 'log/:yyyymmdd',
     authRequired: if API.settings.dev then undefined else 'root'
     action: () -> 
       q = API.collection._translate this.queryParams
-      res API.es.call 'POST', API.settings.es.index + '_log/' + (if this.urlParams.yyyymmdd is 'today' then _log_today else this.urlParams.yyyymmdd) + '/_search', q
+      res = API.es.call 'POST', API.settings.es.index + '_log/' + (if this.urlParams.yyyymmdd is 'today' then _log_today else this.urlParams.yyyymmdd) + '/_search', q
       res.q = q if API.settings.dev
       return res
   post:
     authRequired: if API.settings.dev then undefined else 'root'
     action: () -> 
       q = API.collection._translate this.request.body
-      res API.es.call 'POST', API.settings.es.index + '_log/' + (if this.urlParams.yyyymmdd is 'today' then _log_today else this.urlParams.yyyymmdd) + '/_search', q
+      res = API.es.call 'POST', API.settings.es.index + '_log/' + (if this.urlParams.yyyymmdd is 'today' then _log_today else this.urlParams.yyyymmdd) + '/_search', q
       res.q = q if API.settings.dev
       return res
 
