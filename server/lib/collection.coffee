@@ -223,6 +223,7 @@ API.collection.prototype.find = (q, opts, versioned, dev=API.settings.dev) ->
       return undefined
 
 API.collection.prototype.import = (recs, uid, dev=API.settings.dev) ->
+  # this should only be used for importing records exactly as is - otherwise pass a list to insert to create mutliple items with proper timestamps
   return this.bulk recs, 'index', uid, undefined, dev
 
 API.collection.prototype.bulk = (recs, action, uid, bulk, dev=API.settings.dev) ->

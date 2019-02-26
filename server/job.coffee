@@ -61,12 +61,7 @@ API.add 'job/:job',
   delete:
     roleRequired: 'job.user' # who if anyone can remove jobs?
     action: () -> 
-      if not API.job.allowed(this.urlParams.job,this.user)
-        return 401
-      else if job = job_job.get this.urlParams.job
-        return API.job.remove job
-      else
-        return 404
+      return if not API.job.allowed(this.urlParams.job,this.user) then 401 else API.job.remove(job)
 
 API.add 'job/:job/progress', get: () -> return if not job = job_job.get(this.urlParams.job) then 404 else API.job.progress job
 
@@ -203,7 +198,7 @@ API.add 'job/clear/:which',
       else if this.urlParams.which is 'processing'
         return job_processing.remove pq
       else if this.urlParams.which is 'jobs'
-        return job_job.remove pq
+        return API.job.remove pq
       else
         return false
 
@@ -332,16 +327,21 @@ API.job.create = (job) ->
     API.job.complete job
   return job
 
-API.job.remove = (jobid) ->
-  job = if typeof jobid is 'object' then jobid else job_job.get jobid
-  job = job_job.get(job._id) if not job.processes? # just in case this is passed a job without its process list, which can occur sometiems to save passing around large job objects
-  try
-    for p in job.processes
-      if job_job.search('NOT _id:' + job._id + ' AND processes._id:' + p._id).hits.total is 0
-        try job_process.remove p._id
-        try job_processing.remove p._id
-        try job_result.remove p._id
-  job_job.remove job._id
+API.job.remove = (jorq) ->
+  _remove = (job) ->
+    try
+      for p in job.processes
+        if job_job.search('NOT _id:' + job._id + ' AND processes._id:' + p._id).hits.total is 0
+          try job_process.remove p._id
+          try job_processing.remove p._id
+          try job_result.remove p._id
+    job_job.remove job._id
+  if (typeof jorq is 'object' and jorq._id?) or job_job.exists(jorq)
+    job = if typeof jorq is 'object' then jorq else job_job.get jorq
+    job = job_job.get(job._id) if not job.processes? # just in case this is passed a job without its process list, which can occur sometiems to save passing around large job objects
+    _remove job
+  else
+    job_job.each jorq, {size:2}, ((job) -> _remove(job))
   return true
 
 API.job.time = (cron,hhmm) -> # hhmm just allows a simple way to pass in daily 0500 (will also accept 500)
@@ -630,7 +630,7 @@ API.job.reload = (q='*',list=false) ->
   if reloads.length
     API.log 'Job runner reloading ' + reloads.length + ' jobs for ' + (if q is true then 'all jobs' else if typeof q is 'string' then 'query ' + q else ' complex query object')
     console.log 'doing reload for ' + reloads.length
-    job_process.import reloads
+    job_process.insert reloads
   return if list then _.pluck(reloads,'_id') else reloads.length
 
 API.job._iid
