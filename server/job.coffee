@@ -28,7 +28,7 @@ API.add 'job',
       if checklength > maxallowedlength
         return 413
       else
-        j = {new:true, user:this.userId, processed:0}
+        j = {new:true, user:this.userId}
         j._id = job_job.insert j # jobs created to provide immediate info to user
         j.processes = if this.request.body.processes then this.request.body.processes else this.request.body
         j.refresh ?= this.queryParams.refresh
@@ -240,6 +240,7 @@ API.job.allowed = (job,uacc) ->
 
 API.job.create = (job) ->
   job = job_job.get(job) if typeof job isnt 'object'
+  job._id = job_job.insert(job) if not job._id?
   job.processes ?= []
   job.count = job.processes.length
   # A job can set the "service" value to indicate which service it belongs to, so that queries about jobs only related to the service can be performed
@@ -249,6 +250,7 @@ API.job.create = (job) ->
   # TODO what is best default refresh for job? And should it change from current use as days down to ms?
   job.args = JSON.stringify(job.args) if job.args? and typeof job.args isnt 'string' # store args as string so can handle multiple types
   imports = []
+  reprocs = []
   for i of job.processes
     # processes list can contain string name of function to run, or else assumed to be different args for the overall job function
     proc = if typeof job.processes[i] is 'string' and job.processes[i].indexOf('API.') is 0 then {function: job.processes[i]} else (if typeof job.processes[i] is 'object' and job.processes[i].function? then job.processes[i] else {function: job.function, args:job.processes[i]})
@@ -257,9 +259,10 @@ API.job.create = (job) ->
     proc.function ?= job.function # string name of the function to run
     proc.args ?= job.args # args to pass to the function, if any
     proc.args = JSON.stringify(proc.args) if proc.args? and typeof proc.args isnt 'string' # args stored in index as string so can handle different types
+    proc.job = [job._id]
     if job.order is true
       job.refresh = 0 # an ordered job has to use fresh results, so that it uses results created in order (else why bother ordering it?)
-      proc.job = job._id # only needed if job has order, and otherwise should not be set as processes can be shared across jobs
+      proc.job = job._id # ordered processes will not be reused so only need to know the one parent job
       proc.order = parseInt(i)
       proc.available = not proc.order # only first process is available to start
     # The repeat option below is probably best set per process than per job. If true or number, the finished process creates another process
@@ -287,11 +290,11 @@ API.job.create = (job) ->
 
     job.refresh = 0 if job.refresh is true
     job.refresh = parseInt(job.refresh) if typeof job.refresh is 'string'
-    if job.refresh is 0 or proc.callback? or proc.repeat?
+    if job.refresh is 0 or proc.callback? or proc.order? or proc.repeat?
       proc._id = Random.id()
       imports.push proc
     else
-      match = {must:[{term:{'signature.exact':proc.signature}}], must_not:[{exists:{field:'_raw_result.error'}}]}
+      match = {must:[{term:{'signature.exact':proc.signature}}], must_not:[{exists:{field:'_raw_result.error'}},{exists:{field:'order'}},{exists:{field:'repeat'}}]}
       try
         if typeof job.refresh is 'number' and job.refresh isnt 0
           d = new Date()
@@ -301,6 +304,11 @@ API.job.create = (job) ->
       rs = job_process.find({'signature.exact':proc.signature}, true) if not rs?
       if rs
         proc._id = rs._id
+        try
+          rs.job.push job._id
+          try job_process.update rs._id, {job: rs.job}
+          try job_processing.update rs._id, {job: rs.job}
+          try job_result.update rs._id, {job: rs.job}
       else
         proc._id = Random.id()
         imports.push proc
@@ -309,22 +317,16 @@ API.job.create = (job) ->
 
   if imports.length
     job_process.insert imports
-    job.processed = job.count - imports.length
-    job.reused = job.processed # just store how many were already results at the start of the job, for potential useful info later
+    job.reused = job.count - job.imports.length if job.count isnt job.imports.length
   else
-    job.processed = 0
     job.done = true
 
   # NOTE job can also have a "complete" function string name, which will be called when progress hits 100%, see below
   # the "complete" function will receive the whole job object as the only argument (so can look up results by the process IDs)
   job.done ?= job.count is 0 # bit pointless submitting empty jobs, but theoretically possible. Could make impossible...
   job.new = false
-  if job._id
-    job_job.update job._id, job
-  else
-    job._id = job_job.insert job
-  if job.done
-    API.job.complete job
+  job_job.update job._id, job
+  API.job.complete(job) if job.done
   return job
 
 API.job.remove = (jorq) ->
@@ -471,7 +473,7 @@ API.job.cap = (max,cap,group,fn,args) ->
   #job_cap.remove({group:group, createdAt:'<' + beginning}) if not API.settings.dev
   res = job_cap.find 'group.exact:' + group + ' AND createdAt:>' + beginning, {newest:false,size:1}
   earliest = if res.hits?.hits? and res.hits.hits.length then res.hits.hits[0]._source.createdAt else false
-  capping = res.hits.total + 1
+  capping = res.hits.total
   capped = capping >= max
   job_cap.insert({group: group, beginning: beginning, earliest: earliest, capping: capping, max: max, cap: cap}) if not capped
   if fn?
@@ -566,11 +568,16 @@ API.job.process = (proc) ->
     job_process.insert pn
   else if proc.order
     job_process.update {job: proc.job, order: proc.order+1}, {available:true}
-  try
-    job_job.each 'NOT done:true AND processes._id:' + proc._id, {_source:['processed','count']}, (job) ->
-      job_job.update job._id, {processed:"+1"}
-      if (job.processed ? 0) + 1 >= job.count
-        API.job.complete job
+  #try
+  #  for jb in proc.job
+  #    if job_process.find(job:proc.job)?
+        # note this only lets us know when the last one was run, so if we run progress on first process, then cap for 15 minutes, 
+        # and the whole job finishes within 15 minutes, no other progress check would run
+        # need a way to run this IN 15 minutes, but only once - don't need to run multiples if already waiting to run
+  #      cap = API.job.capped 1, '15m', 'job_progress_' + jb
+  #      API.job.progress(jb) if cap?.capped isnt true
+  #    else
+  #      API.job.progress jb
   try
     if proc.callback
       cb = API
@@ -663,7 +670,6 @@ API.job.status = (filter='NOT group:TEST') ->
     jobs:
       count: job_job.count()
       done: job_job.count undefined, done:true
-      waiting: 0
       oldest: {_id: jjo._id, createdAt: jjo.createdAt, created_date: jjo.created_date} if jjo = job_job.find('*', {sort:{createdAt:{order:'asc'}}})
       newest: {_id: jjn._id, createdAt: jjn.createdAt, created_date: jjn.created_date} if jjn = job_job.find('*', true)
     processes:
@@ -681,7 +687,6 @@ API.job.status = (filter='NOT group:TEST') ->
       cluster: job_result.terms('_cid')
   res.limits = {} # may not be worth reporting on limit index in new structure
   job_limit.each 'NOT last:*', (lm) -> res.limits[lm.group ? lm._id] = {date:lm.created_date,limit:lm.limit}
-  job_job.each 'NOT done:true', {_source:['_id','count','processed']}, (j) -> res.jobs.waiting += (j.count - (j.processed ? 0))
   res.caps = {}
   job_cap.each '*', (cp) -> res.caps[cp.group ? cp._id] = {date:cp.created_date}
   return res
@@ -708,30 +713,26 @@ API.job.orphans = (remove=false,types=['process','result']) ->
 
 API.job.progress = (jobid) ->
   job = if typeof jobid is 'object' then jobid else job_job.get jobid
-  progress = if job.done then 100 else if job.new then 0 else (job.processed ? 0)/job.count*100
-  progress = 100 if progress > 100
-  if progress is 100 and job.done isnt true
-    API.job.complete job
-  res = {running: API.job.running(), createdAt:job.createdAt, progress:progress, name:job.name, email:job.email, _id:job._id, new:job.new, count: job.count, processes: job.count, processed: job.processed ? 0}
-  if progress isnt 100
+  res = {running: API.job.running(), createdAt:job.createdAt, progress:(if job.done then 100 else 0), name:job.name, email:job.email, _id:job._id, new:job.new, count: job.count, processes: job.count}
+  if not job.new and not job.done
     if res.running
-      if Date.now() > (job.createdAt + (2000 * job.count)) and (Date.now() - (job.updatedAt ? 0)) > ((job.count - (job.processed ? 0)) * 2000)
-        res.stuck = true
-        res.missing = []
-        res.waiting = 0
-        res.processing = 0
-        res.results = 0
-        if typeof job.processes is 'object'
-          for p in job.processes
-            if job_processing.get(p._id) then res.processing += 1 else if job_process.get(p._id) then res.waiting += 1 else if job_result.get(p._id)? then res.results += 1 else res.missing.push(p._id)
-        res.missed = res.missing.length
-        if res.missed
-          API.log 'Job progress checked for job ' + job._id + ', but processes are missing...' # TODO should this send an email warning to admin, to the job submitter, should it resubmit the missing processes?
+      res.missing = []
+      res.waiting = 0
+      res.processing = 0
+      res.results = 0
+      if typeof job.processes is 'object'
+        for p in job.processes
+          if job_processing.get(p._id) then res.processing += 1 else if job_process.get(p._id) then res.waiting += 1 else if job_result.get(p._id)? then res.results += 1 else res.missing.push(p._id)
+      res.missed = res.missing.length
+      if res.missed
+        API.log 'Job progress checked for job ' + job._id + ', but processes are missing...' # TODO should this send an email warning to admin, to the job submitter, should it resubmit the missing processes?
     else
       API.log 'Job progress checked for job ' + job._id + ', but job runner is not running...' # TODO should this send an email warning to admin?
-    if res.count is res.results
+    if res.count <= res.results
       res.progress = 100
       API.job.complete job
+    else
+      res.progress = res.results/res.count*100
   return res
 
 API.job.complete = (jobid='NOT done:true', set_done=true, run_complete=true, list=false, known=0) ->
@@ -763,7 +764,7 @@ API.job.rerun = (jobid,uid) ->
   job = job_job.get jobid
   job.user = uid if uid
   job.refresh = 0
-  job._id = job_job.insert {new:true, user:job.user, processed: 0}
+  job._id = job_job.insert {new:true, user:job.user}
   Meteor.setTimeout (() -> API.job.create job), 2
   return job:job._id
 
