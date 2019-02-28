@@ -317,7 +317,7 @@ API.job.create = (job) ->
 
   if imports.length
     job_process.insert imports
-    job.reused = job.count - job.imports.length if job.count isnt job.imports.length
+    job.reused = job.count - imports.length if job.count isnt imports.length
   else
     job.done = true
 
@@ -568,16 +568,16 @@ API.job.process = (proc) ->
     job_process.insert pn
   else if proc.order
     job_process.update {job: proc.job, order: proc.order+1}, {available:true}
-  #try
-  #  for jb in proc.job
-  #    if job_process.find(job:proc.job)?
+  try
+    for jb in proc.job
+      if not job_process.find(job:proc.job)?
         # note this only lets us know when the last one was run, so if we run progress on first process, then cap for 15 minutes, 
         # and the whole job finishes within 15 minutes, no other progress check would run
         # need a way to run this IN 15 minutes, but only once - don't need to run multiples if already waiting to run
-  #      cap = API.job.capped 1, '15m', 'job_progress_' + jb
-  #      API.job.progress(jb) if cap?.capped isnt true
-  #    else
-  #      API.job.progress jb
+        #cap = API.job.capped 1, '15m', 'job_progress_' + jb
+        #API.job.progress(jb) if cap?.capped isnt true
+      #else
+        API.job.progress jb
   try
     if proc.callback
       cb = API
