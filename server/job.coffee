@@ -570,7 +570,7 @@ API.job.process = (proc) ->
     job_process.update {job: proc.job, order: proc.order+1}, {available:true}
   try
     for jb in proc.job
-      if not job_process.find(job:proc.job)?
+      if not job_process.find(job:jb)?
         # note this only lets us know when the last one was run, so if we run progress on first process, then cap for 15 minutes, 
         # and the whole job finishes within 15 minutes, no other progress check would run
         # need a way to run this IN 15 minutes, but only once - don't need to run multiples if already waiting to run
