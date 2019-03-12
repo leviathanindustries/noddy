@@ -2,11 +2,17 @@
 import gramophone from 'gramophone'
 import CryptoJS from 'crypto-js' # TODO no need for this when crypto is available, fix below then remove
 import crypto from 'crypto'
+import natural from 'natural'
+import wordpos from 'wordpos'
+import stopword from 'stopword'
+import languagedetect from 'languagedetect'
 
 # TODO check out nodenatural and add it in here where useful
 # https://github.com/NaturalNode/natural#tf-idf
 # ALSO use the stopword package to strip stopwords from any text that needs processing
 # https://www.npmjs.com/package/stopword
+# and have a look at wordpos too
+# https://github.com/moos/wordpos
 
 API.tdm = {}
 
@@ -16,6 +22,8 @@ API.add 'tdm/levenshtein',
 			return API.tdm.levenshtein this.queryParams.a, this.queryParams.b
 		else
 			return {data:'provide two query params called a and b which should be strings, get back the levenshtein distance'}
+
+API.add 'tdm/language', get: () -> return API.tdm.language this.queryParams.q
 
 API.add 'tdm/categorise',
 	get: () ->
@@ -79,6 +87,16 @@ API.add 'tdm/difference/:str',
 		return API.tdm.difference this.urlParams.str.split(',')[0], this.urlParams.str.split(',')[1]
 
 
+# https://www.npmjs.com/package/languagedetect
+API.tdm.language = (content) ->
+	try content = content.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()0123456789]/g,"")
+	try content = content.replace(/\s{2,}/g," ")
+	try
+		lnd = new languagedetect()
+		res = lnd.detect content, 1
+		return res[0][0]
+	catch
+		return ''
 
 # http://stackoverflow.com/questions/4009756/how-to-count-string-occurrence-in-string
 API.tdm.occurrence = (content, sub, overlap) ->
@@ -144,7 +162,7 @@ API.tdm.categorise = (entity) ->
 		'year','time','a','e','i','o','u','january','february','march','april','may','june','july','august','september','october','november','december',
 		'jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec',
 		'news','work','post','times','york','category','newspaper','story','first1','first2','last1','last2','publisher',
-		'general','world','list','org','id','wp','main','website','blogs','media','people','years','made','location',
+		'general','world','list','org','com','id','wp','main','website','blogs','media','people','years','made','location',
 		'accessdate','view_news','php','d0','dq','p','sfnref','false','true','onepage','article','chapter','book',
 		'sfn','caps','authorlink','isbn']
 	tp = entity.split(' ')
@@ -181,11 +199,22 @@ API.tdm.categorise = (entity) ->
 	API.http.cache entity, 'tdm_categorise', res
 	return res
 
-API.tdm.keywords = (content,opts={}) ->
-	opts.checksum = crypto.createHash('md5').update(content, 'utf8').digest('base64')
+API.tdm.keywords = (content,opts={},defaults=true) ->
+	try
+		opts.checksum ?= API.job.sign content, opts
+	catch
+		opts.checksum ?= crypto.createHash('md5').update(content+JSON.stringify(opts), 'utf8').digest('base64')
 	opts.len ?= 2
+	opts.stopWords ?= []
+	if defaults
+		defaultStops = ['purl','w3','http','https','ref','html','www','ref','cite','url','title','date','state','nbsp',
+			'year','time','january','february','march','april','may','june','july','august','september','october','november','december',
+			'jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec',
+			'org','com','id','wp','main','website','blogs','media','people','years','made','location',
+			'image','jpeg','jpg','png','php','false','true','article','chapter','book','caps','isbn']
+		opts.stopWords = _.union opts.stopWords, defaultStops
 	try opts.cutoff = (opts.cutoff*100000)/100000 if opts.cutoff? and typeof opts.cutoff isnt 'number'
-	exists = API.http.cache opts, 'tdm_keywords'
+	exists = API.http.cache opts.checksum, 'tdm_keywords'
 	return exists if exists
 	keywords = gramophone.extract content, opts
 	res = []
@@ -195,7 +224,7 @@ API.tdm.keywords = (content,opts={}) ->
 			res.push i if (not opts.len or str.length >= opts.len) and (not opts.max or str.length <= opts.max)
 	else
 		res = keywords
-	API.http.cache opts, 'tdm_keywords', res
+	#API.http.cache opts.checksum, 'tdm_keywords', res
 	return res
 
 API.tdm.extract = (opts) ->

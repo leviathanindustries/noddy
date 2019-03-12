@@ -19,6 +19,7 @@ API.use.core.doi = (doi) ->
   return API.use.core.get 'doi:"' + doi + '"'
 
 API.use.core.title = (title) ->
+  try title = title.toLowerCase().replace(/(<([^>]+)>)/g,'').replace(/[^a-z0-9 ]+/g, " ").replace(/\s\s+/g, ' ')
   return API.use.core.get 'title:"' + title + '"'
 
 API.use.core.get = (qrystr) ->

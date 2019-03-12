@@ -34,6 +34,7 @@ API.use.doaj.articles.doi = (doi) ->
   return API.use.doaj.articles.get 'doi:' + doi
 
 API.use.doaj.articles.title = (title) ->
+  try title = title.toLowerCase().replace(/(<([^>]+)>)/g,'').replace(/[^a-z0-9 ]+/g, " ").replace(/\s\s+/g, ' ')
   return API.use.doaj.articles.get 'bibjson.title.exact:"' + title + '"'
 
 API.use.doaj.articles.get = (qry) ->

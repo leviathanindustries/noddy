@@ -75,6 +75,7 @@ API.use.europepmc.pmc = (ident) ->
   return API.use.europepmc.get 'PMCID:PMC' + ident.toLowerCase().replace('pmc','')
 
 API.use.europepmc.title = (title) ->
+  try title = title.toLowerCase().replace(/(<([^>]+)>)/g,'').replace(/[^a-z0-9 ]+/g, " ").replace(/\s\s+/g, ' ')
   return API.use.europepmc.get 'title:"' + title + '"'
 
 API.use.europepmc.get = (qrystr) ->

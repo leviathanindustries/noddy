@@ -1,6 +1,9 @@
 
 API.ml = {}
 
+# TODO have a look at machinelearn.js
+# https://github.com/machinelearnjs/machinelearnjs
+
 # written with much help from https://github.com/Philmod/node-kmeans
 # because weird problems with doing image manipulation of certain SVGs converted to PNGs
 # was causing a meteor fiber error seemingly clashing between the nexttick operation

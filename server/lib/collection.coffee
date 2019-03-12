@@ -32,7 +32,7 @@ API.collection = (opts, dev=API.settings.dev) ->
 API.collection.prototype.map = (mapping, dev=API.settings.dev) ->
   this._mapping = mapping
   return API.es.map this._index, this._type, mapping, true, dev # would overwrite any existing mapping
-API.collection.prototype.mapping = (original, dev=API.settings.dev) -> return if this._mapping and original then this._mapping else API.es.mapping this._index, this._type, dev
+API.collection.prototype.mapping = (original, dev=API.settings.dev) -> return if original then this._mapping else API.es.mapping this._index, this._type, dev
 
 API.collection.prototype.refresh = (dev=API.settings.dev) -> API.es.refresh this._index, dev
 
@@ -139,7 +139,6 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial, dev
   # versioned here can be a version number, in which case the update will only work if it can update onto that version, otherwise returns 409
   # if no version number provided, versioning of the update will still be used for internal clash avoidance
   # and will not necessarily be versioned to the version the user last saw - just to the last version this update method retrieved immediately before the action.
-  # TODO? to delete an already set value, the update obj should use the value '$DELETE' for the key to delete
   return undefined if obj?.script? and partial isnt true
   q ?= obj._id
   return false if not q?
@@ -641,7 +640,7 @@ API.collection._dot = (obj, key, value, del) ->
         obj.splice key[0], 1
       else
         delete obj[key[0]]
-      return true;
+      return true
     else
       obj[key[0]] = value # TODO see below re. should this allow writing into multiple sub-objects of a list?
       return true

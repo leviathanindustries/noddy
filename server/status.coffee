@@ -97,5 +97,7 @@ API.status = (email=true) ->
       ret.status = 'yellow' if ret.status isnt 'red' and ret.use[u] isnt true
 
   # TODO if ret.status isnt green, should a notification email get sent?
+  if ret.status isnt 'green'
+    API.log {msg: 'Status check is not green', status: ret, function: 'API.status'}
   return ret
 

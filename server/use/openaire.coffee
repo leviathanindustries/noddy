@@ -14,7 +14,8 @@ API.use.openaire.doi = (doi) ->
   return API.use.openaire.get {doi:doi}
 
 API.use.openaire.title = (title) ->
-  res = API.use.openaire.get {title:meta.title}
+  try title = title.toLowerCase().replace(/(<([^>]+)>)/g,'').replace(/[^a-z0-9 ]+/g, " ").replace(/\s\s+/g, ' ')
+  res = API.use.openaire.get {title:title}
 
 API.use.openaire.get = (params) ->
   res = API.use.openaire.search params

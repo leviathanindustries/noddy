@@ -157,6 +157,25 @@ API.http.resolve = (url,refresh=false) ->
     catch
       return url
 
+API.http.decode = (content) ->
+  _decode = (content) ->
+    # https://stackoverflow.com/questions/44195322/a-plain-javascript-way-to-decode-html-entities-works-on-both-browsers-and-node
+    translator = /&(nbsp|amp|quot|lt|gt);/g
+    translate = {
+      "nbsp":" ",
+      "amp" : "&",
+      "quot": "\"",
+      "lt"  : "<",
+      "gt"  : ">"
+    }
+    return content.replace(translator, ((match, entity) ->
+      return translate[entity]
+    )).replace(/&#(\d+);/gi, ((match, numStr) ->
+      num = parseInt(numStr, 10)
+      return String.fromCharCode(num)
+    ))
+  return _decode(content).replace(/\n/g,'')
+
 API.http.post = (url, file, vars) ->
   # this has only been tested where file is a buffer
   _post = (url, file, vars, callback) ->

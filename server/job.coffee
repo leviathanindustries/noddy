@@ -220,14 +220,14 @@ API.add 'job/stop',
 
 
 
-API.job._sign = (fn='', args, checksum=true) ->
+API.job.sign = (fn='', args, checksum=true) ->
   fn += '_'
   if typeof args is 'string'
     fn += args
   else
     try
       for a in _.keys(args).sort()
-        fn += a + '_' + JSON.stringify(args[a]) if a not in ['plugin']
+        fn += a + '_' + JSON.stringify(args[a]) if a not in ['plugin','apikey','_']
     catch
       fn += JSON.stringify args
   sig = encodeURIComponent(fn) # just used to use this, but got some where args were too long
@@ -284,7 +284,7 @@ API.job.create = (job) ->
     # collisions, they will actually be stringified and saved under the result.string key, so look there if looking them up.
     # However the returned (or callbacked) result object will still have the JSON version as normal.
     proc.callback ?= job.callback # optional callback name string per job or process, will call when process completes. Processes do return too, so either way is good
-    proc.signature = API.job._sign proc.function, proc.args # combines with refresh to decide if need to run process or just pick up result from a same recent process
+    proc.signature = API.job.sign proc.function, proc.args # combines with refresh to decide if need to run process or just pick up result from a same recent process
     proc.createdAt = Date.now()
     proc.created_date = moment(proc.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
 
@@ -430,10 +430,10 @@ API.job.cron = (fn, args, title, cron, repeat=true) -> # repeat could be a times
     return true
   else
     job_limit.insert {_id: p.group, group: p.group, limit: cron.next.limit}
-    return job_process.insert {priority: 10000, group: title, function: fn, args: args, signature: API.job._sign(fn,args), cron: cron.parsed, repeat: repeat, limit: cron.next.limit}
+    return job_process.insert {priority: 10000, group: title, function: fn, args: args, signature: API.job.sign(fn,args), cron: cron.parsed, repeat: repeat, limit: cron.next.limit}
   
 API.job.limit = (limitms=1000,fn,args,group,refresh=0) -> # directly create a sync throttled process
-  pr = {priority:10000, _id:Random.id(), group:(group ? fn), function: fn, args: args, signature: API.job._sign(fn,args), limit: limitms}
+  pr = {priority:10000, _id:Random.id(), group:(group ? fn), function: fn, args: args, signature: API.job.sign(fn,args), limit: limitms}
   if typeof refresh is 'number' and refresh isnt 0
     match = {must:[{term:{'signature.exact':pr.signature}},{range:{createdAt:{gt:Date.now() - refresh}}}], must_not:[{exists:{field:'_raw_result.error'}}]}
     jr = job_result.find match, true

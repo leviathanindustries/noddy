@@ -276,7 +276,7 @@ API.convert.pdf2txt = Async.wrap (content, opts={}, callback) ->
   opts.timeout ?= 20000
   pdfParser = new PDFParser(this,1)
   pdfParser.on "pdfParser_dataReady", (pdfData) ->
-    return callback(null,pdfParser.getRawTextContent())
+    return callback(null,pdfParser.getRawTextContent().replace(/\r\n/g,'\n').replace(/\n/g,' '))
   pdfParser.on "pdfParser_dataError", () ->
     return callback(null,'')
   try
@@ -325,14 +325,86 @@ API.convert.pdf2json = Async.wrap (content, opts={}, callback) ->
 API.convert.xml2txt = (content) ->
   return API.convert.file2txt(content,{from:'application/xml'})
 
-API.convert.xml2json = Async.wrap (content, callback) ->
+API.convert._xml2json = Async.wrap (content, callback) ->
   content = HTTP.call('GET', content).content if content.indexOf('http') is 0
   parser = new xml2js.Parser()
   parser.parseString content, (err, result) -> return callback(null,result)
 
+# make a neater version of xml converted straight to json
+API.convert._cleanJson = (val, k, clean) ->
+  if typeof clean is 'function'
+    val = clean(val, k)
+  if _.isArray val
+    vv = []
+    singleKeyObjects = true
+    for v in val
+      if typeof v isnt 'string' or v.replace(/ /g,'').replace(/\n/g,'') isnt ''
+        cv = API.convert._cleanJson v, k, clean
+        singleKeyObjects = typeof cv is 'object' and not _.isArray(cv) and _.keys(cv).length is 1
+        vv.push cv
+      else
+        singleKeyObjects = false
+    if singleKeyObjects
+      nv = {}
+      for sv in vv
+        svk = _.keys(sv)[0]
+        nv[svk] = sv[svk]
+      val = nv
+    else
+      val = if vv.length then if vv.length is 1 then vv[0] else vv else ''
+  else if typeof val is 'object'
+    keys = _.keys(val)
+    if keys.length is 1 and (keys[0].toLowerCase() is k.toLowerCase() or (k.toLowerCase().split('').pop() is 's' and keys[0].toLowerCase() is k.toLowerCase().slice(0, -1)))
+      val = API.convert._cleanJson val[keys[0]], k, clean
+    else if val.$?.key? and val._? and keys.length is 2
+      nv = {}
+      nv[val.$.key] = val._
+      val = nv
+    else if val.$? and _.keys(val.$).length is 1
+      sk = _.keys(val.$)[0]
+      val[sk] = val.$[sk] #API.convert._cleanJson val.$[sk], sk, clean
+      delete val.$
+    else if val.$? and typeof val.$ is 'object'
+      unique = true
+      for dk of val.$
+        unique = dk not in keys
+      if unique
+        for dkk of val.$
+          val[dkk] = val.$[dkk] #API.convert._cleanJson val.$[dkk], dkk, clean
+        delete val.$
+    ak = _.keys(val)
+    if ak.length is 1 and typeof val[ak[0]] is 'string' and val[ak[0]].toLowerCase() is k.toLowerCase()
+      val = ''
+    else
+      wk = _.without(ak,'_')
+      for o of val
+        val[o] = API.convert._cleanJson val[o], o, clean
+        if o is '_' and typeof val[o] is 'string' and not val.value?
+          if wk.length is 1 and val[wk[0]].toLowerCase() is k.toLowerCase()
+            return val._
+          else
+            val.value = val._
+            delete val._
+  return val
+
+API.convert.xml2json = (content, subset, clean=true) ->
+  res = API.convert._xml2json content
+  if clean is false
+    return res
+  else
+    recs = []
+    res = [res] if not _.isArray res
+    for row in res
+      for k of row
+        row[k] = API.convert._cleanJson row[k], k, clean
+      recs.push row
+    return if recs.length is 1 then recs[0] else recs
+
 # using meteorhacks:async and Async.wrap seems to work better than using Meteor.wrapAsync
 API.convert.json2csv = (content, opts={}) ->
   content = JSON.parse(HTTP.call('GET', content).content) if typeof content is 'string' and content.indexOf('http') is 0
+  content = JSON.parse JSON.stringify content
+  content = [content] if typeof content is 'object' and not _.isArray content
   if opts.subset
     parts = opts.subset.split('.')
     delete opts.subset
@@ -349,8 +421,31 @@ API.convert.json2csv = (content, opts={}) ->
     opts.fields = []
     for l in content
       for k of l
-        opts.fields.push(k) if opts.fields.indexOf(k) is -1
-        l[k] = l[k].join(',') if Array.isArray l[k]
+        if Array.isArray l[k]
+          if l[k].length is 0 
+            opts.fields.push(k) if opts.fields.indexOf(k) is -1
+            l[k] = ''
+          else if typeof l[k][0] is 'string'
+            opts.fields.push(k) if opts.fields.indexOf(k) is -1
+            l[k] = l[k].join(',')
+          else if opts.flat # not the same as the lib opts.flatten
+            for tk of l[k]
+              itk = k + '.' + tk
+              opts.fields.push(itk) if opts.fields.indexOf(itk) is -1
+              l[itk] ?= ''
+              if typeof l[k][tk] is 'object' # and note this only goes down to objects in lists
+                for otk of l[k][tk]
+                  etk = k + '.' + tk + '.' + otk
+                  opts.fields.push(etk) if opts.fields.indexOf(etk) is -1
+                  l[etk] ?= ''
+                  l[etk] += (if l[etk].length then if typeof opts.flat is 'boolean' then ', ' else opts.flat else '') + (if _.isArray(l[k][tk][otk]) then l[k][tk][otk].join(',') else if typeof l[k][tk][otk] is 'object' then JSON.stringify(l[k][tk][otk]) else l[k][tk][otk])
+              else # note this would lead to this level of nested values being piled into one field even if they came from separate objects
+                l[itk] += (if l[itk].length then if typeof opts.flat is 'boolean' then ', ' else opts.flat else '') + (if _.isArray(l[k][tk]) then l[k][tk].join(',') else if typeof l[k][tk] is 'object' then JSON.stringify(l[k][tk]) else l[k][tk])
+          else
+            opts.fields.push(k) if opts.fields.indexOf(k) is -1
+            l[k] = JSON.stringify l[k]
+        else
+          opts.fields.push(k) if opts.fields.indexOf(k) is -1
   # an odd use of a stream here, passing it what is already a variable. But this 
   # avoids json2csv OOM errors which seem to occur even if the memory is not all used
   # moving to all stream at some point would be nice, but not done yet...
@@ -368,6 +463,10 @@ API.convert.json2csv = (content, opts={}) ->
     Meteor.setTimeout (() -> future.return()), 500
     future.wait()
   return res
+
+API.convert.json2txt = (content, opts={}) ->
+  opts.flat ?= true
+  return API.convert.json2csv(content, opts).split(/\n(.+)/)[1].replace(/"/g,'').replace(/,/g,' ').replace(/\[/g,'').replace(/\]/g,'').replace(/\{/g,'').replace(/\}/g,'').replace(/  /g,' ')
 
 # this does not really belong as a convert function, 
 # but it seems to have no better place. It is used in aestivus to wrap .csv routes, but may also be useful direclty 

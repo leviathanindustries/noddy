@@ -56,6 +56,12 @@ API.add 'use/google/language/:what',
 					this.queryParams.content = API.convert.xml2txt url
 			return if not this.queryParams.content? then {} else API.use.google.cloud.language this.queryParams.content,[this.urlParams.what]
 
+API.add 'use/google/translate',
+	get:
+		roleRequired:'root'
+		action: () ->
+			return API.use.google.cloud.translate this.queryParams.q, this.queryParams.source, this.queryParams.target, this.queryParams.format
+
 API.add 'use/google/knowledge/retrieve/:letter/:id',
 	get:
 		roleRequired:'root'
@@ -149,6 +155,24 @@ API.use.google.cloud.language = (content, actions=['entities','sentiment'], auth
 		result.sentiment = HTTP.call('POST',lurl.replace('analyzeEntities','analyzeSentiment'),{data:document,headers:{'Content-Type':'application/json'}}).data
 	API.http.cache actions.join(',')+','+checksum, 'google_language', result
 	return result
+
+# https://cloud.google.com/translate/docs/quickstart
+API.use.google.cloud.translate = (q, source, target='fr', format='text') ->
+	# ISO source and target language codes
+	# https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes
+	return {} if not q?
+	checksum = API.job._sign() crypto.createHash('md5').update(q, 'utf8').digest('base64')
+	exists = API.http.cache checksum, 'google_translate'
+	return exists if exists
+	lurl = 'https://translation.googleapis.com/language/translate/v2?key=' + API.settings.use.google.serverkey
+	result = HTTP.call('POST', lurl, {data:{q:q, source:source, target:target, format:format}, headers:{'Content-Type':'application/json'}})
+	if result?.data?.data?.translations
+		res = result.data.data.translations[0].translatedText
+		API.http.cache(checksum, 'google_language', res) if res.length
+		return res
+		#return result.data.data
+	else
+		return {}
 
 
 

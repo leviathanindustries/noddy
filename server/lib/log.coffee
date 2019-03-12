@@ -180,7 +180,7 @@ API.log = (opts, fn, lvl='debug') ->
               delete opts[o]
 
       if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
-        API.settings.log.bulk = 5000 if API.settings.log.bulk is undefined
+        API.settings.log.bulk ?= 5000
         API.settings.log.timeout ?= 300000
         opts._id = Random.id()
         _log_stack.unshift opts

@@ -41,6 +41,7 @@ for r in [0,1,2]
       action: () -> return API.es.action this.user, 'DELETE', this.urlParams, this.queryParams, this.request.body
 
 API.es.action = (uacc, action, urlp, params={}, data, refresh) ->
+  return undefined if data?.script?
   if urlp.r0 is '_indexes'
     return API.es.indexes()
   else if urlp.r1 is '_types'
@@ -81,7 +82,7 @@ API.es.action = (uacc, action, urlp, params={}, data, refresh) ->
           allowed = true
         else if action in ['POST','PUT'] and API.accounts.auth ort + '.edit', user
           allowed = true
-        else if action is 'DELETE' and API.accounts.auth ort + '.owner', user
+        else if action is 'DELETE' and API.accounts.auth 'root', user
           allowed = true
     return if allowed then API.es.call(action, rt, data, refresh, undefined, undefined, undefined, undefined, dev) else 401
 
