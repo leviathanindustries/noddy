@@ -163,10 +163,10 @@ API.use.wikipedia.lookup = (opts,type) ->
     while res.data.query.normalized?.length
       url = url.replace(encodeURIComponent(res.data.query.normalized[0].from),encodeURIComponent(res.data.query.normalized[0].to))
       res = HTTP.call 'GET',url
-    key
     disambiguation = []
     redirect = []
-    key = k if key is undefined for k of res.data.query.pages
+    for k of res.data.query.pages
+      key = k if key is undefined
     while res.data.query.pages[key].revisions[0]['*'].indexOf('#REDIRECT') is 0 or res.data.query.pages[key].pageprops?.wikibase_item is 'Q224038'
       rv = res.data.query.pages[key].revisions[0]['*']
       if type and res.data.query.pages[key].pageprops?.wikibase_item is 'Q224038'
@@ -183,7 +183,8 @@ API.use.wikipedia.lookup = (opts,type) ->
       url = url.replace(encodeURIComponent(res.data.query.pages[key].title),encodeURIComponent(rv.split('[[')[1].split(']]')[0].replace(/ /g,'_')))
       res = HTTP.call 'GET',url
       key = undefined
-      key = ki if key is undefined for ki of res.data.query.pages
+      for ki of res.data.query.pages
+        key ?= ki
     ret = {data:res.data.query.pages[key]}
     ret.disambiguation ?= disambiguation
     ret.redirect ?= redirect

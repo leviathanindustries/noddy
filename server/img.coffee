@@ -1,19 +1,32 @@
 
+# https://www.npmjs.com/package/jimp
+
 import jimp from 'jimp'
 import { Random } from 'meteor/random'
 
-# https://www.npmjs.com/package/jimp
+import phash from 'phash-image'
+
+import fs from 'fs'
+
+# phash below require phash and other things installed
+# sudo apt-get install cimg-dev libphash0-dev libmagickcore-dev
+# read more about perceptual hash at phash.org
 
 API.add 'img',
   get: () ->
     if this.queryParams.url? or this.queryParams.fn?
       if this.queryParams.data?
-        return API.img this.queryParams
+        return API.img.jimp this.queryParams
       else
         this.response.writeHead 200
-        this.response.end API.img this.queryParams
+        this.response.end API.img.jimp this.queryParams
     else
       return {} # return what? A listing of all images? A search of images?
+
+API.add 'img/phash', get: () -> return API.img.phash this.queryParams.url
+#API.add 'img/phash', post: () -> return API.img.phash this.request.body # should probably be a file save and read first
+
+API.add 'img/phash/difference', get: () -> return API.img.difference this.queryParams.a, this.queryParams.b, not this.queryParams.simple?
 
 API.add 'img/:fn', # is it worth sub-routing this like the ES function?
   get: () ->
@@ -22,17 +35,57 @@ API.add 'img/:fn', # is it worth sub-routing this like the ES function?
     # if image that matches params does not exist yet, make it, save it, then return it
     this.queryParams.fn = this.urlParams.fn
     this.response.writeHead 200
-    this.response.end API.img this.queryParams
+    this.response.end API.img.jimp this.queryParams
   post: () ->
     authOptional: true
     action: () ->
       this.bodyParams.fn = this.urlParams.fn
       this.bodyParams.data = true
-      return API.img this.bodyParams
+      return API.img.jimp this.bodyParams
 
 
+API.img = {}
 
-API.img = (opts={}) ->
+API.img.phash = (fn, binary=true, buffer=false, int=false, mh=false) ->
+  checksum = API.job.sign(fn).replace(/\//g,'_')
+	#exists = API.http.cache checksum, 'img_phash'
+	#return exists if exists
+
+  if fn.indexOf('http://') is 0 or (fn.indexOf('/') isnt 0 and typeof fn is 'string' and fn.length > 30)
+    if not fs.existsSync '/tmp/'+checksum
+      content = if fn.indexOf('http://') is 0 then HTTP.call('GET',fn,{npmRequestOptions:{encoding:null}}).content else fn
+      fs.writeFileSync '/tmp/'+checksum, content
+    fn = '/tmp/'+checksum
+  # probably should try caching the result too
+  # given the image somehow, work out the phash for it
+  # https://www.npmjs.com/package/phash-image
+  _phash = Async.wrap (fn, callback) ->
+    if mh
+      phash.mh fn, (err,hash) -> callback null, (if binary then API.convert.buffer2binary(hash) else if buffer then hash else hash.toString)
+    else if int
+      phash fn, true, (err,hash) -> callback null, hash
+    else
+      phash fn, (err,hash) -> callback null, (if binary then API.convert.buffer2binary(hash) else if buffer then hash else hash.toString)
+  res = _phash fn
+  #API.http.cache(checksum, 'img_phash', res) if res
+  return res
+
+API.img.difference = (a,b,simple=true,algo) ->
+  algo = algo.split(',') if typeof algo is 'string'
+  algo ?= ['hamming','levenshtein'] if not simple
+  algo ?= ['hamming']
+  #checksum = API.job.sign a, b
+	#exists = API.http.cache checksum, 'img_difference'
+	#return exists if exists
+  res = {}
+  res.a = API.img.phash a
+  res.b = API.img.phash b
+  for a in algo
+    res[a] = API.tdm[a] res.a, res.b
+  #API.http.cache checksum, 'img_difference', res
+  return if simple and algo.length is 1 then res.hamming else res
+
+API.img.jimp = (opts={}) ->
   # tidy some possible provided values
   if opts.vignette?
     opts.composite = 'vignette.png'

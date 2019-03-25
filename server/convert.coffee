@@ -276,7 +276,15 @@ API.convert.pdf2txt = Async.wrap (content, opts={}, callback) ->
   opts.timeout ?= 20000
   pdfParser = new PDFParser(this,1)
   pdfParser.on "pdfParser_dataReady", (pdfData) ->
-    return callback(null,pdfParser.getRawTextContent().replace(/\r\n/g,'\n').replace(/\n/g,' '))
+    if not pdfParser?
+      return callback(null,'')
+    else
+      res = pdfParser.getRawTextContent().replace(/\r\n/g,'\n')
+      if opts.newlines isnt true
+        res = res.replace(/\n/g,' ')
+      if opts.pages isnt true
+        res = res.replace(/----------------Page \([0-9].*?\) Break----------------/g,' ')
+      return callback(null,res)
   pdfParser.on "pdfParser_dataError", () ->
     return callback(null,'')
   try
@@ -292,11 +300,13 @@ API.convert.pdf2txt = Async.wrap (content, opts={}, callback) ->
   # spikes cpu to 100% and never times out... weird. It does not take long to download normally. Have not figured out how to catch this...
   # and it makes the system unusable
   waited = 0
-  while waited < opts.timeout
+  while waited <= opts.timeout
     future = new Future()
     Meteor.setTimeout (() -> future.return()), 5000
     future.wait()
     waited += 5000
+  console.log 'PDF to text conversion timed out at ' + waited
+  pdfParser = undefined # does this kill the async process??? - not really, TODO fix this so it does not keep running and eat the memory
   return callback(null,'')
 
 API.convert.pdf2json = Async.wrap (content, opts={}, callback) ->
@@ -351,7 +361,7 @@ API.convert._cleanJson = (val, k, clean) ->
         nv[svk] = sv[svk]
       val = nv
     else
-      val = if vv.length then if vv.length is 1 then vv[0] else vv else ''
+      val = if vv.length then if vv.length is 1 and typeof vv[0] is 'string' then vv[0] else vv else ''
   else if typeof val is 'object'
     keys = _.keys(val)
     if keys.length is 1 and (keys[0].toLowerCase() is k.toLowerCase() or (k.toLowerCase().split('').pop() is 's' and keys[0].toLowerCase() is k.toLowerCase().slice(0, -1)))
@@ -464,9 +474,44 @@ API.convert.json2csv = (content, opts={}) ->
     future.wait()
   return res
 
+API.convert.json2keys = (content, opts={}) ->
+  opts.flat = false
+  keys = []
+  _extract = (content,key) ->
+    if _.isArray content
+      _extract(c,key) for c in content
+    else if typeof content is 'object'
+      for c of content
+        key = if opts.flat and key then key + '.' + c else c
+        kl = if opts.lowercase then key.toLowerCase() else key
+        keys.push(kl) if kl not in keys
+        _extract(content[c],key)
+  _extract content
+  return keys
+
 API.convert.json2txt = (content, opts={}) ->
-  opts.flat ?= true
-  return API.convert.json2csv(content, opts).split(/\n(.+)/)[1].replace(/"/g,'').replace(/,/g,' ').replace(/\[/g,'').replace(/\]/g,'').replace(/\{/g,'').replace(/\}/g,'').replace(/  /g,' ')
+  opts.unique ?= false
+  opts.list ?= false
+  opts.keys ?= false # means only occurrences of key strings in the text values - still would not include the actual keys
+  opts.lowercase = true # only means matches on lowercase, still provides strings as found
+  keys = if not opts.keys then API.convert.json2keys(content, opts) else []
+  strings = []
+  lstrings = []
+  _extract = (content) ->
+    if _.isArray content
+      _extract(c) for c in content
+    else if typeof content is 'object'
+      _extract(content[c]) for c of content
+    else if content
+      try
+        cl = content.toLowerCase()
+      catch
+        cl = content
+      if opts.numbers isnt false or isNaN(parseInt(content))
+        strings.push(content) if (opts.keys or content not in keys) and (not opts.unique or content not in strings) and (not opts.lowercase or cl not in lstrings)
+        lstrings.push(cl) if cl not in lstrings
+  _extract content
+  return if opts.list then strings else strings.join(' ')
 
 # this does not really belong as a convert function, 
 # but it seems to have no better place. It is used in aestivus to wrap .csv routes, but may also be useful direclty 
@@ -543,6 +588,42 @@ API.convert.list2string = (content, opts={}) ->
             st += (if opts.keys then o + ': ' else '') + dt
   return if opts.json then {text: st} else st
 
+API.convert.hex2binary = (ls,listed=false) ->
+  ls = [ls] if not _.isArray ls
+  _match = 
+    '0': '0000',
+    '1': '0001',
+    '2': '0010',
+    '3': '0011',
+    '4': '0100',
+    '5': '0101',
+    '6': '0110',
+    '7': '0111',
+    '8': '1000',
+    '9': '1001',
+    'a': '1010',
+    'b': '1011',
+    'c': '1100',
+    'd': '1101',
+    'e': '1110',
+    'f': '1111'
+  res = []
+  for l in ls
+    res.push _match[l.toLowerCase()]
+  return if listed then res else res.join('')
+  
+API.convert.buffer2binary = (buf) ->
+  buf = buf.toString('hex') if Buffer.isBuffer buf
+  buf = buf.replace /^0x/, ''
+  #assert(/^[0-9a-fA-F]+$/.test(s))
+  ret = ''
+  c = 0
+  while c < buf.length
+    ret += API.convert.hex2binary buf[c]
+    c++
+  return ret
+  
+  
 
 ################################################################################
 ###

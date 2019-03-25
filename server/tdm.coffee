@@ -23,6 +23,13 @@ API.add 'tdm/levenshtein',
 		else
 			return {data:'provide two query params called a and b which should be strings, get back the levenshtein distance'}
 
+API.add 'tdm/hamming',
+	get: () ->
+		if this.queryParams.a and this.queryParams.b
+			return API.tdm.hamming this.queryParams.a, this.queryParams.b
+		else
+			return {data:'provide two query params called a and b which should be strings, get back the hamming distance'}
+
 API.add 'tdm/language', get: () -> return API.tdm.language this.queryParams.q
 
 API.add 'tdm/categorise',
@@ -89,7 +96,7 @@ API.add 'tdm/difference/:str',
 
 # https://www.npmjs.com/package/languagedetect
 API.tdm.language = (content) ->
-	try content = content.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()0123456789]/g,"")
+	try content = content.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()0123456789]/g," ")
 	try content = content.replace(/\s{2,}/g," ")
 	try
 		lnd = new languagedetect()
@@ -120,7 +127,6 @@ API.tdm.levenshtein = (a,b) ->
 		return y if y <= x and y <= z
 		return z
 
-	cost
 	m = a.length
 	n = b.length
 
@@ -135,22 +141,56 @@ API.tdm.levenshtein = (a,b) ->
 	r = [[]]
 	c = 0
 	while c < n + 1
-		c++
 		r[0][c] = c
+		c++
 
 	i = 1
 	while i < m + 1
-		i++
 		r[i] = [i]
 		j = 1
 		while j < n + 1
-			j++
 			cost = if a.charAt( i - 1 ) is b.charAt( j - 1 ) then 0 else 1
 			r[i][j] = minimator( r[i-1][j] + 1, r[i][j-1] + 1, r[i-1][j-1] + cost )
+			j++
+		i++
 
 	dist = r[ r.length - 1 ][ r[ r.length - 1 ].length - 1 ]
 	return distance:dist,detail:r
 
+# https://en.wikipedia.org/wiki/Hamming_distance#Algorithm_example
+# this is faster than levenshtein but not always so useful
+# this works slightly better with perceptual hashes, or anything where just need to know how many changes to make to become the same
+# for example the levenshtein difference between 1234567890 and 0123456789 is 2
+# whereas the hamming distance is 10
+API.tdm.hamming = (a, b) ->
+	if a.length < b.length
+		short = a
+		long = b
+	else
+		short = b
+		long = a
+	pos = long.indexOf short
+	short = API.convert.buffer2binary(short) if Buffer.isBuffer short
+	long = API.convert.buffer2binary(long) if Buffer.isBuffer long
+	ss = short.split('')
+	sl = long.split('')
+	if sl.length > ss.length
+		diff = sl.length - ss.length
+		if 0 < pos
+			pc = 0
+			while pc < pos
+				ss.unshift ''
+				pc++
+				diff--
+		c = 0
+		while c < diff
+			ss.push ''
+			c++
+	moves = 0
+	for k of sl
+		moves++ if ss[k] isnt sl[k]
+	return moves
+	
 API.tdm.categorise = (entity) ->
 	exists = API.http.cache entity, 'tdm_categorise'
 	return exists if exists
@@ -211,7 +251,7 @@ API.tdm.keywords = (content,opts={},defaults=true) ->
 			'year','time','january','february','march','april','may','june','july','august','september','october','november','december',
 			'jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec',
 			'org','com','id','wp','main','website','blogs','media','people','years','made','location',
-			'image','jpeg','jpg','png','php','false','true','article','chapter','book','caps','isbn']
+			'image','jpeg','jpg','png','php','object','false','true','article','chapter','book','caps','isbn']
 		opts.stopWords = _.union opts.stopWords, defaultStops
 	try opts.cutoff = (opts.cutoff*100000)/100000 if opts.cutoff? and typeof opts.cutoff isnt 'number'
 	exists = API.http.cache opts.checksum, 'tdm_keywords'
@@ -226,6 +266,30 @@ API.tdm.keywords = (content,opts={},defaults=true) ->
 		res = keywords
 	#API.http.cache opts.checksum, 'tdm_keywords', res
 	return res
+
+API.tdm.entities = (q, options) ->
+	ret = {person: [], organisation: [], location: [], other: []}
+	try
+		res = API.use.corenlp.entities q, options
+		finds = {}
+		for s in res.sentences
+			for e in s.entitymentions
+				if e.text and e.ner and (not finds[e.ner] or e.text.toLowerCase() not in finds[e.ner])
+					finds[e.ner] ?= []
+					finds[e.ner].push e.text.toLowerCase()
+					if e.ner is 'PERSON'
+						ret.person.push {value: e.text}
+					else if e.ner is 'ORGANIZATION'
+						ret.organisation.push {value: e.text}
+					else if e.ner in ['CITY','COUNTRY','LOCATION'] # location is a guess, what else might it put out as locations?
+						ret.location.push {value: e.text, type: e.ner.toLowerCase()}
+					else
+						ret.other.push {value: e.text, type: e.ner.toLowerCase()}
+						# other interesting ones seen so far include 
+						# cause-of-death, ordinal, number, date, duration, email, misc, set, percent (for both a number with the word or the symbol), title
+		return ret
+	catch
+		return ret
 
 API.tdm.extract = (opts) ->
 	# opts expects url,content,matchers (a list, or singular "match" string),start,end,convert,format,lowercase,ascii

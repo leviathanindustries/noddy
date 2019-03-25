@@ -226,8 +226,12 @@ API.job.sign = (fn='', args, checksum=true) ->
     fn += args
   else
     try
-      for a in _.keys(args).sort()
-        fn += a + '_' + JSON.stringify(args[a]) if a not in ['plugin','apikey','_']
+      if _.isArray args
+        for a in args.sort()
+          fn += JSON.stringify a
+      else
+        for a in _.keys(args).sort()
+          fn += a + '_' + JSON.stringify(args[a]) if a not in ['plugin','apikey','_']
     catch
       fn += JSON.stringify args
   sig = encodeURIComponent(fn) # just used to use this, but got some where args were too long

@@ -20,6 +20,7 @@ API.collection = (opts, dev=API.settings.dev) ->
   this._mapping = opts.mapping
   API.es.map this._index, this._type, this._mapping, undefined, dev # only has effect if no mapping already
   this._history = opts.history if this._route.indexOf('_log') is -1
+  this._transactional = opts.transactional
   API.es.map(this._index, this._type + '_history', this._mapping, undefined, dev) if this._history
   #this._replicate = opts.replicate; # does nothing yet, but could replicate all creates/updates/deletes to alternate cluster address
   this._mount = opts.mount?
@@ -117,6 +118,16 @@ API.collection.prototype.get = (rid, versioned, dev=API.settings.dev) ->
     return (if versioned then check else check._source) if check?.found isnt false and check?.status isnt 'error' and check?.statusCode isnt 404 and check?._source?
   return undefined
 
+API.collection.prototype.transactional = (obj) ->
+  # TODO implement an option to only save collections in a transactional fashion
+  # that is, any insert or update (need to handle bulk/import as well) must only 
+  # succeed once it can be guaranteed to be saved by the index. This can be confirmed 
+  # by being able to do a GET on the returned ID. However, it is also possible that 
+  # a record can be got even if it is not yet on all shards. So, need transactional 
+  # option that will only count as transactionally saved once confirmed existing on 
+  # all shards where that record is stored.
+  return obj
+  
 API.collection.prototype.insert = (q, obj, uid, refresh, dev=API.settings.dev) ->
   if typeof q is 'string' and typeof obj is 'object'
     obj._id = q

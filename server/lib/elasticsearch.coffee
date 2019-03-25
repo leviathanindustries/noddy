@@ -273,6 +273,7 @@ API.es.call = (action, route, data, refresh, version, scan, scroll='10m', partia
   if dev and route.indexOf('_dev') is -1 and route.indexOf('/_') isnt 0
     rpd = route.split '/'
     rpd[1] += '_dev'
+    rpd[1] = rpd[1].replace(',','_dev,')
     route = rpd.join '/'
   routeparts = route.substring(1, route.length).split '/'
 
@@ -307,6 +308,7 @@ API.es.call = (action, route, data, refresh, version, scan, scroll='10m', partia
         skey = _.keys(data.sort)[0]
         delete opts.data.sort if JSON.stringify(API.es.mapping(routeparts[0],routeparts[1]),dev,url).indexOf(skey) is -1
     opts.retry = API.es._retries
+    #console.log action, url, route, opts
     ret = RetryHttp.call action, url + route, opts
     API.es.refresh('/' + routeparts[0], dev, url) if refresh and action in ['POST','PUT']
     if API.settings.log?.level in ['all','debug']
@@ -365,6 +367,7 @@ API.es.random = (route) ->
     return route
 
 API.es.count = (index, type, key, query, dev=API.settings.dev, url=API.settings.es.url) ->
+  query ?= { query: {"filtered":{"filter":{"bool":{"must":[]}}}}}
   if key?
     query.size = 0
     query.aggs = {
@@ -375,18 +378,18 @@ API.es.count = (index, type, key, query, dev=API.settings.dev, url=API.settings.
         }
       }
     }
-    return API.es.call('POST', '/' + index + '/' + type + '/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url)?.aggregations?.keycard?.value
+    return API.es.call('POST', '/' + index + (if type then '/' + type else '') + '/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url)?.aggregations?.keycard?.value
   else
-    return API.es.call('POST', '/' + index + '/' + type + '/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url)?.hits?.total
+    return API.es.call('POST', '/' + index + (if type then '/' + type else '') + '/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url)?.hits?.total
 
-API.es.terms = (index, type, key, qry, size=100, counts=true, dev=API.settings.dev, url=API.settings.es.url) ->
+API.es.terms = (index, type, key, qry, size=1000, counts=true, dev=API.settings.dev, url=API.settings.es.url) ->
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
   query = if typeof qry is 'object' then qry else { query: {"filtered":{"filter":{"exists":{"field":key}}}}, size: 0, facets: {} }
   query.filtered.query = { query_string: { query: qry } } if typeof qry is 'string'
   query.facets ?= {}
   query.facets[key] = { terms: { field: key, size: size } }; # TODO need some way to decide if should check on .exact? - collection assumes it so far
   try
-    ret = API.es.call 'POST', '/' + index + '/' + type + '/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
+    ret = API.es.call 'POST', '/' + index + (if type then '/' + type else '') + '/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
     return if not ret?.facets? then [] else (if counts then ret.facets[key].terms else _.pluck(ret.facets[key].terms,'term'))
   catch err
     console.log(err) if API.settings.log?.level is 'debug'
@@ -397,7 +400,7 @@ API.es.min = (index, type, key, qry, dev=API.settings.dev, url=API.settings.es.u
     query = if typeof key is 'object' then key else if qry? then qry else {query:{"filtered":{"filter":{"exists":{"field":key}}}}}
     query.size = 0
     query.aggs = {"min":{"min":{"field":key}}}
-    ret = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
+    ret = API.es.call 'POST', '/'+index+(if type then '/' + type else '')+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
     return ret.aggregations.min.value
   catch err
     return {info: 'the call to es returned an error', err:err}
@@ -407,7 +410,7 @@ API.es.max = (index, type, key, qry, dev=API.settings.dev, url=API.settings.es.u
     query = if typeof key is 'object' then key else if qry? then qry else {query:{"filtered":{"filter":{"exists":{"field":key}}}}}
     query.size = 0
     query.aggs = {"max":{"max":{"field":key}}}
-    ret = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
+    ret = API.es.call 'POST', '/'+index+(if type then '/' + type else '')+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
     return ret.aggregations.max.value
   catch err
     return {info: 'the call to es returned an error', err:err}
@@ -417,7 +420,7 @@ API.es.range = (index, type, key, qry, dev=API.settings.dev, url=API.settings.es
     query = if typeof key is 'object' then key else if qry? then qry else {query:{"filtered":{"filter":{"exists":{"field":key}}}}}
     query.size = 0
     query.aggs = {"min":{"min":{"field":key}}, "max":{"max":{"field":key}}}
-    ret = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
+    ret = API.es.call 'POST', '/'+index+(if type then '/' + type else '')+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
     return {min: ret.aggregations.min.value, max: ret.aggregations.max.value}
   catch err
     return {info: 'the call to es returned an error', err:err}
@@ -426,11 +429,11 @@ API.es.range = (index, type, key, qry, dev=API.settings.dev, url=API.settings.es
   sobj[key] = {order:'asc'}
   query = {query:{"match_all":{}},sort:[sobj],size:1}
   try
-    ret = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
+    ret = API.es.call 'POST', '/'+index+(if type then '/' + type else '')+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
     min = ret.hits.hits[0].sort[0]
     sobj[key] = {order:'desc'}
     query.sort = [sobj]
-    re2 = API.es.call 'POST', '/'+index+'/'+type+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
+    re2 = API.es.call 'POST', '/'+index+(if type then '/' + type else '')+'/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
     max = re2.hits.hits[0].sort[0]
     return {min:min,max:max}
   catch err

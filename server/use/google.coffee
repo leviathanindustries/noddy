@@ -1,5 +1,4 @@
 
-import crypto from 'crypto'
 import fs from 'fs'
 # docs:
 # https://developers.google.com/places/web-service/autocomplete
@@ -73,6 +72,11 @@ API.add 'use/google/knowledge/search',
 		roleRequired:'root'
 		action: () -> return API.use.google.knowledge.search this.queryParams.q,this.queryParams.limit
 
+API.add 'use/google/knowledge/find',
+	get:
+		roleRequired:'root'
+		action: () -> return API.use.google.knowledge.find this.queryParams.q
+
 API.add 'use/google/sheets/:sheetid', get: () -> return API.use.google.sheets.feed this.urlParams.sheetid, this.queryParams
 
 API.add 'use/google/clear',
@@ -127,6 +131,13 @@ API.use.google.knowledge.search = (qry,limit=10) ->
 	u = 'https://kgsearch.googleapis.com/v1/entities:search?key=' + API.settings.use.google.serverkey + '&limit=' + limit + '&query=' + qry
 	return HTTP.call('GET',u).data
 
+API.use.google.knowledge.find = (qry) ->
+	res = API.use.google.knowledge.search qry
+	try
+		return res.itemListElement[0].result #could add an if resultScore > ???
+	catch
+		return undefined
+
 API.use.google.knowledge.wikidata = (mid,wurl) ->
 	# don't cache this, wikidata is cached
 	if mid and not wurl
@@ -142,8 +153,8 @@ API.use.google.knowledge.wikidata = (mid,wurl) ->
 API.use.google.cloud.language = (content, actions=['entities','sentiment'], auth) ->
 	actions = actions.split(',') if typeof actions is 'string'
 	return {} if not content?
-	checksum = crypto.createHash('md5').update(content, 'utf8').digest('base64')
-	exists = API.http.cache actions.join(',')+','+checksum, 'google_language'
+	checksum = API.job.sign content, actions
+	exists = API.http.cache checksum, 'google_language'
 	return exists if exists
 
 	lurl = 'https://language.googleapis.com/v1/documents:analyzeEntities?key=' + API.settings.use.google.serverkey
@@ -153,15 +164,15 @@ API.use.google.cloud.language = (content, actions=['entities','sentiment'], auth
 		result.entities = HTTP.call('POST',lurl,{data:document,headers:{'Content-Type':'application/json'}}).data.entities
 	if 'sentiment' in actions
 		result.sentiment = HTTP.call('POST',lurl.replace('analyzeEntities','analyzeSentiment'),{data:document,headers:{'Content-Type':'application/json'}}).data
-	API.http.cache actions.join(',')+','+checksum, 'google_language', result
+	API.http.cache checksum, 'google_language', result
 	return result
 
 # https://cloud.google.com/translate/docs/quickstart
-API.use.google.cloud.translate = (q, source, target='fr', format='text') ->
+API.use.google.cloud.translate = (q, source, target='en', format='text') ->
 	# ISO source and target language codes
 	# https://en.wikipedia.org/wiki/List_of_ISO_639-1_codes
 	return {} if not q?
-	checksum = API.job._sign() crypto.createHash('md5').update(q, 'utf8').digest('base64')
+	checksum = API.job.sign q, {source: source, target: target, format: format}
 	exists = API.http.cache checksum, 'google_translate'
 	return exists if exists
 	lurl = 'https://translation.googleapis.com/language/translate/v2?key=' + API.settings.use.google.serverkey
