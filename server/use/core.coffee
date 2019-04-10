@@ -11,9 +11,12 @@ API.use.core = {}
 API.add 'use/core/doi/:doipre/:doipost',
   get: () -> return API.use.core.doi this.urlParams.doipre + '/' + this.urlParams.doipost
 
+API.add 'use/core/title/:qry', get: () -> return API.use.core.title this.urlParams.qry
 
 API.add 'use/core/search/:qry',
   get: () -> return API.use.core.search this.urlParams.qry, this.queryParams.from, this.queryParams.size
+
+
 
 API.use.core.doi = (doi) ->
   return API.use.core.get 'doi:"' + doi + '"'

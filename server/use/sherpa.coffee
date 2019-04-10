@@ -90,7 +90,7 @@ API.use.sherpa.romeo.search = (params,xml=false,format=true) ->
       if xml
         return res.content
       else
-        result = API.convert.xml2json res.content
+        result = API.convert.xml2json res.content, undefined, false
         if format
           return API.use.sherpa.romeo.format {journals: result.romeoapi.journals, publishers: result.romeoapi.publishers}
         else

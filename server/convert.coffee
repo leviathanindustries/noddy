@@ -588,29 +588,50 @@ API.convert.list2string = (content, opts={}) ->
             st += (if opts.keys then o + ': ' else '') + dt
   return if opts.json then {text: st} else st
 
+API.convert._hexMatch = 
+  '0': '0000',
+  '1': '0001',
+  '2': '0010',
+  '3': '0011',
+  '4': '0100',
+  '5': '0101',
+  '6': '0110',
+  '7': '0111',
+  '8': '1000',
+  '9': '1001',
+  'a': '1010',
+  'b': '1011',
+  'c': '1100',
+  'd': '1101',
+  'e': '1110',
+  'f': '1111'
+
 API.convert.hex2binary = (ls,listed=false) ->
   ls = [ls] if not _.isArray ls
-  _match = 
-    '0': '0000',
-    '1': '0001',
-    '2': '0010',
-    '3': '0011',
-    '4': '0100',
-    '5': '0101',
-    '6': '0110',
-    '7': '0111',
-    '8': '1000',
-    '9': '1001',
-    'a': '1010',
-    'b': '1011',
-    'c': '1100',
-    'd': '1101',
-    'e': '1110',
-    'f': '1111'
   res = []
   for l in ls
-    res.push _match[l.toLowerCase()]
+    res.push API.convert._hexMatch[l.toLowerCase()]
   return if listed then res else res.join('')
+
+API.convert.binary2hex = (ls) ->
+  # this needs work...
+  if not _.isArray ls
+    els = []
+    sls = ls.split('')
+    pr = ''
+    while sls.length
+      pr += sls.shift()
+      if pr.length is 4
+        els.push pr
+        pr = ''
+    ls = els
+  res = []
+  hm = {}
+  for k of API.convert._hexMatch
+    hm[API.convert._hexMatch[k]] = k
+  for l in ls
+    res.push '0x' + hm[l]
+  return new Buffer(res).toString()
   
 API.convert.buffer2binary = (buf) ->
   buf = buf.toString('hex') if Buffer.isBuffer buf

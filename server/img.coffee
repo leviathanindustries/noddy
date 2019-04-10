@@ -28,6 +28,8 @@ API.add 'img/phash', get: () -> return API.img.phash this.queryParams.url
 
 API.add 'img/phash/difference', get: () -> return API.img.difference this.queryParams.a, this.queryParams.b, not this.queryParams.simple?
 
+API.add 'img/pdf', get: () -> return API.img.pdf this.queryParams.url
+
 API.add 'img/:fn', # is it worth sub-routing this like the ES function?
   get: () ->
     # given an image filename, return the image as an image
@@ -46,6 +48,12 @@ API.add 'img/:fn', # is it worth sub-routing this like the ES function?
 
 API.img = {}
 
+API.img.pdf = (fn) ->
+  fn ?= '/home/cloo/pubman/pdfs/1015547/effects_of_particle_size_on_cell_function_and_morphology_01_OCR.pdf'
+  fn = fs.readFileSync(fn) if fn.indexOf('http') isnt 0 and fn.length < 100
+  res = API.convert.pdf2json fn
+  return res
+  
 API.img.phash = (fn, binary=true, buffer=false, int=false, mh=false) ->
   checksum = API.job.sign(fn).replace(/\//g,'_')
 	#exists = API.http.cache checksum, 'img_phash'
@@ -61,11 +69,11 @@ API.img.phash = (fn, binary=true, buffer=false, int=false, mh=false) ->
   # https://www.npmjs.com/package/phash-image
   _phash = Async.wrap (fn, callback) ->
     if mh
-      phash.mh fn, (err,hash) -> callback null, (if binary then API.convert.buffer2binary(hash) else if buffer then hash else hash.toString)
+      phash.mh fn, (err,hash) -> callback null, (if binary then API.convert.buffer2binary(hash) else if buffer then hash else hash.toString())
     else if int
       phash fn, true, (err,hash) -> callback null, hash
     else
-      phash fn, (err,hash) -> callback null, (if binary then API.convert.buffer2binary(hash) else if buffer then hash else hash.toString)
+      phash fn, (err,hash) -> callback null, (if binary then API.convert.buffer2binary(hash) else if buffer then hash else hash.toString())
   res = _phash fn
   #API.http.cache(checksum, 'img_phash', res) if res
   return res
@@ -164,7 +172,7 @@ API.img.jimp = (opts={}) ->
     img = (Async.wrap (callback) ->
       jimp.read API.store.retrieve(pfn), (err, img) ->
         return callback null, img)()
-    data = API.img._data pfn, img, (if opts.clusters? then parseInt(opts.clusters) else undefined), opts.focuscrop?
+    data = API.img._data pfn, img, (if opts.clusters? then parseInt(opts.clusters) else undefined), opts.focuscrop?, (if opts.phash then opts.url else undefined)
     data.fn = opts.fn
     data.width = img.bitmap.width
     data.height = img.bitmap.height
@@ -288,7 +296,7 @@ API.img.jimp = (opts={}) ->
         return callback null, res)()
     saved = API.store.create pfn, true, undefined, bimg
     if opts.data?
-      data = API.img._data pfn, jimg, (if opts.clusters? then parseInt(opts.clusters) else undefined), opts.focuscrop?
+      data = API.img._data pfn, jimg, (if opts.clusters? then parseInt(opts.clusters) else undefined), opts.focuscrop?, (if opts.phash? then opts.url else undefined)
       data.fn = opts.fn
       data.width = jimg.bitmap.width
       data.height = jimg.bitmap.height
@@ -298,10 +306,11 @@ API.img.jimp = (opts={}) ->
 
 
 
-API.img._data = (pfn, img, clusters=6, focuscrop=false) ->
+API.img._data = (pfn, img, clusters=6, focuscrop=false, phash=false) ->
   if pfn
     pfn += '_' + clusters
     pfn += '_focuscrop' if focuscrop
+    pfn += '_phashstr' if phash
     exists = API.http.cache pfn, 'img_data'
     return exists if exists?
 
@@ -336,6 +345,10 @@ API.img._data = (pfn, img, clusters=6, focuscrop=false) ->
   if focuscrop
     gimg = img.clone()
     gimg.greyscale().contrast(1)
+    
+  if phash
+    try info.phash = API.img.phash phash
+    try info.phashstr = API.img.phash phash, false
 
   img.scan 0, 0, img.bitmap.width, img.bitmap.height, (x, y, idx) ->
     info.avg.red += img.bitmap.data[idx]

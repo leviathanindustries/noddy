@@ -7,6 +7,8 @@ API.use.openaire = {}
 
 API.add 'use/openaire/search', get: () -> return API.use.openaire.search this.queryParams
 
+API.add 'use/openaire/title/:qry', get: () -> return API.use.openaire.title this.urlParams.qry
+
 API.add 'use/openaire/doi/:doipre/:doipost', get: () -> return API.use.openaire.doi this.urlParams.doipre + '/' + this.urlParams.doipost,this.queryParams.open
 
 
@@ -21,9 +23,24 @@ API.use.openaire.get = (params) ->
   res = API.use.openaire.search params
   rec = if typeof res.data isnt 'string' and res.data?.length > 0 then res.data[0] else undefined
   if rec?
+    clean = {}
     op = API.use.openaire.redirect rec
-    rec.url = op.url
-    rec.redirect = op.redirect
+    clean.url = op.url
+    clean.redirect = op.redirect
+    for k of rec.metadata['oaf:entity']['oaf:result']
+      try
+        if k in ['description','dateofacceptance','creator','title','country','resulttype','language','subject','resourcetype']
+          if typeof rec.metadata['oaf:entity']['oaf:result'][k] is 'string' and rec.metadata['oaf:entity']['oaf:result'][k].length
+            clean[k] = rec.metadata['oaf:entity']['oaf:result'][k]
+          else
+            clean[k] = if rec.metadata['oaf:entity']['oaf:result'][k].$? then rec.metadata['oaf:entity']['oaf:result'][k].$ else rec.metadata['oaf:entity']['oaf:result'][k]['@classname']
+        else if k is 'journal'
+          clean.journal = {}
+          for j of rec.metadata['oaf:entity']['oaf:result'].journal
+            clean.journal[j.replace('@','')] = rec.metadata['oaf:entity']['oaf:result'].journal[j] if rec.metadata['oaf:entity']['oaf:result'].journal[j]
+        else if k is 'pid'
+          clean[rec.metadata['oaf:entity']['oaf:result'].pid['@classid']] = rec.metadata['oaf:entity']['oaf:result'].pid.$
+    rec = clean
   return rec
 
 # openaire has a datasets endpoint too, but there appears to be no way to
@@ -58,9 +75,10 @@ API.use.openaire.search = (params) ->
 
 API.use.openaire.redirect = (record) ->
   res = {}
-  if record.metadata?['oaf:result']?.bestlicense?['@classid'] is 'OPEN' and record.metadata['oaf:result'].children?.instance?.length > 0
-    for i in record.metadata['oaf:result'].children.instance
-      if i.licence?['@classid'] is 'OPEN' and i.webresource?.url?.$
+  if (record.metadata?['oaf:entity']?['oaf:result']?.bestlicense?['@classid'] is 'OPEN' or record.metadata?['oaf:entity']?['oaf:result']?.bestaccessright?['@classid'] is 'OPEN') and record.metadata['oaf:entity']['oaf:result'].children?.instance?
+    t = if _.isArray(record.metadata['oaf:entity']['oaf:result'].children.instance) then record.metadata['oaf:entity']['oaf:result'].children.instance else [record.metadata['oaf:entity']['oaf:result'].children.instance]
+    for i in t
+      if (i.licence?['@classid'] is 'OPEN' or i.accessright?['@classid'] is 'OPEN') and i.webresource?.url?.$
         res.url = API.http.resolve i.webresource.url.$
         try
           resolves = HTTP.call 'HEAD', res.url

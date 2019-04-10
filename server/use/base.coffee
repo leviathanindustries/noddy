@@ -11,6 +11,8 @@ API.use.base = {}
 
 API.add 'use/base/search', get: () -> return API.use.base.search this.queryParams.q, this.queryParams.from, this.queryParams.size
 
+API.add 'use/base/title/:qry', get: () -> return API.use.base.title this.urlParams.qry
+
 API.add 'use/base/doi/:doipre/:doipost', get: () -> return API.use.base.doi this.urlParams.doipre+'/'+this.urlParams.doipost
 
 
@@ -24,10 +26,16 @@ API.use.base.doi = (doi) ->
 	return API.use.base.get doi
 
 API.use.base.title = (title) ->
-	simplify = /[\u0300-\u036F]/g
-	title = title.toLowerCase().normalize('NFKD').replace(simplify,'').replace(/ß/g,'ss')
-	ret = API.use.base.get('dctitle:"'+title+'"')
-	return if ret.dctitle.toLowerCase().normalize('NFKD').replace(simplify,'').replace(/ß/g,'ss') is ret.title.toLowerCase() then ret else undefined
+  simplify = /[\u0300-\u036F]/g
+  title = title.toLowerCase().normalize('NFKD').replace(simplify,'').replace(/ß/g,'ss')
+  ret = API.use.base.get('dctitle:"'+title+'"')
+  if ret?.dctitle? or ret.title?
+    ret.title ?= ret.dctitle
+    if ret.title
+      ct = ret.title.toLowerCase().normalize('NFKD').replace(simplify,'').replace(/ß/g,'ss')
+      if ct and ct.length <= title.length*1.2 and ct.length >= title.length*.8 and title.replace(/ /g,'').indexOf(ct.replace(' ','').replace(' ','').replace(' ','').split(' ')[0]) isnt -1
+        return ret
+  return undefined
 
 API.use.base.get = (qry) ->
 	res = API.http.cache qry, 'base_get'

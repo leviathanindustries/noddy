@@ -4,10 +4,14 @@
 # list of sources that Share gets from:
 # https://share.osf.io/api/v2/search/creativeworks/_search?&source=%7B%22query%22%3A%7B%22filtered%22%3A%7B%22query%22%3A%7B%22bool%22%3A%7B%22must%22%3A%5B%7B%22match_all%22%3A%7B%7D%7D%5D%7D%7D%7D%7D%2C%22from%22%3A0%2C%22size%22%3A0%2C%22aggs%22%3A%7B%22sources%22%3A%7B%22terms%22%3A%7B%22field%22%3A%22sources%22%2C%22size%22%3A200%7D%7D%7D%7D
 
+# NOTE: our server appears to be blocked by Share, it only returns 403
+
 API.use ?= {}
 API.use.share = {}
 
 API.add 'use/share/search', get: () -> return API.use.share.search this.queryParams
+
+API.add 'use/share/title/:qry', get: () -> return API.use.share.title this.urlParams.qry
 
 API.add 'use/share/doi/:doipre/:doipost',
   get: () -> return API.use.share.doi this.urlParams.doipre + '/' + this.urlParams.doipost
@@ -17,7 +21,7 @@ API.use.share.doi = (doi) ->
   return API.use.share.get {q:'identifiers:"' + doi.replace('/','\/') + '"'}
 
 API.use.share.title = (title) ->
-  return API.use.share.get {q:title}
+  return API.use.share.get {q:'title:"'+title+'"'}
 
 API.use.share.get = (params) ->
   res = API.use.share.search params

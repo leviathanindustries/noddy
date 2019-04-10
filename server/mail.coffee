@@ -115,10 +115,17 @@ API.mail.send = (opts,mail_url) ->
       return err
 
 
-API.mail.validate = (email,apikey=API.settings.mail.pubkey) ->
+API.mail.validate = (email, apikey=API.settings.mail.pubkey, cached=true) ->
   u = 'https://api.mailgun.net/v3/address/validate?syntax_only=false&address=' + encodeURIComponent(email) + '&api_key=' + apikey
   try
-    return HTTP.call('GET',u).data
+    if cached
+      checked = API.http.cache email, 'mail_validate'
+      if checked
+        checked.cached = true
+        return checked
+    res = HTTP.call('GET',u).data
+    API.http.cache(email, 'mail_validate', res) if res and cached
+    return res
   catch err
     API.log {msg:'Mailgun validate error',error:JSON.stringify(err),notify:{subject:'Mailgun validate error'}}
     return {}

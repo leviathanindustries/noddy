@@ -50,6 +50,8 @@ API.add 'use/europepmc/pmc/:qry/licence', get: () -> return API.use.europepmc.li
 
 API.add 'use/europepmc/pmc/:qry/aam', get: () -> return API.use.europepmc.authorManuscript this.urlParams.qry
 
+API.add 'use/europepmc/title/:qry', get: () -> return API.use.europepmc.title this.urlParams.qry
+
 API.add 'use/europepmc/search/:qry',
   get: () -> return API.use.europepmc.search this.urlParams.qry, this.queryParams.from, this.queryParams.size
 

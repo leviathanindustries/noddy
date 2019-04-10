@@ -441,20 +441,30 @@ API.es.range = (index, type, key, qry, dev=API.settings.dev, url=API.settings.es
 
 API.es.keys = (index, type, dev=API.settings.dev, url=API.settings.es.url) ->
   try
-    mapping = API.es.mapping index, type, dev, url
     keys = []
-    # if no type was given, could be wanting all keys from all mappings on the index
-    if mapping.properties?
-      for k of mapping.properties
-        keys.push k
-        #if mapping[index].mappings[type].properties[k].properties
-        #TODO should cascade into the sub keys and append as k.subk etc
+    _keys = (mapping, depth='') ->
+      mapping ?= API.es.mapping index, type, dev, url
+      if mapping.properties?
+        depth += '.' if depth.length
+        for k of mapping.properties
+          keys.push(depth+k) if depth+k not in keys
+          if mapping.properties[k].properties?
+            _keys mapping.properties[k], depth+k
+      else
+        for mp of mapping
+          _keys mapping[mp]
+    if index.indexOf(',') is -1
+      _keys()
+      return keys
     else
-      for mp of mapping
-        for k of mapping[mp].properties
-          keys.push(k) if keys.indexOf(k) is -1
-    keys.sort()
-    return keys
+      tk = []
+      ixs = index.split(',')
+      for i in ixs
+        sk = API.es.keys i, type, dev, url
+        for esk in sk
+          tk.push(esk) if esk not in tk
+      tk.sort()
+      return tk
   catch err
     return {info: 'the call to es returned an error', err:err}
 

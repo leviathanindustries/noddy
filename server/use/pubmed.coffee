@@ -19,13 +19,13 @@ API.use.pubmed.pmid = (pmid) ->
   API.log 'Using pubmed step 1 for ' + urlone
   try
     res = HTTP.call 'GET',urlone
-    result = API.convert.xml2json res.content
+    result = API.convert.xml2json res.content, undefined, false
     querykey = result.ePostResult.QueryKey[0]
     webenv = result.ePostResult.WebEnv[0]
     urltwo = baseurl + 'esummary.fcgi?db=pubmed&query_key=' + querykey + '&WebEnv=' + webenv
     API.log 'Using pubmed step 2 for ' + urltwo
     restwo = HTTP.call 'GET',urltwo
-    md = API.convert.xml2json restwo.content
+    md = API.convert.xml2json restwo.content, undefined, false
     rec = md.eSummaryResult.DocSum[0]
     frec = {id:rec.Id[0]}
     for ii in rec.Item

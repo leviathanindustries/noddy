@@ -9,6 +9,9 @@ API.use.doaj = {journals: {}, articles: {}}
 API.add 'use/doaj/articles/search/:qry',
   get: () -> return API.use.doaj.articles.search this.urlParams.qry
 
+API.add 'use/doaj/articles/title/:qry',
+  get: () -> return API.use.doaj.articles.title this.urlParams.qry
+
 API.add 'use/doaj/articles/doi/:doipre/:doipost',
   get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost
 
@@ -35,7 +38,7 @@ API.use.doaj.articles.doi = (doi) ->
 
 API.use.doaj.articles.title = (title) ->
   try title = title.toLowerCase().replace(/(<([^>]+)>)/g,'').replace(/[^a-z0-9 ]+/g, " ").replace(/\s\s+/g, ' ')
-  return API.use.doaj.articles.get 'bibjson.title.exact:"' + title + '"'
+  return API.use.doaj.articles.get 'title:"' + title + '"'
 
 API.use.doaj.articles.get = (qry) ->
   res = API.use.doaj.articles.search qry
