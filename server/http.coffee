@@ -25,7 +25,12 @@ API.add 'http/resolve', get: () -> return API.http.resolve this.queryParams.url,
 API.add 'http/puppeteer',
   get: () ->
     refresh = if this.queryParams.refresh? then (try(parseInt(this.queryParams.refresh))) else undefined
-    res = API.http.puppeteer this.queryParams.url, refresh
+    url = this.queryParams.url
+    url += if url.indexOf('?') isnt -1 then '&' else '?'
+    for qp of this.queryParams
+      if qp isnt 'url' and qp isnt 'refresh' and this.queryParams[qp]
+        url += qp + '=' + this.queryParams[qp] + '&'
+    res = API.http.puppeteer url, refresh
     if typeof res is 'number'
       return res
     else
@@ -339,10 +344,13 @@ _phantom = (url,delay=1000,refresh=86400000,callback) ->
 # tried with counters and also with counting the pages the browser thinks are open - not reliable enough, so go back to opening then closing every time
 #_puppetEndpoint = false
 #_puppetPages = 0
-_puppeteer = (url,refresh=86400000,callback) ->
+_puppeteer = (url,refresh=86400000,proxy,callback) ->
   if typeof refresh is 'function'
     callback = refresh
     refresh = 86400000
+  if typeof proxy is 'function'
+    callback = proxy
+    proxy = undefined
   return callback(null,'') if not url? or typeof url isnt 'string'
   url = 'http://' + url if url.indexOf('http') is -1
   if refresh isnt true and refresh isnt 0
@@ -354,7 +362,9 @@ _puppeteer = (url,refresh=86400000,callback) ->
     #if _puppetEndpoint isnt false
     #  try browser = await puppeteer.connect({browserWSEndpoint:_puppetEndpoint})
     #if browser is false
-    browser = await puppeteer.launch({args:['--no-sandbox', '--disable-setuid-sandbox'], ignoreHTTPSErrors:true, dumpio:false, timeout:12000, executablePath: '/usr/bin/google-chrome'})
+    args = ['--no-sandbox', '--disable-setuid-sandbox']
+    args.push('--proxy-server='+proxy) if proxy
+    browser = await puppeteer.launch({args:args, ignoreHTTPSErrors:true, dumpio:false, timeout:12000, executablePath: '/usr/bin/google-chrome'})
     #_puppetEndpoint = browser.wsEndpoint()
     page = await browser.newPage()
     #_puppetPages += 1

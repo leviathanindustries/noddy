@@ -468,6 +468,10 @@ API.es.keys = (index, type, dev=API.settings.dev, url=API.settings.es.url) ->
   catch err
     return {info: 'the call to es returned an error', err:err}
 
+API.es.links = (index, type, nodes, dev=API.settings.dev, url=API.settings.es.url) ->
+  # see the collection pass-through of this for explanation of purpose and how it should work
+  return []
+  
 API.es.bulk = (index, type, data, action='index', bulk=50000, dev=API.settings.dev, url=API.settings.es.url) ->
   # https://www.elastic.co/guide/en/elasticsearch/reference/1.4/docs-bulk.html
   # https://www.elastic.co/guide/en/elasticsearch/reference/1.4/docs-update.html

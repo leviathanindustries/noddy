@@ -211,11 +211,11 @@ API.collection.prototype.search = (q, opts, versioned, dev=API.settings.dev) ->
     return undefined
   else if typeof q is 'string'
     res = API.es.call 'GET', this._route + '/_search?' + (if versioned then 'version=true&' else '') + (if q.indexOf('?') is 0 then q.replace('?', '') else q), undefined, undefined, undefined, undefined, undefined, undefined, dev
-    res.q = q if API.settings.dev
+    res.q = q if res? and API.settings.dev
     return res
   else
     res = API.es.call 'POST', this._route + '/_search' + (if versioned then '?version=true' else ''), q, undefined, undefined, undefined, undefined, undefined, dev
-    res.q = q if API.settings.dev
+    res.q = q if res? and API.settings.dev
     return res
 
 API.collection.prototype.find = (q, opts, versioned, dev=API.settings.dev) ->
@@ -350,6 +350,13 @@ API.collection.prototype.terms = (key, q, size=100, counts=false, dev=API.settin
 
 API.collection.prototype.keys = (dev=API.settings.dev) ->
   return API.es.keys this._index, this._type, dev
+
+API.collection.prototype.links = (nodes, dev=API.settings.dev) ->
+  # TODO given a list of nodes (key names in the objects) build a list of source-target links for use in d3 graph visualisations
+  # note this can be done client side anyway, so the idea here is to be able to build larger link lists without having to send so much data
+  # to enable client to render more complex graphs more easily. This may need additional options, like showing the record as a node or not, 
+  # or using some key values as "proxies" to link other things via, and so on
+  return API.es.links this._index, this._type, nodes, dev
 
 API.collection.prototype.job = (q, fn, complete) ->
   # TODO for a given query set, create a job that does some fn to all of them
