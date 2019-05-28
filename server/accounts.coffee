@@ -415,9 +415,9 @@ API.accounts.create = (email, fingerprint) ->
   return u # API.accounts.retrieve u._id is it worth doing a retrieve, or just pass back what has been calculated?
 
 API.accounts.retrieve = (val) ->
-  u
-  srch
-  if typeof val is 'object'
+  if not val?
+    return undefined
+  else if typeof val is 'object'
     if val.apikey?
       # a convenience for passing in apikey searches - these must be separate and specified, unlike id / email searches, otherwise putting an id as apikey would return a user object
       hashed = API.accounts.hash(val.apikey)
@@ -435,7 +435,7 @@ API.accounts.retrieve = (val) ->
     srch = if u? then ' get ID' else '_id:"' + val + '" OR username.exact:"' + val + '" OR emails.address.exact:"' + val + '"'
   u ?= Users.find srch
   if u
-    srch = 'apikey' if val.apikey?
+    srch = 'apikey' if typeof val is 'object' and val.apikey?
     API.log msg: 'Retrieved account by ' + JSON.stringify(srch), retrieved: u?._id
     return u
   else
@@ -448,7 +448,7 @@ API.accounts.details = (user, uacc) ->
   if typeof uacc is 'string'
     uacc = if typeof user is 'object' and user._id is uacc then user else API.accounts.retrieve(uacc)
   return false if not user?
-  if not uacc? or API.accounts.auth 'root', uacc
+  if API.accounts.auth 'root', uacc
     # we return everything - would be a pretty pointless use of this method, but possible
   else if (user._id is uacc._id) or API.accounts.auth user._id + '.read', uacc
     user = _.pick user, '_id','profile','username','emails','api','roles','service'

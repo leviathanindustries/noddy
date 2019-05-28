@@ -112,7 +112,9 @@ API.collection.prototype.exists = (rid, dev=API.settings.dev) ->
   return false
 
 API.collection.prototype.get = (rid, versioned, dev=API.settings.dev) ->
+  console.log rid
   # TODO is there any case for recording who has accessed certain documents?
+  # NOTE this only works case-sensitively so record IDs have to be in the correct case
   if typeof rid is 'number' or (typeof rid is 'string' and rid.indexOf(' ') is -1 and rid.indexOf(':') is -1 and rid.indexOf('/') is -1 and rid.indexOf('*') is -1)
     check = API.es.call 'GET', this._route + '/' + rid, undefined, undefined, undefined, undefined, undefined, undefined, dev
     return (if versioned then check else check._source) if check?.found isnt false and check?.status isnt 'error' and check?.statusCode isnt 404 and check?._source?
@@ -561,9 +563,9 @@ API.collection._translate = (q, opts) ->
     else if q.source?
       qry = JSON.parse(q.source) if typeof q.source is 'string'
       qry = q.source if typeof q.source is 'object'
-      if not opts?
-        opts = q
-        delete opts.source
+      opts ?= {}
+      for o of q
+        opts[o] ?= q[o] if o not in ['source']
     else if q.q?
       qry.query.filtered.query.bool.must.push query_string: query: q.q
       opts ?= {}
@@ -644,6 +646,9 @@ API.collection._translate = (q, opts) ->
     if opts.restrict?
       qry.query.filtered.filter.bool.must.push(rs) for rs in opts.restrict
       delete opts.restrict
+    if opts.all?
+      qry.size = 1000000 # just a simple way to try to get "all" records - although passing size would be a better solution, and works anyway
+      delete opts.all
     qry[k] = v for k, v of opts
   qry.query.filtered.query = { match_all: {} } if typeof qry is 'object' and qry.query?.filtered?.query? and _.isEmpty(qry.query.filtered.query)
   console.log('Returning translated query',JSON.stringify(qry)) if API.settings.log?.level is 'all'
