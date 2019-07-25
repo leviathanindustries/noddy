@@ -112,7 +112,6 @@ API.collection.prototype.exists = (rid, dev=API.settings.dev) ->
   return false
 
 API.collection.prototype.get = (rid, versioned, dev=API.settings.dev) ->
-  console.log rid
   # TODO is there any case for recording who has accessed certain documents?
   # NOTE this only works case-sensitively so record IDs have to be in the correct case
   if typeof rid is 'number' or (typeof rid is 'string' and rid.indexOf(' ') is -1 and rid.indexOf(':') is -1 and rid.indexOf('/') is -1 and rid.indexOf('*') is -1)

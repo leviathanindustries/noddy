@@ -149,7 +149,7 @@ API.http.resolve = (url,refresh=false) ->
         API.log 'Resolving ' + url
         # unfortunately this has to return the URL rather than false if it fails,
         # because some URLs are valid but blocked to our server, such as http://journals.sagepub.com/doi/pdf/10.1177/0037549715583150
-        request.head url, {timeout:4000, jar:true, headers: {'User-Agent':'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36'}}, (err, res, body) ->
+        request.head url, {timeout:7000, jar:true, headers: {'User-Agent':'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36'}}, (err, res, body) ->
           if err and JSON.stringify(err).indexOf('TIMEDOUT') isnt -1
             API.log msg: 'http resolve timed out', url: url, error: err, level: 'warn'
             callback null, url

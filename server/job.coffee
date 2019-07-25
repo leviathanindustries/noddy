@@ -664,7 +664,17 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
 
 API.job.start() if not API.job._iid? and API.settings.job?.startup
 
-API.job.running = () -> return (API.job._iid? or job_limit.get('STARTED')?) and not job_limit.get('PAUSE')?
+API.job._checked_started = false
+API.job._started = () ->
+  if API.job._checked_started isnt false and API.job._checked__started + 60000 > Date.now()
+    return true
+  else if job_limit.get('STARTED')?
+    API.job._checked_started = Date.now()
+    return true
+  else
+    return false
+
+API.job.running = () -> return (API.job._iid? or API.job._started()) and not job_limit.get('PAUSE')?
 
 API.job.stop = () -> job_limit.insert _id: 'PAUSE' # note that processes already processing will keep going, but no new ones will start
 
