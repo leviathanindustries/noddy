@@ -20,21 +20,9 @@ API.use.europepmc = {}
 API.add 'use/europepmc/doi/:doipre/:doipost',
   get: () -> return API.use.europepmc.doi this.urlParams.doipre + '/' + this.urlParams.doipost
 
-API.add 'use/europepmc/pmid/:qry',
-  get: () ->
-    res = API.use.europepmc.pmid this.urlParams.qry
-    try
-      return res.data.resultList.result[0]
-    catch
-      return res.data
+API.add 'use/europepmc/pmid/:qry', get: () -> return API.use.europepmc.pmid this.urlParams.qry
 
-API.add 'use/europepmc/pmc/:qry',
-  get: () ->
-    res = API.use.europepmc.pmc this.urlParams.qry
-    try
-      return res.data.resultList.result[0]
-    catch
-      return res.data
+API.add 'use/europepmc/pmc/:qry', get: () -> return API.use.europepmc.pmc this.urlParams.qry
 
 API.add 'use/europepmc/pmc/:qry/xml',
   get: () ->
@@ -85,8 +73,8 @@ API.use.europepmc.get = (qrystr) ->
   if not res?
     res = API.use.europepmc.search qrystr
     res = if res.total then res.data[0] else undefined
-    if res?
-      for oi in res.fullTextUrlList?.fullTextUrl
+    if res?.fullTextUrlList?
+      for oi in res.fullTextUrlList.fullTextUrl
         # we only accepted oa and html previously - TODO find out why, and if we have to be so strict for a reason
         if oi.availabilityCode.toLowerCase() in ['oa','f'] and oi.documentStyle.toLowerCase() in ['pdf','html']
           try
@@ -108,7 +96,7 @@ API.use.europepmc.search = (qrystr,from,size) ->
   ret = {}
   if res?.data?.hitCount
     ret.total = res.data.hitCount;
-    ret.data = if res.data?.resultList then res.data.resultList.result else []
+    ret.data = res.data.resultList?.result ? []
   else
     ret.status = 'error'
     ret.total = 0

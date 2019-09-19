@@ -119,21 +119,16 @@ API.http.cache = (lookup,type='cache',content,refresh=0) ->
       fnd += ' AND createdAt:>' + (Date.now() - refresh)
     res = API.http._colls[type].find fnd, true
     if res?._raw_result?.string?
-      #API.log {msg:'Returning string result from cache', lookup:lookup, type:type}
       return res._raw_result.string
     else if res?._raw_result?.bool?
-      #API.log {msg:'Returning object boolean result from cache', lookup:lookup, type:type}
       return res._raw_result.bool
     else if res?._raw_result?.number?
-      #API.log {msg:'Returning object number result from cache', lookup:lookup, type:type}
       return res._raw_result.number
     else if res?._raw_result?.content?
-      #API.log {msg:'Returning object content result from cache', lookup:lookup, type:type}
       return res.content
     else if res?._raw_result?.stringify
       try
         parsed = JSON.parse res._raw_result.stringify
-        #API.log {msg:'Returning parsed stringified content result from cache', lookup:lookup, type:type}
         return parsed
   return undefined
 

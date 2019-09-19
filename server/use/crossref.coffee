@@ -65,6 +65,7 @@ API.use.crossref.types = () ->
 API.use.crossref.reverse = (citations,score=80) ->
   citations = [citations] if typeof citations is 'string'
   url = 'https://api.crossref.org/reverse'
+  API.log 'Using crossref for ' + url + ' with citation ' + JSON.stringify citations
   try
     res = HTTP.call 'POST', url, {data:citations, headers: header}
     if res.statusCode is 200

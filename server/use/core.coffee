@@ -26,8 +26,9 @@ API.use.core.title = (title) ->
   return API.use.core.get 'title:"' + title + '"'
 
 API.use.core.get = (qrystr) ->
-  res = API.http.cache qrystr, 'core_get'
-  if not res?
+  # disable core cache sep 2019, due to discrepancies in the API giving back PDF URLs that 404
+  #res = API.http.cache qrystr, 'core_get'
+  if true #not res?
     ret = API.use.core.search qrystr
     if ret.total
       res = ret.data[0]

@@ -110,8 +110,7 @@ do
   if [ "$SETTINGS_ONLY" == true ]
     then
       printf "\n$COUNTER: Updating cluster IP $IP with new settings\n"
-      ssh $IP "source ~/.nvm/nvm.sh && forever stopall"
-      #ssh $IP "source ~/.nvm/nvm.sh && MONGO_URL=http://nowhere ROOT_URL=$ROOT PORT=$PORT METEOR_SETTINGS=$CSETTINGS forever start -l ~/forever.log -o ~/out.log -e ~/err.log ~/bundle/main.js"
+      #ssh $IP "source ~/.nvm/nvm.sh && forever stopall && MONGO_URL=http://nowhere ROOT_URL=$ROOT PORT=$PORT METEOR_SETTINGS=$CSETTINGS forever start -l ~/forever.log -o ~/out.log -e ~/err.log ~/bundle/main.js"
     else
       CV=$(curl -s -X GET http://$IP:$PORT/api | jq '.version')
       printf "\n$COUNTER: Updating cluster IP $IP from version $CV to version $NODDY_V\n"
@@ -122,15 +121,9 @@ do
       if [ "$CNV" != "$NODE_V" ]
         then
           echo "Updating cluster machine node version to" $NODE_V
-          ssh $IP "source ~/.nvm/nvm.sh && forever stopall && nvm install $NODE_V"
+          #ssh $IP "source ~/.nvm/nvm.sh && nvm install $NODE_V"
       fi
-    
-      # check that the cluster machine has the necessary firewall settings
-      # the cluster machines also need to allow 22, but that has to alrady be the case for this script to work
-      # ufw should already have been configured and turned on for the cluster machines, with default deny incoming, allow outgoing
-      # maybe this step is unnecessary...
-      #ssh $IP "sudo ufw allow 80 && sudo ufw allow 443 && sudo ufw allow 3000"
-      
+
       # check that the index machines have the necessary firewall settings to allow this cluster machine to query ES
       for EP in $INDEXES
       do
@@ -156,23 +149,6 @@ do
 done
 
 printf "\nDone processing cluster machines\n"
-
-echo "Checking new cluster machines are up and updated as expected"
-for IP in $IPS
-do
-  UP=$(curl -s -X GET http://$IP:3000/api | jq '.version')
-  if [ "$UP" == "$NODDY_V" ]
-    then
-      if [ "$SETTINGS_ONLY" == true ]
-        then
-          echo "$IP is running latest settings on version $NODDY_V"
-        else
-          echo "$IP is running $NODDY_V"
-      fi
-    else
-      echo "$IP IS NOT RUNNING $NODDY_V"
-  fi
-done
 
 # then can also remove the noddy tar on the main machine
 printf "\nCleaning up\n"
