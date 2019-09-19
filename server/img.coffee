@@ -4,13 +4,14 @@
 import jimp from 'jimp'
 import { Random } from 'meteor/random'
 
-import phash from 'phash-image'
+#import phash from 'phash-image'
 
 import fs from 'fs'
 
 # phash below require phash and other things installed
 # sudo apt-get install cimg-dev libphash0-dev libmagickcore-dev
 # read more about perceptual hash at phash.org
+# NOTE phash is obsolete now, could not reinstall it on cluster machines, so disabling for now
 
 API.add 'img',
   get: () ->
@@ -55,7 +56,8 @@ API.img.pdf = (fn) ->
   return res
   
 API.img.phash = (fn, binary=true, buffer=false, int=false, mh=false) ->
-  checksum = API.job.sign(fn).replace(/\//g,'_')
+  return false
+  '''checksum = API.job.sign(fn).replace(/\//g,'_')
 	#exists = API.http.cache checksum, 'img_phash'
 	#return exists if exists
 
@@ -76,7 +78,7 @@ API.img.phash = (fn, binary=true, buffer=false, int=false, mh=false) ->
       phash fn, (err,hash) -> callback null, (if binary then API.convert.buffer2binary(hash) else if buffer then hash else hash.toString())
   res = _phash fn
   #API.http.cache(checksum, 'img_phash', res) if res
-  return res
+  return res'''
 
 API.img.difference = (a,b,simple=true,algo) ->
   algo = algo.split(',') if typeof algo is 'string'
@@ -306,11 +308,11 @@ API.img.jimp = (opts={}) ->
 
 
 
-API.img._data = (pfn, img, clusters=6, focuscrop=false, phash=false) ->
+API.img._data = (pfn, img, clusters=6, focuscrop=false) -> #, phash=false) ->
   if pfn
     pfn += '_' + clusters
     pfn += '_focuscrop' if focuscrop
-    pfn += '_phashstr' if phash
+    #pfn += '_phashstr' if phash
     exists = API.http.cache pfn, 'img_data'
     return exists if exists?
 
@@ -346,9 +348,9 @@ API.img._data = (pfn, img, clusters=6, focuscrop=false, phash=false) ->
     gimg = img.clone()
     gimg.greyscale().contrast(1)
     
-  if phash
-    try info.phash = API.img.phash phash
-    try info.phashstr = API.img.phash phash, false
+  #if phash
+  #  try info.phash = API.img.phash phash
+  #  try info.phashstr = API.img.phash phash, false
 
   img.scan 0, 0, img.bitmap.width, img.bitmap.height, (x, y, idx) ->
     info.avg.red += img.bitmap.data[idx]
