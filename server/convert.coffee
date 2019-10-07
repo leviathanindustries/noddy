@@ -2,7 +2,6 @@
 #import request from 'request'
 import { Converter } from 'csvtojson'
 import json2csv from 'json2csv'
-import html2txt from 'html-to-text'
 import textract from 'textract' # note this requires installs on the server for most conversions
 import xlsx from 'xlsx'
 import xml2js from 'xml2js'

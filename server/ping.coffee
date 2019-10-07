@@ -34,6 +34,8 @@ API.add 'ping.png',
       'Content-disposition': "inline; filename=ping.png"
       'Content-type': 'image/png'
       'Content-length': img.length
+      'Access-Control-Allow-Origin': '*'
+
     this.response.end img
 
 API.add 'pings',

@@ -144,28 +144,6 @@ server {
 
 
 
-# OLD API IN CASE OAB NEEDS IT TEMPORARILY
-server {
-    listen          443 ssl;
-    server_name     old.api.cottagelabs.com;
-    ssl_certificate /etc/letsencrypt/live/old.api.cottagelabs.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/old.api.cottagelabs.com/privkey.pem;
-
-    location / {
-        add_header Strict-Transport-Security "max-age=31536000;";
-        add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
-        add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Disposition';
-        proxy_pass http://localhost:3005/api/;
-        proxy_redirect off;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Authorization "";
-        # proxy_buffering off;
-    }
-}
-
-
 
 server {
         server_name static.cottagelabs.com;

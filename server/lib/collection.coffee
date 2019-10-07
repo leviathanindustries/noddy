@@ -516,16 +516,19 @@ API.collection._translate = (q, opts) ->
   opts = {newest: true} if opts is true
   qry = opts?.query ? {}
   qry.query ?= {}
-  if not qry.query? or not qry.query.filtered?
-    qry.query = filtered: {query: qry.query, filter: {}}
-  qry.query.filtered.filter ?= {}
-  qry.query.filtered.filter.bool ?= {}
-  qry.query.filtered.filter.bool.must ?= []
-  if not qry.query.filtered.query.bool?
-    ms = []
-    ms.push(qry.query.filtered.query) if not _.isEmpty qry.query.filtered.query
-    qry.query.filtered.query = bool: must: ms
-  qry.query.filtered.query.bool.must ?= []
+  _structure = (sq) ->
+    if not sq.query? or not sq.query.filtered?
+      sq.query = filtered: {query: sq.query, filter: {}}
+    sq.query.filtered.filter ?= {}
+    sq.query.filtered.filter.bool ?= {}
+    sq.query.filtered.filter.bool.must ?= []
+    if not sq.query.filtered.query.bool?
+      ms = []
+      ms.push(sq.query.filtered.query) if not _.isEmpty sq.query.filtered.query
+      sq.query.filtered.query = bool: must: ms
+    sq.query.filtered.query.bool.must ?= []
+    return sq
+  qry = _structure qry
   if typeof q is 'object'
     # if a search endpoint passes its "this" contenxt then expand out the query or body params
     if q.queryParams? or q.bodyParams?
@@ -597,6 +600,7 @@ API.collection._translate = (q, opts) ->
     else if q?
       q = '*' if q is ''
       qry.query.filtered.query.bool.must.push query_string: query: q
+  qry = _structure qry # do this again to make sure valid structure is present after above changes, and before going through opts which require expected structure
   if opts?
     if opts.newest is true
       delete opts.newest
