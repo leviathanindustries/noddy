@@ -18,7 +18,7 @@ API.add 'ping.png',
       data.ip = this.request.headers['x-real-ip']
       data.forwarded = this.request.headers['x-forwarded-for']
       try
-        res = HTTP.call 'GET', 'http://ipinfo.io/' + data.ip
+        res = HTTP.call 'GET', 'http://ipinfo.io/' + data.ip + (if API.settings?.use?.ipinfo?.token? then '?token=' + API.settings.use.ipinfo.token else '')
         info = JSON.parse res.content
         data[k] = info[k] for k of info
         if data.loc
