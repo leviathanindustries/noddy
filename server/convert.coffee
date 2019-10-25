@@ -434,7 +434,7 @@ API.convert.json2csv = (content, opts={}) ->
           if l[k].length is 0 
             opts.fields.push(k) if opts.fields.indexOf(k) is -1
             l[k] = ''
-          else if typeof l[k][0] is 'string'
+          else if typeof l[k][0] is 'string' or typeof l[k][0] is 'number'
             opts.fields.push(k) if opts.fields.indexOf(k) is -1
             l[k] = l[k].join(',')
           else if opts.flat # not the same as the lib opts.flatten

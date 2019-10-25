@@ -642,16 +642,39 @@ API.collection._translate = (q, opts) ->
     if opts.and?
       qry.query.filtered.filter.bool.must.push a for a in opts.and
       delete opts.and
-    if opts.sort? and typeof opts.sort is 'string' and opts.sort.indexOf(':') isnt -1
-      os = {}
-      os[opts.sort.split(':')[0]] = {order:opts.sort.split(':')[1]}
-      opts.sort = os
+    if opts.sort?
+      if typeof opts.sort is 'string' and opts.sort.indexOf(',') isnt -1
+        if opts.sort.indexOf(':') isnt -1
+          os = []
+          for ps in opts.sort.split ','
+            nos = {}
+            nos[ps.split(':')[0]] = {order:ps.split(':')[1]}
+            os.push nos
+          opts.sort = os
+        else
+          opts.sort = opts.sort.split ','
+      if typeof opts.sort is 'string' and opts.sort.indexOf(':') isnt -1
+        os = {}
+        os[opts.sort.split(':')[0]] = {order:opts.sort.split(':')[1]}
+        opts.sort = os
     if opts.restrict?
       qry.query.filtered.filter.bool.must.push(rs) for rs in opts.restrict
       delete opts.restrict
     if opts.all?
       qry.size = 1000000 # just a simple way to try to get "all" records - although passing size would be a better solution, and works anyway
       delete opts.all
+    if opts.terms?
+      try opts.terms = opts.terms.split(',')
+      qry.facets ?= {}
+      for tm in opts.terms
+        qry.facets[tm] = { terms: { field: tm, size: 1000 } }
+      delete opts.terms
+    if opts.facets? or opts.aggs? or opts.aggregations?
+      af = if opts.facets? then 'facets' else if opts.aggs? then 'aggs' else 'aggregations'
+      qry[af] ?= {}
+      for f of opts[af]
+        qry[af][f] = opts[af][f]
+      delete opts[af]
     qry[k] = v for k, v of opts
   qry.query.filtered.query = { match_all: {} } if typeof qry is 'object' and qry.query?.filtered?.query? and _.isEmpty(qry.query.filtered.query)
   console.log('Returning translated query',JSON.stringify(qry)) if API.settings.log?.level is 'all'

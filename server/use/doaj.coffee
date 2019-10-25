@@ -6,6 +6,10 @@
 API.use ?= {}
 API.use.doaj = {journals: {}, articles: {}}
 
+API.add 'use/doaj/:which/es',
+  get: () -> return API.use.doaj.es this.urlParams.which, this.queryParams
+  post: () -> return API.use.doaj.es this.urlParams.which, this.queryParams, this.bodyParams
+
 API.add 'use/doaj/articles/search/:qry',
   get: () -> return API.use.doaj.articles.search this.urlParams.qry
 
@@ -20,6 +24,34 @@ API.add 'use/doaj/journals/search/:qry',
 
 API.add 'use/doaj/journals/issn/:issn',
   get: () -> return API.use.doaj.journals.issn this.urlParams.issn
+
+
+
+API.use.doaj.es = (which='journal,article', params, body) ->
+  # which could be journal or article or journal,article
+  # but doaj only allows this type of query on journal,article, so will add this later as a query filter
+  url = 'https://doaj.org/query/journal,article/_search?ref=public_journal_article&'
+  # this only works with a source param, if one is not present, should convert the query into a source param
+  if body
+    for p in params
+      body[p] = params[p] # allow params to override body?
+  else
+    body = params
+  if not body.source?
+    tr = API.collection._translate body
+    body = source: tr # unless doing a post, in which case don't do this part
+    body.source.aggs ?= {} # requier this to get doaj to accept the query
+    body.source.query.filtered.query.bool.must.push({term: {_type: which}}) if which isnt 'journal,article'
+    #body.source.query = body.source.query.filtered.query.bool.must[0]
+    #body.source.query ?= {query_string: {query: ""}}
+  url += op + '=' + encodeURIComponent(JSON.stringify(body[op])) + '&' for op of body
+  API.log 'Using doaj ES for ' + url
+  try
+    res = HTTP.call 'GET', url
+    try res.data.query = body
+    return if res.statusCode is 200 then res.data else {status: 'error', data: res.data, query: body}
+  catch err
+    return {status: 'error', error: err, query: body, url: url}
 
 API.use.doaj.journals.issn = (issn) ->
   r = API.use.doaj.journals.search 'issn:' + issn

@@ -319,6 +319,14 @@ API.es.call = (action, route, data, refresh, version, scan, scroll='10m', partia
       else if '_search' in route and not ret.data?.hits?.hits?
         console.log JSON.stringify opts
         console.log JSON.stringify ld
+    for tp in ['facets','aggs','aggregations']
+      try # a simple helper for terms facets - TODO this needs checked for aggs/aggregations, but works for facets
+        for f of ret.data[tp]
+          if ret.data[tp][f]._type is 'terms'
+            ret.data[tp][f].uniques = ret.data[tp][f].terms.length
+            hld = ret.data[tp][f].terms
+            delete ret.data[tp][f].terms
+            ret.data[tp][f].terms = hld
     return ret.data
   catch err
     # if version and versions don't match, there will be a 409 thrown here - pass it back so collection can handle it
@@ -387,7 +395,7 @@ API.es.terms = (index, type, key, qry, size=1000, counts=true, dev=API.settings.
   query = if typeof qry is 'object' then qry else { query: {"filtered":{"filter":{"exists":{"field":key}}}}, size: 0, facets: {} }
   query.filtered.query = { query_string: { query: qry } } if typeof qry is 'string'
   query.facets ?= {}
-  query.facets[key] = { terms: { field: key, size: size } }; # TODO need some way to decide if should check on .exact? - collection assumes it so far
+  query.facets[key] = { terms: { field: key, size: size } } # TODO need some way to decide if should check on .exact? - collection assumes it so far
   try
     ret = API.es.call 'POST', '/' + index + (if type then '/' + type else '') + '/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
     return if not ret?.facets? then [] else (if counts then ret.facets[key].terms else _.pluck(ret.facets[key].terms,'term'))

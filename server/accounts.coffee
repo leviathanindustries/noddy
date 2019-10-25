@@ -112,6 +112,12 @@ API.add 'accounts/:id/password',
     action: () ->
       return API.accounts.password this.bodyParams.password, this.user, this.urlParams.id
 
+API.add 'accounts/:id/apikey',
+  post:
+    authRequired: true
+    action: () ->
+      return API.accounts.apikey undefined, this.user, this.urlParams.id
+
 API.add 'accounts/:id/auth/:grouproles',
   get: () -> return auth: API.accounts.auth this.urlParams.grouproles.split(','), this.urlParams.id
 
@@ -344,8 +350,8 @@ API.accounts.login = (params, user, request) ->
 API.accounts.password = (password,user,acc) ->
   if not password?
     return false
-  else if acc? and acc isnt user?._id
-    if API.accounts.auth 'root', user # TODO who should be allowed to change user passwords other than root?
+  else if acc?
+    if acc is user?._id or API.accounts.auth 'root', user # TODO who should be allowed to change user passwords other than root?
       Users.update acc, {password: API.accounts.hash(password)}
       return true
     else
@@ -354,6 +360,21 @@ API.accounts.password = (password,user,acc) ->
     Users.update user._id, {password: API.accounts.hash(password)}
     return true
 
+API.accounts.apikey = (apikey,user,acc) ->
+  user = API.accounts.retrieve(user) if typeof user is 'string'
+  # TODO add a way to only add, reset or remove one apikey? - this currently resets all to just one default
+  apikey = Random.hexString 30
+  apikeys = [{ key: apikey, hash: API.accounts.hash(apikey), name: 'default' }]
+  if acc?
+    if acc is user?._id or API.accounts.auth 'root', user # TODO who should be allowed to change user passwords other than root?
+      Users.update acc, {'api.keys': apikeys}
+      return true
+    else
+      return 401
+  else
+    Users.update user._id, {'api.keys': apikeys}
+    return true
+  
 API.accounts.logout = (user) ->
   user = user._id if typeof user is 'object'
   Tokens.remove uid: user, action: 'resume'
