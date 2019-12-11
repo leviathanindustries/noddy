@@ -238,7 +238,7 @@ API.collection.prototype.import = (recs, uid, dev=API.settings.dev) ->
   return this.bulk recs, 'index', uid, undefined, dev
 
 API.collection.prototype.bulk = (recs, action, uid, bulk, dev=API.settings.dev) ->
-  # ES uses index/update/delete whereas I've used insert/update/remove in collections, so accept either her them
+  # ES uses index/update/delete whereas I've used insert/update/remove in collections, so accept either of them
   # ES accepts create too, which will only create if not already existing whereas index overwrites - but difference not needed yet
   return false if not action? or not recs? or recs.length < 1 or typeof recs isnt 'object' or ['insert','index','update','remove','delete'].indexOf(action) is -1
   # recs must be a list of records, or change docs, or ID strings
@@ -309,9 +309,9 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll, dev=API.setti
   #for sid in scrollids
   #  try API.es.call 'DELETE', '_search/scroll', undefined, undefined, undefined, sid, undefined, undefined, dev
   if action? and updates.length
-    this.bulk updates, action, uid, undefined, dev
+    bulked = this.bulk updates, action, uid, undefined, dev
   this.refresh(dev)
-  return if action then {total: total, updated:updates.length, processed:processed} else processed
+  return if action then {total: total, updated:updates.length, processed:processed, bulk: bulked} else processed
 
 API.collection.prototype.fetch = (q, opts={}, dev=API.settings.dev) ->
   qy = API.collection._translate q, opts

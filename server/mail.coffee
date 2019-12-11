@@ -87,7 +87,7 @@ API.mail.send = (opts,mail_url) ->
 
   # can also take opts.headers
   # also takes opts.attachments, but not required. Should be a list of objects as per
-  # https://github.com/nodemailer/mailcomposer/blob/7c0422b2de2dc61a60ba27cfa3353472f662aeb5/README.md#add-attachments
+  # https://github.com/nodemailer/mailcomposer/blob/v4.0.1/README.md#attachments
 
   ms = if opts.service? and API.settings.service?[opts.service]?.mail? then API.settings.service[opts.service].mail else API.settings.mail
   delete opts.service
@@ -98,8 +98,9 @@ API.mail.send = (opts,mail_url) ->
     delete opts.smtp
     mail_url ?= ms.url
     process.env.MAIL_URL = mail_url ? API.settings.mail.url
-    API.log({msg:'Sending mail via mailgun SMTP',mail:opts})
     Email.send(opts)
+    delete opts.attachments
+    API.log({msg:'Sending mail via mailgun SMTP',mail:opts})
     process.env.MAIL_URL = API.settings.mail.url if mail_url?
     return {}
   else

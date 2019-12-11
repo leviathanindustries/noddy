@@ -57,6 +57,11 @@ API.img.pdf = (fn) ->
   
 API.img.phash = (fn, binary=true, buffer=false, int=false, mh=false) ->
   return false
+  # write new custom phash
+  # http://www.hackerfactor.com/blog/index.php?/archives/432-Looks-Like-It.html
+  # https://pastebin.com/Pj9d8jt5
+  # and make more use of scijs directly as opposed to numjs
+  # http://scijs.net/packages/#scijs/ndarray-fft
   '''checksum = API.job.sign(fn).replace(/\//g,'_')
 	#exists = API.http.cache checksum, 'img_phash'
 	#return exists if exists

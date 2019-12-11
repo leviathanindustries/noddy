@@ -177,9 +177,13 @@ class share.Route
           # Run the requested endpoint
           responseData = null
           try
-            responseData = self._callEndpoint endpointContext, endpoint
-            if (responseData is null or responseData is undefined)
-              responseData = 404
+            # don't let any upload of params that are dirty
+            if JSON.stringify(req.query).indexOf('<script') isnt -1 or JSON.stringify(req.body).indexOf('<script') isnt -1
+              responseData = 400
+            else
+              responseData = self._callEndpoint endpointContext, endpoint
+              if (responseData is null or responseData is undefined)
+                responseData = 404
           catch error
             # Do exactly what Iron Router would have done, to avoid changing the API
             ironRouterSendErrorToResponse(error, req, res);

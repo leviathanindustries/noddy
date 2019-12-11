@@ -4,7 +4,7 @@
   "version": "3.0.0",
   "author": "Mark MacGillivray",
   "dependencies": {
-    "@babel/runtime": "^7.1.5",
+    "@babel/runtime": "^7.7.4",
     "atob": "^2.1.2",
     "babel-runtime": "^6.26.0",
     "busboy": "^0.2.14",
