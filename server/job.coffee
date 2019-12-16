@@ -1,4 +1,4 @@
-
+#'''
 import { Random } from 'meteor/random'
 import Future from 'fibers/future'
 import crypto from 'crypto'
@@ -927,4 +927,4 @@ API.job.test = (verbose,cleanup=true) ->
   console.log('Ending job test') if API.settings.dev
 
   return result
-
+#'''
