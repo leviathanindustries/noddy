@@ -258,8 +258,9 @@ API.use.google.sheets.feed = (sheetid,opts={}) ->
 				for k of list[l]
 					try val[k.replace('gsx$','')] = list[l][k].$t if k.indexOf('gsx$') is 0
 				values.push val
-		fs.mkdirSync('.googlelocalcopy') if not fs.existsSync '.googlelocalcopy'
-		fs.writeFileSync localcopy, JSON.stringify(values)
+		if values.length
+			fs.mkdirSync('.googlelocalcopy') if not fs.existsSync '.googlelocalcopy'
+			fs.writeFileSync localcopy, JSON.stringify(values)
 	return values
 
 

@@ -1,5 +1,4 @@
 
-
 import moment from 'moment'
 import { Random } from 'meteor/random'
 
@@ -38,7 +37,7 @@ API.collection.prototype.mapping = (original, dev=API.settings.dev) -> return if
 API.collection.prototype.refresh = (dev=API.settings.dev) -> API.es.refresh this._index, dev
 
 API.collection.prototype.delete = (confirm, history, dev=API.settings.dev) ->
-  # TODO who should be allowed to do this, and how should it be recorded in history, if history is not itself removed?
+  # TODO who should be allowed to do this?
   this.remove('*') if confirm is '*'
   API.es.call('DELETE', this._route, undefined, undefined, undefined, undefined, undefined, undefined, dev) if confirm is true
   API.es.call('DELETE', this._route + '_history', undefined, undefined, undefined, undefined, undefined, undefined, dev) if confirm is true and history is true and this._history
@@ -72,6 +71,7 @@ API.collection.prototype.history = (action, doc, uid, dev=API.settings.dev) ->
         uid: uid
       change.created_date = moment(change.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
       change[action] = doc if action isnt 'remove'
+      change.all = true if action is 'remove' and doc is '*'
       ret = API.es.call 'POST', this._route + '_history', change, undefined, undefined, undefined, undefined, undefined, dev
       if not ret?
         if change[action]?
@@ -79,7 +79,7 @@ API.collection.prototype.history = (action, doc, uid, dev=API.settings.dev) ->
           delete change[action]
           ret = API.es.call 'POST', this._route + '_history', change, undefined, undefined, undefined, undefined, undefined, dev
         if not ret?
-          API.log msg:'History logging failing',error:err,action:action,doc:doc,uid:uid
+          API.log msg:'History logging failing', action:action, doc:doc, uid:uid
 
 API.collection.prototype.fetch_history = (q, opts={}, dev=API.settings.dev) ->
   qy = API.collection._translate q, opts
@@ -188,10 +188,14 @@ API.collection.prototype.remove = (q, uid, dev=API.settings.dev) ->
     API.es.call 'DELETE', this._route + '/' + q, undefined, undefined, undefined, undefined, undefined, undefined, dev
     return true
   else if q is '*'
-    # TODO who should be allowed to do this, and how should the event be record in the history?
+    # TODO who should be allowed to do this?
     omp = this.mapping true, dev
     API.es.call 'DELETE', this._route, undefined, undefined, undefined, undefined, undefined, undefined, dev
     API.es.map this._index, this._type, omp, undefined, dev
+    if this._history
+      API.es.call('DELETE', this._route + '_history', undefined, undefined, undefined, undefined, undefined, undefined, dev)
+      API.es.map this._index, this._type + '_history', omp, undefined, dev
+      this.history('remove', q, uid, dev) if this._history
     return true
   else
     # TODO alter this to return the record ID and set action to 'remove' to get a bulk each instead of individual record removes
@@ -227,6 +231,7 @@ API.collection.prototype.find = (q, opts, versioned, dev=API.settings.dev) ->
     return got
   else
     try
+      return undefined if not q? or JSON.stringify(q).length < 3
       hits = this.search(q, opts, versioned, dev).hits.hits
       return if hits.length isnt 0 then (if versioned then hits[0] else hits[0]._source ? hits[0].fields ? {_id: hits[0]._id}) else undefined
     catch err
@@ -669,14 +674,15 @@ API.collection._translate = (q, opts) ->
       for tm in opts.terms
         qry.facets[tm] = { terms: { field: tm, size: 1000 } }
       delete opts.terms
-    if opts.facets? or opts.aggs? or opts.aggregations?
-      af = if opts.facets? then 'facets' else if opts.aggs? then 'aggs' else 'aggregations'
-      qry[af] ?= {}
-      for f of opts[af]
-        qry[af][f] = opts[af][f]
-      delete opts[af]
+    for af in ['facets','aggs','aggregations']
+      if opts[af]?
+        qry[af] ?= {}
+        qry[af][f] = opts[af][f] for f of opts[af]
+        delete opts[af]
     qry[k] = v for k, v of opts
+  # no filter query or no main query can cause issues on some queries especially if certain aggs/terms are present, so insert some default searches if necessary
   qry.query.filtered.query = { match_all: {} } if typeof qry is 'object' and qry.query?.filtered?.query? and _.isEmpty(qry.query.filtered.query)
+  #qry.query.filtered.query.bool.must = [{"match_all":{}}] if typeof qry is 'object' and qry.query?.filtered?.query?.bool?.must? and qry.query.filtered.query.bool.must.length is 0 and not qry.query.filtered.query.bool.must_not? and not qry.query.filtered.query.bool.should and (qry.aggregations? or qry.aggs? or qry.facets?)
   console.log('Returning translated query',JSON.stringify(qry)) if API.settings.log?.level is 'all'
   return qry
 

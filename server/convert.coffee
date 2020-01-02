@@ -274,17 +274,28 @@ API.convert.pdf2txt = Async.wrap (content, opts={}, callback) ->
     opts = {}
   opts.timeout ?= 20000
   pdfParser = new PDFParser(this,1)
+  completed = false
   pdfParser.on "pdfParser_dataReady", (pdfData) ->
+    completed = true
     if not pdfParser?
       return callback(null,'')
+    else if opts.newlines isnt true and opts.pages isnt true
+      strs = []
+      for p in pdfData.formImage.Pages
+        for t in p.Texts
+          for s in t.R
+            strs.push decodeURIComponent s.T
+      return callback null, if opts.list then strs else strs.join(' ')
     else
-      res = pdfParser.getRawTextContent().replace(/\r\n/g,'\n')
+      res = pdfParser.getRawTextContent()
+      res = res.replace(/\r\n/g,'\n')
       if opts.newlines isnt true
         res = res.replace(/\n/g,' ')
       if opts.pages isnt true
         res = res.replace(/----------------Page \([0-9].*?\) Break----------------/g,' ')
       return callback(null,res)
   pdfParser.on "pdfParser_dataError", () ->
+    completed = true
     return callback(null,'')
   try
     content = new Buffer (if content.indexOf('http') is 0 then HTTP.call('GET',content,{timeout:20000,npmRequestOptions:{encoding:null}}).content else content)
@@ -299,14 +310,16 @@ API.convert.pdf2txt = Async.wrap (content, opts={}, callback) ->
   # spikes cpu to 100% and never times out... weird. It does not take long to download normally. Have not figured out how to catch this...
   # and it makes the system unusable
   waited = 0
-  while waited <= opts.timeout
-    future = new Future()
-    Meteor.setTimeout (() -> future.return()), 5000
-    future.wait()
-    waited += 5000
-  console.log 'PDF to text conversion timed out at ' + waited
-  pdfParser = undefined # does this kill the async process??? - not really, TODO fix this so it does not keep running and eat the memory
-  return callback(null,'')
+  if not completed
+    while waited <= opts.timeout and completed isnt true
+      future = new Future()
+      Meteor.setTimeout (() -> future.return()), 5000
+      future.wait()
+      waited += 5000
+    if not completed
+      console.log 'PDF to text conversion timed out at ' + waited
+      pdfParser = undefined # does this kill the async process??? - not really, TODO fix this so it does not keep running and eat the memory
+      return callback(null,'')
 
 API.convert.pdf2json = Async.wrap (content, opts={}, callback) ->
   if typeof opts isnt 'object'

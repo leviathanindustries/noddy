@@ -348,6 +348,8 @@ _puppeteer = (url,refresh=86400000,proxy,callback) ->
     proxy = undefined
   return callback(null,'') if not url? or typeof url isnt 'string'
   url = 'http://' + url if url.indexOf('http') is -1
+  if url.indexOf('.pdf') isnt -1 # go straight to PDFs - TODO what other page types are worth going straight to? or anything that does not say it will be html?
+    return HTTP.call('GET',url,{timeout:20000,npmRequestOptions:{encoding:null}}).content
   if refresh isnt true and refresh isnt 0
     cached = API.http.cache url, 'puppeteer', undefined, refresh
     return callback(null,cached) if cached?
