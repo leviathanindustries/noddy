@@ -8,7 +8,7 @@
 # On receipt the pinger will grab IP and try to retrieve location data from that too:
 # <img src="https://api.cottagelabs.com/ping/p.png?n=<CURRENTNONCE>service=oabutton&id=<USERID>">
 
-pings = new API.collection "ping"
+@pings = new API.collection "ping"
 
 API.add 'ping.png',
   get: () ->

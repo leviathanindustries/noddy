@@ -177,13 +177,9 @@ class share.Route
           # Run the requested endpoint
           responseData = null
           try
-            # don't let any upload of params that are dirty
-            if JSON.stringify(req.query).indexOf('<script') isnt -1 or JSON.stringify(req.body).indexOf('<script') isnt -1
-              responseData = 400
-            else
-              responseData = self._callEndpoint endpointContext, endpoint
-              if (responseData is null or responseData is undefined)
-                responseData = 404
+            responseData = self._callEndpoint endpointContext, endpoint
+            if (responseData is null or responseData is undefined)
+              responseData = 404
           catch error
             # Do exactly what Iron Router would have done, to avoid changing the API
             ironRouterSendErrorToResponse(error, req, res);
@@ -265,12 +261,24 @@ class share.Route
     if API.settings.log.connections and endpointContext.request.method isnt 'OPTIONS'
       tu = endpointContext.request.url.split('?')[0].split('#')[0]
       if tu.replace('/api','').indexOf('/log') isnt 0 and (tu.indexOf('_log') is -1 and tu.indexOf('/es') is -1) and tu.indexOf('/reload/') is -1
+        ru = {}
+        for uu in ['url','originalUrl']
+          if endpointContext.request[uu].indexOf('apikey=') isnt -1
+            tas = endpointContext.request[uu].split('apikey=')
+            ru[uu] = tas[0] + 'apikey=XXXX' + if tas[1].indexOf('&') isnt -1 then '&' + tas[1].split(/&(.+)/)[1] else ''
+          else
+            ru[uu] = endpointContext.request[uu]
+        hh = _.clone endpointContext.request.headers
+        hh.apikey = 'XXXX' if hh.apikey?
+        hh['x-apikey'] = 'XXXX' if hh['x-apikey']?
+        qq = _.clone endpointContext.request.query
+        qq.apikey = 'XXXX' if qq.apikey?
         API.log
-          url: endpointContext.request.url.split('apikey=')[0], # TODO prob want to keep full URL with opts, or no opts, and remove apikey properly
+          url: ru.url,
           method: endpointContext.request.method,
-          originalUrl: endpointContext.request.originalUrl, # TODO as above
-          headers: endpointContext.request.headers, # TODO don't keep x-apikey if present
-          query: endpointContext.request.query
+          originalUrl: ru.originalUrl,
+          headers: hh,
+          query: qq
       else if API.settings.log?.level is 'all'
         console.log 'Not creating log for query on a log URL, but logging to console because log level is all'
         console.log endpointContext.request.url, endpointContext.request.method, endpointContext.request.query, endpointContext.request.originalUrl

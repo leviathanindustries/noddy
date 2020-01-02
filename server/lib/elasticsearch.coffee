@@ -488,9 +488,9 @@ API.es.bulk = (index, type, data, action='index', bulk=50000, dev=API.settings.d
   rows = if typeof data is 'object' and not Array.isArray(data) and data?.hits?.hits? then data.hits.hits else data
   rows = [rows] if not Array.isArray rows
   if index.indexOf('_log') is -1
-    API.log 'Doing bulk import of ' + rows.length + ' rows for ' + index + ' ' + type
+    API.log 'Doing bulk ' + action + ' of ' + rows.length + ' rows for ' + index + ' ' + type
   else if API.settings.log?.level in ['all','debug']
-    console.log 'Doing bulk import of ' + rows.length + ' rows for ' + index + ' ' + type
+    console.log 'Doing bulk ' + action + ' of ' + rows.length + ' rows for ' + index + ' ' + type
   counter = 0
   pkg = ''
   responses = []

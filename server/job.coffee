@@ -221,6 +221,9 @@ API.add 'job/stop',
 
 
 API.job.sign = (fn='', args, checksum=true) ->
+  if typeof fn isnt 'string' and args is undefined
+    args = fn
+    fn = ''
   fn += '_'
   if typeof args is 'string'
     fn += args
