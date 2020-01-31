@@ -44,7 +44,7 @@ API.add 'use/crossref/journals/:issn/works/dois',
   get: () -> return API.use.crossref.journals.dois this.urlParams.issn
 
 API.add 'use/crossref/reverse',
-  get: () -> return API.use.crossref.reverse [this.queryParams.q ? this.queryParams.query], this.queryParams.score
+  get: () -> return API.use.crossref.reverse [this.queryParams.q ? this.queryParams.query ? this.queryParams.title], this.queryParams.score
   post: () -> return API.use.crossref.reverse this.request.body
 
 API.add 'use/crossref/resolve/:doipre/:doipost', get: () -> return API.use.crossref.resolve this.urlParams.doipre + '/' + this.urlParams.doipost

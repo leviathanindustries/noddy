@@ -615,6 +615,8 @@ API.collection._translate = (q, opts) ->
       opts.sort = {createdAt:{order:'asc'}}
     delete opts._ # delete anything that may have come from query params but are not handled by ES
     delete opts.apikey
+    if opts.fields and typeof opts.fields is 'string' and opts.fields.indexOf(',') isnt -1
+      opts.fields = opts.fields.split(',')
     if opts.random
       if typeof qry is 'string'
         qry += '&random=true' # the ES module knows how to convert this to a random query

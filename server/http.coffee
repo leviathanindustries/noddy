@@ -209,6 +209,35 @@ API.http.post = (url, file, vars) ->
   res = _apost url, file, vars
   return res
 
+API.http.getFile = (url,definite) ->
+  file = {}
+  if not url?
+    file.error = 'No valid URL to get from'
+  else    
+    mu = url.split('?')[0].split('#')[0]
+    if definite or mu.indexOf('.') isnt -1
+      if mu.substr(mu.lastIndexOf('.')+1).length < 6
+        try
+          file.data = HTTP.call('GET',url,{timeout:20000,npmRequestOptions:{encoding:null}}).content
+        catch
+          file.error = 'File not found'
+    if not file.data?
+      file.data = API.http.puppeteer url
+      if not file.data? and not file.error?
+        try
+          file.data = HTTP.call('GET',url,{timeout:20000,npmRequestOptions:{encoding:null}}).content
+        catch
+          file.error = 'File not found'
+    file.name ?= if mu.substr(mu.lastIndexOf('/')+1).indexOf('.') isnt -1 then mu.substr(mu.lastIndexOf('/')+1) else undefined
+    file.filename ?= file.name
+  return file
+
+API.http.getFiles = (urls,definite) ->
+  urls = [urls] if urls? and not _.isArray urls
+  files = []
+  files.push(API.http.getFile u, definite) for u in urls
+  return files
+  
 # old resolve notes:
 # using external dependency to call request.head because Meteor provides no way to access the final url from the request module, annoyingly
 # https://secure.jbs.elsevierhealth.com/action/getSharedSiteSession?rc=9&redirect=http%3A%2F%2Fwww.cell.com%2Fcurrent-biology%2Fabstract%2FS0960-9822%2815%2901167-7%3F%26np%3Dy&code=cell-site
@@ -348,8 +377,13 @@ _puppeteer = (url,refresh=86400000,proxy,callback) ->
     proxy = undefined
   return callback(null,'') if not url? or typeof url isnt 'string'
   url = 'http://' + url if url.indexOf('http') is -1
-  if url.indexOf('.pdf') isnt -1 # go straight to PDFs - TODO what other page types are worth going straight to? or anything that does not say it will be html?
-    return HTTP.call('GET',url,{timeout:20000,npmRequestOptions:{encoding:null}}).content
+  if url.indexOf('.pdf') isnt -1 
+    # go straight to PDFs - TODO what other page types are worth going straight to? or anything that does not say it will be html?
+    # do a content type query on the url first?
+    try
+      return callback null, HTTP.call('GET',url,{timeout:20000,npmRequestOptions:{encoding:null}}).content
+    catch
+      return callback null, ''
   if refresh isnt true and refresh isnt 0
     cached = API.http.cache url, 'puppeteer', undefined, refresh
     return callback(null,cached) if cached?
