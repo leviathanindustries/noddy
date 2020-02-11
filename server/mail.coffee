@@ -175,10 +175,15 @@ API.mail.template = (search,template) ->
 
 API.mail.substitute = (content,vars,markdown) ->
   ret = {}
-  for v of vars
-    if content.toLowerCase().indexOf('{{'+v+'}}') isnt -1
-      rg = new RegExp('{{'+v+'}}','gi')
-      content = content.replace rg, vars[v]
+  _rv = (obj,pre='') ->
+    for o of obj
+      ov = if pre then pre + '.' + o else o
+      if typeof obj[o] is 'object' and not _.isArray obj[o]
+        _rv obj[o], pre + (if pre is '' then '' else '.') + o
+      else if content.toLowerCase().indexOf('{{'+ov+'}}') isnt -1
+        rg = new RegExp('{{'+ov+'}}','gi')
+        content = content.replace rg, (if _.isArray(obj[o]) then obj[o].join(', ') else obj[o])
+  _rv vars
   if content.indexOf('{{') isnt -1
     vs = ['subject','from','to','cc','bcc']
     for k in vs
@@ -189,6 +194,9 @@ API.mail.substitute = (content,vars,markdown) ->
         ret[key] = val if val
         kg = new RegExp('{{'+keyu+'.*?}}','gi')
         content = content.replace(kg,'')
+  if content.indexOf('{{') isnt -1
+    kg = new RegExp('{{.*?}}','gi')
+    content = content.replace(kg,'')
   ret.content = content
   if markdown
     ret.html = marked(ret.content)

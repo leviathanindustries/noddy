@@ -184,7 +184,7 @@ API.log = (opts, fn, lvl='debug') ->
         API.settings.log.timeout ?= 300000
         opts._id = Random.id()
         _log_stack.unshift opts
-        if _log_stack.length >= API.settings.log.bulk or Date.now() - _log_last > API.settings.log.timeout
+        if _log_stack.length >= API.settings.log.bulk or Date.now() - _log_last > API.settings.log.timeout or opts.flush?
           _log_flush()
       else
         _log_index.insert opts
@@ -213,7 +213,7 @@ API.logstack = (key,val) ->
         if val in JSON.stringify ln
           logs.push ln
     return logs
-    
+
 API.notify = (opts) ->
   try
     note = opts.notify

@@ -232,12 +232,27 @@ API.convert.file2txt = Async.wrap (content, opts={}, callback) ->
     callback = opts
     opts = {}
   # NOTE for this to work, see textract on npm - requires other things (antiword for word docs) installed. May not be useful.
-  opts.from = undefined if opts.from.indexOf('/') is -1 # need a propoer mime type here
+  opts.from = undefined if typeof opts.from is 'string' and opts.from.indexOf('/') is -1 # need a propoer mime type here
   from = opts.from ? 'application/msword'
   delete opts.from
-  content = new Buffer (if content.indexOf('http') is 0 then HTTP.call('GET',content,{npmRequestOptions:{encoding:null}}).content else content)
-  textract.fromBufferWithMime from, content, opts, ( err, result ) ->
-    return callback(null,result)
+  named = opts.name ? false
+  delete opts.name
+  try
+    if typeof content is 'string' and content.indexOf('http') is 0
+      textract.fromUrl content, opts, ( err, result ) ->
+        return callback null, result
+    else if named
+      if typeof content is 'string'
+        content = new Buffer content
+      textract.fromBufferWithName named, content, opts, ( err, result ) ->
+        return callback null, result
+    else
+      if typeof content is 'string'
+        content = new Buffer content
+      textract.fromBufferWithMime from, content, opts, ( err, result ) ->
+        return callback null, result
+  catch
+    return callback null, ''
 
 # xlsx has lots more useful options that could be used to get particular parts of sheets. See:
 # https://www.npmjs.com/package/xlsx
@@ -279,6 +294,10 @@ API.convert.pdf2txt = Async.wrap (content, opts={}, callback) ->
     completed = true
     if not pdfParser?
       return callback(null,'')
+    else if opts.raw
+      return callback null, pdfData
+    else if opts.metadata
+      return callback null, pdfData.formImage.Id
     else if opts.newlines isnt true and opts.pages isnt true
       strs = []
       for p in pdfData.formImage.Pages
@@ -294,7 +313,10 @@ API.convert.pdf2txt = Async.wrap (content, opts={}, callback) ->
       if opts.pages isnt true
         res = res.replace(/----------------Page \([0-9].*?\) Break----------------/g,' ')
       return callback(null,res)
-  pdfParser.on "pdfParser_dataError", () ->
+  # TODO some PDFs are capable of causing an error within the parser that it fails to catch - this needs further investigation at some point
+  # https://dev.openaccessbutton.org/static/test-manuscripts/Unwelcome_Change-_Coming_to_Terms_with_Democratic_Backsliding_Lust.pdf
+  # https://dev.openaccessbutton.org/static/test-manuscripts/weitz_hair_and_power_article.pdf
+  pdfParser.on "pdfParser_dataError", (err) ->
     completed = true
     return callback(null,'')
   try
@@ -441,33 +463,45 @@ API.convert.json2csv = (content, opts={}) ->
   opts.fields = opts.fields.split(',') if typeof opts.fields is 'string'
   if not opts.fields?
     opts.fields = []
-    for l in content
-      for k of l
-        if Array.isArray l[k]
-          if l[k].length is 0 
-            opts.fields.push(k) if opts.fields.indexOf(k) is -1
-            l[k] = ''
-          else if typeof l[k][0] is 'string' or typeof l[k][0] is 'number'
-            opts.fields.push(k) if opts.fields.indexOf(k) is -1
-            l[k] = l[k].join(',')
-          else if opts.flat # not the same as the lib opts.flatten
-            for tk of l[k]
-              itk = k + '.' + tk
-              opts.fields.push(itk) if opts.fields.indexOf(itk) is -1
-              l[itk] ?= ''
-              if typeof l[k][tk] is 'object' # and note this only goes down to objects in lists
-                for otk of l[k][tk]
-                  etk = k + '.' + tk + '.' + otk
-                  opts.fields.push(etk) if opts.fields.indexOf(etk) is -1
-                  l[etk] ?= ''
-                  l[etk] += (if l[etk].length then if typeof opts.flat is 'boolean' then ', ' else opts.flat else '') + (if _.isArray(l[k][tk][otk]) then l[k][tk][otk].join(',') else if typeof l[k][tk][otk] is 'object' then JSON.stringify(l[k][tk][otk]) else l[k][tk][otk])
-              else # note this would lead to this level of nested values being piled into one field even if they came from separate objects
-                l[itk] += (if l[itk].length then if typeof opts.flat is 'boolean' then ', ' else opts.flat else '') + (if _.isArray(l[k][tk]) then l[k][tk].join(',') else if typeof l[k][tk] is 'object' then JSON.stringify(l[k][tk]) else l[k][tk])
+    for o of content
+      if typeof content[o] isnt 'object'
+        content[o] = {jsn_split_rw_list: content[o]}
+        opts.fields.push('jsn_split_rw_list') if 'jsn_split_rw_list' not in opts.fields
+      else
+        l = content[o]
+        for k of l
+          if Array.isArray l[k]
+            if l[k].length is 0 
+              opts.fields.push(k) if opts.fields.indexOf(k) is -1
+              l[k] = ''
+            else if typeof l[k][0] is 'string' or typeof l[k][0] is 'number'
+              opts.fields.push(k) if opts.fields.indexOf(k) is -1
+              l[k] = l[k].join(',')
+            else if opts.flat # not the same as the lib opts.flatten
+              for tk of l[k]
+                itk = k + '.' + tk
+                opts.fields.push(itk) if opts.fields.indexOf(itk) is -1
+                l[itk] ?= ''
+                if typeof l[k][tk] is 'object' # and note this only goes down to objects in lists
+                  for otk of l[k][tk]
+                    etk = k + '.' + tk + '.' + otk
+                    opts.fields.push(etk) if opts.fields.indexOf(etk) is -1
+                    l[etk] ?= ''
+                    l[etk] += (if l[etk].length then if typeof opts.flat is 'boolean' then ', ' else opts.flat else '') + (if _.isArray(l[k][tk][otk]) then l[k][tk][otk].join(',') else if typeof l[k][tk][otk] is 'object' then JSON.stringify(l[k][tk][otk]) else l[k][tk][otk])
+                else # note this would lead to this level of nested values being piled into one field even if they came from separate objects
+                  l[itk] += (if l[itk].length then if typeof opts.flat is 'boolean' then ', ' else opts.flat else '') + (if _.isArray(l[k][tk]) then l[k][tk].join(',') else if typeof l[k][tk] is 'object' then JSON.stringify(l[k][tk]) else l[k][tk])
+            else
+              opts.fields.push(k) if opts.fields.indexOf(k) is -1
+              l[k] = JSON.stringify l[k]
           else
             opts.fields.push(k) if opts.fields.indexOf(k) is -1
-            l[k] = JSON.stringify l[k]
-        else
-          opts.fields.push(k) if opts.fields.indexOf(k) is -1
+  else if _.isArray(opts.fields) and opts.fields.length is 1
+    for o of content
+      if typeof content[o] isnt 'object'
+        co = {}
+        co[opts.fields[0]] = content[o]
+        content[o] = co
+
   # an odd use of a stream here, passing it what is already a variable. But this 
   # avoids json2csv OOM errors which seem to occur even if the memory is not all used
   # moving to all stream at some point would be nice, but not done yet...
@@ -484,6 +518,7 @@ API.convert.json2csv = (content, opts={}) ->
     future = new Future()
     Meteor.setTimeout (() -> future.return()), 500
     future.wait()
+  res = res.replace('"jsn_split_rw_list"\n','') if res.indexOf('"jsn_split_rw_list"') is 0
   return res
 
 API.convert.json2keys = (content, opts={}) ->
@@ -531,10 +566,13 @@ API.convert.json2txt = (content, opts={}) ->
 API.convert.json2csv2response = (ths, data, filename) ->
   rows = []
   for dr in (if data?.hits?.hits? then data.hits.hits else data)
-    rw = if dr._source? then dr._source else if dr.fields then dr.fields else dr
-    for k of rw
-      rw[k] = rw[k][0] if _.isArray(rw[k]) and rw[k].length is 1
-    rows.push rw
+    if typeof dr isnt 'object'
+      rows.push dr
+    else
+      rw = if dr._source? then dr._source else if dr.fields then dr.fields else dr
+      for k of rw
+        rw[k] = rw[k][0] if _.isArray(rw[k]) and rw[k].length is 1
+      rows.push rw
   csv = API.convert.json2csv rows, {fields:ths.queryParams?.fields ? ths.bodyParams?.fields}
   API.convert.csv2response ths, csv, filename
 
