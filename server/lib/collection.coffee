@@ -211,17 +211,23 @@ API.collection.prototype.search = (q, opts, versioned, dev=API.settings.dev) ->
   if opts is 'versioned'
     versioned = true
     opts = undefined
+  dbq = false
+  if q?.queryParams?.dbq?
+    dbq = true
+    delete q.queryParams.dbq
   q = API.collection._translate q, opts
+  res = {}
   if not q?
-    return undefined
+    res = undefined
   else if typeof q is 'string'
     res = API.es.call 'GET', this._route + '/_search?' + (if versioned then 'version=true&' else '') + (if q.indexOf('?') is 0 then q.replace('?', '') else q), undefined, undefined, undefined, undefined, undefined, undefined, dev
     res.q = q if res? and API.settings.dev
-    return res
   else
     res = API.es.call 'POST', this._route + '/_search' + (if versioned then '?version=true' else ''), q, undefined, undefined, undefined, undefined, undefined, dev
     res.q = q if res? and API.settings.dev
-    return res
+  if dbq and q? and res?.hits?.total? and res.hits.total > 0 and dev # simple way to get rid of records in test indexes
+    res.deleted = this.remove q
+  return res
 
 API.collection.prototype.find = (q, opts, versioned, dev=API.settings.dev) ->
   try versioned = opts.versioned
@@ -294,25 +300,22 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll, dev=API.setti
     sz = max_size if max_size < sz
   qy.size = sz
   res = API.es.call 'POST', this._route + '/_search', qy, undefined, undefined, true, undefined, undefined, dev
-  return 0 if not res?._scroll_id?
-  # scrolling to the end of the scroll results closes the scrolls anyway even if the timeout is not reached, so no need to track and delete them
-  #scrollids = []
-  #scrollids.push(res._scroll_id) if scroll?
-  res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
-  return 0 if not res?._scroll_id? or not res.hits?.hits? or res.hits.hits.length is 0
+  if res?.hits?.total? and res.hits.total isnt 0 and res.hits.total isnt res.hits.hits.length and res._scroll_id?
+    res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
+  return 0 if not res?.hits?.hits? or res.hits.hits.length is 0
   total = res.hits.total
   processed = 0
   updates = []
   while (res.hits.hits.length)
-    #scrollids.push(res._scroll_id) if scroll?
-    processed += res.hits.hits.length
     for h in res.hits.hits
       fn = fn.bind this
       fr = fn h._source ? h.fields ? {_id: h._id}
+      processed += 1
       updates.push(fr) if fr? and (typeof fr is 'object' or typeof fr is 'string')
-    res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
-  #for sid in scrollids
-  #  try API.es.call 'DELETE', '_search/scroll', undefined, undefined, undefined, sid, undefined, undefined, dev
+    if res._scroll_id?
+      res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
+    else
+      res.hits.hits = []
   if action? and updates.length
     bulked = this.bulk updates, action, uid, undefined, dev
   this.refresh(dev)

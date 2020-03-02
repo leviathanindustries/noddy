@@ -86,7 +86,6 @@ JsonRoutes.Middleware.use (req, res, next) ->
       API.log msg: 'busboy have file...', uploadedFile, level: 'debug'
       buffers = []
       file.on 'data', (data) ->
-        API.log msg: 'data length: ' + data.length, level: 'debug'
         buffers.push data
       file.on 'end', () ->
         API.log msg: 'End of busboy file', level: 'debug'

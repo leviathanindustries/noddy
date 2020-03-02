@@ -19,6 +19,8 @@ API.use.europepmc = {}
 
 API.add 'use/europepmc/doi/:doipre/:doipost',
   get: () -> return API.use.europepmc.doi this.urlParams.doipre + '/' + this.urlParams.doipost
+API.add 'use/europepmc/doi/:doipre/:doipost/:doimore',
+  get: () -> return API.use.europepmc.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore
 
 API.add 'use/europepmc/pmid/:qry', get: () -> return API.use.europepmc.pmid this.urlParams.qry
 

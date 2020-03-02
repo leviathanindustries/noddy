@@ -3,6 +3,7 @@
 import { Converter } from 'csvtojson'
 import json2csv from 'json2csv'
 import textract from 'textract' # note this requires installs on the server for most conversions
+import mammoth from 'mammoth'
 import xlsx from 'xlsx'
 import xml2js from 'xml2js'
 import PDFParser from 'pdf2json'
@@ -133,6 +134,12 @@ API.convert.run = (content,from,to,opts={}) ->
     output = API.convert['xml2' + to](content)
   else if from is 'pdf' and to in ['txt','json']
     output = API.convert['pdf2' + to](content,opts)
+  else if from is 'docx' and to in ['txt','text']
+    output = API.convert.docx2txt content, opts
+  else if from is 'docx' and to is 'html'
+    output = API.convert.docx2html content, opts
+  else if from is 'docx' and to is 'markdown'
+    output = API.convert.docx2markdown content, opts
   else if from in ['xls','sheet','list'] and to in ['txt','json','html','csv','string']
     output = API.convert[from + '2' + to](content,opts)
   if from is 'file' and to.indexOf('txt') isnt -1 # some of the above switch to this, so separate loop
@@ -227,16 +234,124 @@ API.convert.html2txt = (content,render=false) ->
   text = html2txt.fromString(content, {wordwrap: 130})
   return text
 
+API.convert.mime = (fn) ->
+  mimes = {
+    '.aac': 'audio/aac', # AAC audio	
+    '.abw': 'application/x-abiword', # AbiWord document
+    '.arc': 'application/x-freearc', # Archive document (multiple files embedded)
+    '.avi': 'video/x-msvideo', # AVI: Audio Video Interleave
+    '.azw': 'application/vnd.amazon.ebook', # Amazon Kindle eBook format
+    '.bin': 'application/octet-stream', # Any kind of binary data
+    '.bmp': 'image/bmp', # Windows OS/2 Bitmap Graphics
+    '.bz': 'application/x-bzip', # BZip archive
+    '.bz2': 'application/x-bzip2', # BZip2 archive
+    '.csh': 'application/x-csh', # C-Shell script
+    '.css': 'text/css', # Cascading Style Sheets (CSS)
+    '.csv': 'text/csv', # Comma-separated values (CSV)
+    '.doc': 'application/msword', # Microsoft Word
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', # Microsoft Word (OpenXML)
+    '.eot': 'application/vnd.ms-fontobject', # MS Embedded OpenType fonts
+    '.epub': 'application/epub+zip', # Electronic publication (EPUB)
+    '.gz': 'application/gzip', # GZip Compressed Archive
+    '.gif': 'image/gif', # Graphics Interchange Format (GIF)
+    '.htm': 'text/html', # HyperText Markup Language (HTML)
+    '.ico': 'image/vnd.microsoft.icon', # Icon format
+    '.ics': 'text/calendar', # iCalendar format
+    '.jar': 'application/java-archive', # Java Archive (JAR)
+    '.jpg': 'image/jpeg', # JPEG images
+    '.js': 'text/javascript', # JavaScript
+    '.json': 'application/json', # JSON format
+    '.jsonld': 'application/ld+json', # JSON-LD format
+    '.mid': 'audio/midi', # Musical Instrument Digital Interface (MIDI) audio/x-midi
+    '.mjs': 'text/javascript', # JavaScript module
+    '.mp3': 'audio/mpeg', # MP3 audio
+    '.mpeg': 'video/mpeg', # MPEG Video
+    '.mpkg': 'application/vnd.apple.installer+xml', # Apple Installer Package
+    '.odp': 'application/vnd.oasis.opendocument.presentation', # OpenDocument presentation document
+    '.ods': 'application/vnd.oasis.opendocument.spreadsheet', # OpenDocument spreadsheet document
+    '.odt': 'application/vnd.oasis.opendocument.text', # OpenDocument text document
+    '.oga': 'audio/ogg', # OGG audio
+    '.ogv': 'video/ogg', # OGG video
+    '.ogx': 'application/ogg', # OGG
+    '.opus': 'audio/opus', # Opus audio
+    '.otf': 'font/otf', # OpenType font
+    '.png': 'image/png', # Portable Network Graphics
+    '.pdf': 'application/pdf', # Adobe Portable Document Format (PDF)
+    '.php': 'application/php', # Hypertext Preprocessor (Personal Home Page)
+    '.ppt': 'application/vnd.ms-powerpoint', # Microsoft PowerPoint
+    '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', # Microsoft PowerPoint (OpenXML)
+    '.rar': 'application/vnd.rar', # RAR archive
+    '.rtf': 'application/rtf', # Rich Text Format (RTF)
+    '.sh': 'application/x-sh', # Bourne shell script
+    '.svg': 'image/svg+xml', # Scalable Vector Graphics (SVG)
+    '.swf': 'application/x-shockwave-flash', # Small web format (SWF) or Adobe Flash document
+    '.tar': 'application/x-tar', # Tape Archive (TAR)
+    '.tif': 'image/tiff', # Tagged Image File Format (TIFF)
+    '.ts': 'video/mp2t', # MPEG transport stream
+    '.ttf': 'font/ttf', # TrueType Font
+    '.txt': 'text/plain', # Text, (generally ASCII or ISO 8859-n)
+    '.vsd': 'application/vnd.visio', # Microsoft Visio
+    '.wav': 'audio/wav', # Waveform Audio Format
+    '.weba': 'audio/webm', # WEBM audio
+    '.webm': 'video/webm', # WEBM video
+    '.webp': 'image/webp', # WEBP image
+    '.woff': 'font/woff', # Web Open Font Format (WOFF)
+    '.woff2': 'font/woff2', # Web Open Font Format (WOFF)
+    '.xhtml': 'application/xhtml+xml', # XHTML
+    '.xls': 'application/vnd.ms-excel', # Microsoft Excel
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', # Microsoft Excel (OpenXML)
+    '.xml': 'application/xml', # XML
+    '.xul': 'application/vnd.mozilla.xul+xml', # XUL
+    '.zip': 'application/zip', # ZIP archive
+    '.3gp': 'video/3gpp', # 3GPP audio/video container audio/3gpp if it doesn't contain video
+    '.3g2': 'video/3gpp2', # 3GPP2 audio/video container audio/3gpp2 if it doesn't contain video
+    '.7z': 'application/x-7z-compressed' # 7-zip archive
+  }
+  tp = (if fn.indexOf('.') is -1 then fn else fn.substr(fn.lastIndexOf('.')+1)).toLowerCase()
+  tp = 'htm' if tp is 'html'
+  tp = 'jpg' if tp is 'jpeg'
+  tp = 'tif' if tp is 'tiff'
+  tp = 'mid' if tp is 'midi'
+  mime = mimes['.'+tp]
+  return if typeof mime is 'string' then mime else false
+
+API.convert._docx2 = Async.wrap (what='txt', content, opts, callback) ->
+  if typeof opts isnt 'object'
+    callback = opts
+    opts = {}
+  if typeof content is 'string' and content.indexOf('http') is 0
+    content = API.http.getFile(content).data
+  if typeof content is 'string'
+    content = new Buffer content
+  try
+    # NOTE the convert to html fails within mammoth, but txt and markdown both work. Could add a markdown to html converter later if necessary
+    mammoth[(if what is 'html' then 'convertToHTML' else if what is 'markdown' then 'convertToMarkdown' else 'extractRawText')]({buffer: content})
+      .then((res) ->
+        return callback null, res.value
+      ).done()
+  catch
+    return callback null, ''
+API.convert.docx2txt = (content, opts={}) -> return API.convert._docx2 'txt', content, opts
+API.convert.docx2html = (content, opts={}) -> return API.convert._docx2 'html', content, opts
+API.convert.docx2markdown = (content, opts={}) -> return API.convert._docx2 'markdown', content, opts
+
 API.convert.file2txt = Async.wrap (content, opts={}, callback) ->
   if typeof opts isnt 'object'
     callback = opts
     opts = {}
   # NOTE for this to work, see textract on npm - requires other things (antiword for word docs) installed. May not be useful.
-  opts.from = undefined if typeof opts.from is 'string' and opts.from.indexOf('/') is -1 # need a propoer mime type here
-  from = opts.from ? 'application/msword'
+  opts.from = undefined if typeof opts.from is 'string' and opts.from.indexOf('/') is -1 # need a proper mime type here
   delete opts.from
   named = opts.name ? false
   delete opts.name
+  from = opts.from
+  if named and not from
+    mime = API.convert.mime named
+    if mime
+      from = mime
+      named = false
+  from ?= 'application/msword'
+  return API.convert.docx2txt(content, opts) if (typeof content is 'string' and content.indexOf('.docx') isnt -1) or (typeof named is 'string' and content.indexOf('.docx') isnt -1)
   try
     if typeof content is 'string' and content.indexOf('http') is 0
       textract.fromUrl content, opts, ( err, result ) ->
