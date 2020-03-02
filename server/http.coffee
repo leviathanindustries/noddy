@@ -233,10 +233,13 @@ API.http.getFile = (url,definite) ->
   return file
 
 API.http.getFiles = (urls,definite) ->
-  urls = [urls] if urls? and not _.isArray urls
-  files = []
-  files.push(API.http.getFile u, definite) for u in urls
-  return files
+  if not urls?
+    return []
+  else
+    urls = [urls] if urls? and not _.isArray urls
+    files = []
+    files.push(API.http.getFile u, definite) for u in urls
+    return files
   
 # old resolve notes:
 # using external dependency to call request.head because Meteor provides no way to access the final url from the request module, annoyingly
