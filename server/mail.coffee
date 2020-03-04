@@ -182,7 +182,7 @@ API.mail.substitute = (content,vars,markdown) ->
         _rv obj[o], pre + (if pre is '' then '' else '.') + o
       else if content.toLowerCase().indexOf('{{'+ov+'}}') isnt -1
         rg = new RegExp('{{'+ov+'}}','gi')
-        content = content.replace rg, (if _.isArray(obj[o]) then obj[o].join(', ') else obj[o])
+        content = content.replace rg, (if _.isArray(obj[o]) then obj[o].join(', ') else (if typeof obj[o] is 'string' then obj[o] else (if obj[o] is true then 'Yes' else (if obj[o] is false then 'No' else ''))))
   _rv vars
   if content.indexOf('{{') isnt -1
     vs = ['subject','from','to','cc','bcc']
