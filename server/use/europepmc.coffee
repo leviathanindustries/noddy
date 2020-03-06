@@ -151,6 +151,13 @@ API.use.europepmc.licence = (pmcid,rec,fulltext,noui,cache,refresh=86400000) ->
   if res?.total > 0 or rec or fulltext
     rec ?= res.data[0]
     pmcid = rec.pmcid if not pmcid and rec
+    
+    if rec.license
+      licinapi = {licence: rec.license,source:'epmc_api'}
+      licinapi.licence = licinapi.licence.replace(/ /g,'-') if licinapi.licence.indexOf('cc') is 0
+      API.http.cache pmcid, 'epmc_licence', licinapi
+      return licinapi
+      
     fulltext = API.use.europepmc.xml(pmcid) if not fulltext and pmcid
     if fulltext isnt 404 and typeof fulltext is 'string' and fulltext.indexOf('<') is 0
       licinperms = API.service.lantern.licence undefined,undefined,fulltext,'<permissions>','</permissions>'
