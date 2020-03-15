@@ -242,7 +242,7 @@ API.use.google.sheets.feed = (sheetid,opts={}) ->
 	# expects a google sheet ID or a URL to a google sheets feed in json format
 	# NOTE the sheet must be published for this to work, should have the data in sheet 1, and should have columns of data with key names in row 1
 	sheetid = sheetid.split('/spreadsheets/d/')[1].split('/')[0] if sheetid.indexOf('http') is 0 and sheetid.indexOf('/spreadsheets/d/') isnt -1 and sheetid.indexOf('/feeds/list/') is -1
-	url = if sheetid.indexOf('http') isnt 0 then 'https://spreadsheets.google.com/feeds/list/' + sheetid + '/od6/public/values?alt=json' else sheetid
+	url = if sheetid.indexOf('http') isnt 0 then 'https://spreadsheets.google.com/feeds/list/' + sheetid + '/default/public/values?alt=json' else sheetid
 	sheetid = sheetid.replace('https://','').replace('http://','').replace('spreadsheets.google.com/feeds/list/','').split('/')[0]
 	localcopy = '.googlelocalcopy/' + sheetid + '.json'
 	values = []
