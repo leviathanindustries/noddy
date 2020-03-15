@@ -18,6 +18,8 @@ API.add 'use/doaj/articles/title/:qry',
 
 API.add 'use/doaj/articles/doi/:doipre/:doipost',
   get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost
+API.add 'use/doaj/articles/doi/:doipre/:doipost/:doiextra',
+  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doiextra
 
 API.add 'use/doaj/journals/search/:qry',
   get: () -> return API.use.doaj.journals.search this.urlParams.qry

@@ -589,7 +589,10 @@ API.collection._translate = (q, opts) ->
       if q.must_not?
         qry.query.filtered.filter.bool.must_not = q.must_not
       for y of q # an object where every key is assumed to be an AND term search if string, or a named search object to go in to ES
-        if y not in ['must','must_not','should']
+        if (y is 'fields') or (y in ['from','size'] and (typeof q[y]is 'number' or not isNaN parseInt q[y]))
+          opts ?= {}
+          opts[y] = q[y]
+        else if y not in ['must','must_not','should']
           if typeof q[y] is 'string'
             tobj = term:{}
             tobj.term[y.replace('.exact','')+'.exact'] = q[y] # TODO is it worth checking mapping to see if .exact is used by it...
