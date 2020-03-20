@@ -10,6 +10,7 @@
 API.use ?= {}
 API.use.pubmed = {}
 
+API.add 'use/pubmed/search/:q', get: () -> return API.use.pubmed.search this.urlParams.q
 API.add 'use/pubmed/:pmid', get: () -> return API.use.pubmed.pmid this.urlParams.pmid
 
 
@@ -39,6 +40,25 @@ API.use.pubmed.pmid = (pmid) ->
       else
         frec[ii.$.Name] = ii._
     return frec
+  catch err
+    return {status:'error', error: err.toString()}
+
+API.use.pubmed.search = (str) ->
+  baseurl = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/'
+  urlone = baseurl + 'esearch.fcgi?db=pubmed&term=' + str
+  API.log 'Using pubmed search step 1 for ' + urlone
+  try
+    res = HTTP.call 'GET',urlone
+    result = API.convert.xml2json res.content, undefined, false
+    urltwo = baseurl + 'esummary.fcgi?db=pubmed&id='
+    first = true
+    for uid in result.eSearchResult.IdList
+      if first then first = false else urltwo += ','
+      urltwo += uid.Id
+    API.log 'Using pubmed search step 2 for ' + urltwo
+    restwo = HTTP.call 'GET',urltwo
+    md = API.convert.xml2json restwo.content, undefined, false
+    return md
   catch err
     return {status:'error', error: err.toString()}
 
