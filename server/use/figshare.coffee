@@ -25,6 +25,10 @@ API.use.figshare.doi = (doi) ->
   return res
 
 API.use.figshare.search = (params) ->
+  params = {search_for: params} if typeof params is 'string'
+  if params?.q?
+    params.search_for = params.q
+    delete params.q
   url = 'https://api.figshare.com/v2/articles/search'
   API.log 'Using figshare for ' + url
   # search_for is required
