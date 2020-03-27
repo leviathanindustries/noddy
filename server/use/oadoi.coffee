@@ -5,12 +5,14 @@ API.use.oadoi = {}
 
 API.add 'use/oadoi/:doipre/:doipost',
   get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost
+API.add 'use/oadoi/:doipre/:doipost/:doimore',
+  get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore
 
 API.use.oadoi.doi = (doi) ->
-  url = 'https://api.oadoi.org/v2/' + doi + '?email=mark@cottagelabs.com'
-  API.log 'Using oadoi for ' + url
   res = API.http.cache doi, 'oadoi_doi'
   if not res?
+    url = 'https://api.oadoi.org/v2/' + doi + '?email=mark@cottagelabs.com'
+    API.log 'Using oadoi for ' + url
     try
       res = HTTP.call 'GET', url
       if res.statusCode is 200
@@ -23,8 +25,28 @@ API.use.oadoi.doi = (doi) ->
         return undefined
     catch
       return undefined
-  res.redirect = API.service.oab.redirect(res.url) if res?.url? and API.service.oab?
-  return res
+  #try res.redirect = API.service.oab.redirect res.url
+  return API.use.oadoi.format res
+
+API.use.oadoi.format = (rec, metadata={}) ->
+  try metadata.doi ?= rec.doi
+  try metadata.title ?= rec.title
+  try metadata.journal = rec.journal_name
+  try metadata.issn ?= rec.journal_issn_1
+  try metadata.publisher ?= rec.publisher
+  try metadata.year ?= rec.year
+  try metadata.licence ?= rec.best_oa_location.license if rec.best_oa_location?.license and rec.best_oa_location?.license isnt null
+  try metadata.author ?= rec.z_authors
+  try
+    for a in metadata.author
+      if a.affiliation?
+        a.affiliation = a.affiliation[0] if _.isArray a.affiliation
+        a.affiliation = {name: a.affiliation} if typeof a.affiliation is 'string'
+  try metadata.pdf ?= rec.pdf
+  try metadata.url ?= rec.url
+  try metadata.open ?= rec.open
+  try metadata.redirect ?= rec.redirect
+  return metadata
 
 
 

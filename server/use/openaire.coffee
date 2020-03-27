@@ -5,24 +5,78 @@
 API.use ?= {}
 API.use.openaire = {}
 
-API.add 'use/openaire/search', get: () -> return API.use.openaire.search this.queryParams
+API.add 'use/openaire/search', get: () -> return API.use.openaire.search this.queryParams, this.queryParams.format?
 
-API.add 'use/openaire/title/:qry', get: () -> return API.use.openaire.title this.urlParams.qry
+API.add 'use/openaire/title/:qry', get: () -> return API.use.openaire.title this.urlParams.qry, this.queryParams.format?
 
-API.add 'use/openaire/doi/:doipre/:doipost', get: () -> return API.use.openaire.doi this.urlParams.doipre + '/' + this.urlParams.doipost,this.queryParams.open
+API.add 'use/openaire/doi/:doipre/:doipost', get: () -> return API.use.openaire.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format?
+API.add 'use/openaire/doi/:doipre/:doipost/:doimore', get: () -> return API.use.openaire.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format?
 
 
-API.use.openaire.doi = (doi) ->
-  return API.use.openaire.get {doi:doi}
 
-API.use.openaire.title = (title) ->
+API.use.openaire.doi = (doi,format=true) ->
+  return API.use.openaire.get {doi:doi}, format
+
+API.use.openaire.title = (title,format=true) ->
   try title = title.toLowerCase().replace(/(<([^>]+)>)/g,'').replace(/[^a-z0-9 ]+/g, " ").replace(/\s\s+/g, ' ')
   return API.use.openaire.get {title:title}
 
-API.use.openaire.get = (params) ->
+API.use.openaire.get = (params,format=true) ->
   res = API.use.openaire.search params
   rec = if typeof res.data isnt 'string' and res.data?.length > 0 then res.data[0] else undefined
-  if rec?
+  rec = rec[0] if _.isArray(rec) and rec.length
+  return rec
+
+# openaire has a datasets endpoint too, but there appears to be no way to
+# search it for datasets related to an article. Sometimes the users put
+# the article title partially or completely in the description along with
+# other info, but not always. So no good way to look for data related to an article yet
+
+API.use.openaire.search = (params, format) ->
+  url = 'http://api.openaire.eu/search/publications?format=json&OA=true&'
+  if params
+    params.size ?= 10
+    for op of params
+      # openaire uses page and size for paging whereas we default to ES from and size,
+      # so do a convenience conversion of from
+      if op is 'from'
+        pg = 0 # openaire is page indexed from 1, but if there is no 1, we just don't give a page url
+        pg = if params.size is 0 then (params.from / 10) + 1 else (params.from / params.size) + 1
+        url += 'page=' + pg + '&' if pg
+      else
+        url += op + '=' + params[op] + '&'
+  API.log 'Using openaire for ' + url
+  try
+    res = HTTP.call 'GET', url
+    if res.statusCode is 200
+      results = []
+      try results = if res.data.response.header.total.$ is 1 then [res.data.response.results.result] else res.data.response.results.result
+      if format
+        for r of results
+          results[r] = API.use.openaire.format results[r]
+      return { data: results, total: res.data.response.header.total.$}
+    else
+      return { status: 'error', data: res}
+  catch err
+    return { status: 'error', data: 'openaire API error', error: err}
+
+API.use.openaire.redirect = (record) ->
+  res = {}
+  if (record.metadata?['oaf:entity']?['oaf:result']?.bestlicense?['@classid'] is 'OPEN' or record.metadata?['oaf:entity']?['oaf:result']?.bestaccessright?['@classid'] is 'OPEN') and record.metadata['oaf:entity']['oaf:result'].children?.instance?
+    t = if _.isArray(record.metadata['oaf:entity']['oaf:result'].children.instance) then record.metadata['oaf:entity']['oaf:result'].children.instance else [record.metadata['oaf:entity']['oaf:result'].children.instance]
+    for i in t
+      if (i.licence?['@classid'] is 'OPEN' or i.accessright?['@classid'] is 'OPEN') and i.webresource?.url?.$
+        res.url = API.http.resolve i.webresource.url.$
+        try
+          resolves = HTTP.call 'HEAD', res.url
+        catch
+          res.url = undefined
+        #res.redirect = API.service.oab.redirect(res.url) if res.url? and API.service.oab? - trust openaire open results for now
+        break if res.url and res.redirect isnt false
+  return res
+
+API.use.openaire.format = (rec,metadata={}) ->
+  if rec?.metadata?['oaf:entity']?
     clean = {}
     op = API.use.openaire.redirect rec
     clean.url = op.url
@@ -41,53 +95,29 @@ API.use.openaire.get = (params) ->
         else if k is 'pid'
           clean[rec.metadata['oaf:entity']['oaf:result'].pid['@classid']] = rec.metadata['oaf:entity']['oaf:result'].pid.$
     rec = clean
-  return rec
-
-# openaire has a datasets endpoint too, but there appears to be no way to
-# search it for datasets related to an article. Sometimes the users put
-# the article title partially or completely in the description along with
-# other info, but not always. So no good way to look for data related to an article yet
-
-API.use.openaire.search = (params) ->
-  url = 'http://api.openaire.eu/search/publications?format=json&OA=true&'
-  if params
-    params.size ?= 10
-    for op of params
-      # openaire uses page and size for paging whereas we default to ES from and size,
-      # so do a convenience coneversion of from
-      if op is 'from'
-        pg = 0 # openaire is page indexed from 1, but if there is no 1, we just don't give a page url
-        pg = if params.size is 0 then (params.from / 10) + 1 else (params.from / params.size) + 1
-        url += 'page=' + pg + '&' if pg
-      else
-        url += op + '=' + params[op] + '&'
-  API.log 'Using openaire for ' + url
-  try
-    res = HTTP.call 'GET', url
-    if res.statusCode is 200
-      results = []
-      try results = if res.data.response.header.total.$ is 1 then [res.data.response.results.result] else res.data.response.results.result
-      return { data: results, total: res.data.response.header.total.$}
-    else
-      return { status: 'error', data: res}
-  catch err
-    return { status: 'error', data: 'openaire API error', error: err}
-
-API.use.openaire.redirect = (record) ->
-  res = {}
-  if (record.metadata?['oaf:entity']?['oaf:result']?.bestlicense?['@classid'] is 'OPEN' or record.metadata?['oaf:entity']?['oaf:result']?.bestaccessright?['@classid'] is 'OPEN') and record.metadata['oaf:entity']['oaf:result'].children?.instance?
-    t = if _.isArray(record.metadata['oaf:entity']['oaf:result'].children.instance) then record.metadata['oaf:entity']['oaf:result'].children.instance else [record.metadata['oaf:entity']['oaf:result'].children.instance]
-    for i in t
-      if (i.licence?['@classid'] is 'OPEN' or i.accessright?['@classid'] is 'OPEN') and i.webresource?.url?.$
-        res.url = API.http.resolve i.webresource.url.$
-        try
-          resolves = HTTP.call 'HEAD', res.url
-        catch
-          res.url = undefined
-        res.redirect = API.service.oab.redirect(res.url) if res.url? and API.service.oab?
-        break if res.url and res.redirect isnt false
-  return res
-
+  try metadata.abstract ?= API.convert.html2txt rec.description
+  try metadata.title ?= rec.title.replace(/\n/g,' ').replace(/\t/g,'').trim()
+  try metadata.issn ?= rec.journal.issn
+  try metadata.volume ?= rec.journal.vol
+  try metadata.issue ?= rec.journal.iss
+  try metadata.page ?= rec.journal.sp
+  try metadata.pdf ?= rec.pdf
+  try metadata.url ?= rec.url
+  try metadata.open ?= rec.open
+  try metadata.redirect ?= rec.redirect
+  if not metadata.author? and rec.creator?
+    metadata.author ?= []
+    rec.creator = [rec.creator] if not _.isArray rec.creator
+    for c in rec.creator
+      a = {name: c}
+      try
+        if a.name.indexOf(',') isnt -1
+          a.family = a.name.split(',')[0]
+        else if a.name.indexOf(' ') isnt -1
+          a.family = a.name.split(' ')[0]
+        try a.given = a.name.replace(a.family,'').trim() if a.family?
+      metadata.author.push a
+  return metadata
 
 ###
 

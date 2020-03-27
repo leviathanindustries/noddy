@@ -8,6 +8,7 @@ import xlsx from 'xlsx'
 import xml2js from 'xml2js'
 import PDFParser from 'pdf2json'
 import stream from 'stream'
+import html2txt from 'html-to-text'
 
 import canvg from 'canvg'
 import atob from 'atob'
@@ -503,11 +504,10 @@ API.convert._cleanJson = (val, k, clean) ->
         vv.push cv
       else
         singleKeyObjects = false
-    if singleKeyObjects
-      nv = {}
+    if false #singleKeyObjects
+      nv = []
       for sv in vv
-        svk = _.keys(sv)[0]
-        nv[svk] = sv[svk]
+        nv.push sv[_.keys(sv)[0]]
       val = nv
     else
       val = if vv.length then if vv.length is 1 and typeof vv[0] is 'string' then vv[0] else vv else ''

@@ -43,7 +43,7 @@ API.add 'use/europepmc/pmc/:qry/aam', get: () -> return API.use.europepmc.author
 API.add 'use/europepmc/title/:qry', get: () -> return API.use.europepmc.title this.urlParams.qry
 
 API.add 'use/europepmc/search/:qry',
-  get: () -> return API.use.europepmc.search this.urlParams.qry, this.queryParams.from, this.queryParams.size
+  get: () -> return API.use.europepmc.search this.urlParams.qry, this.queryParams.from, this.queryParams.size, this.queryParams.format?
 
 API.add 'use/europepmc/published/:startdate',
   get: () -> return API.use.europepmc.published this.urlParams.startdate, undefined, this.queryParams.from, this.queryParams.size
@@ -86,19 +86,25 @@ API.use.europepmc.get = (qrystr) ->
       API.http.cache qrystr, 'epmc_get', res
   return res
 
-API.use.europepmc.search = (qrystr,from,size) ->
-  # TODO epmc changed to using a cursormark for pagination, so change how we pass paging to them
-  # see https://github.com/CottageLabs/LanternPM/issues/124
-  url = 'https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=' + qrystr + '&resulttype=core&format=json'
-  url += '&pageSize=' + size if size?
-  url += '&page=' + (Math.floor(from/size)+1) if from?
+API.use.europepmc.search = (qrystr,from,size,format) ->
+  url = 'https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=' + qrystr + '%20sort_date:y&resulttype=core&format=json'
+  url += '&pageSize=' + size if size? #can handle 1000, have not tried more, docs do not say
+  if from?
+    if not isNaN parseInt from
+      url += '&page=' + (Math.floor(from/size)+1) #old way, prob does not work any more
+    else
+      url += '&cursorMark=' + from
   API.log 'Using eupmc for ' + url
   try
     res = HTTP.call 'GET',url
   ret = {}
   if res?.data?.hitCount
-    ret.total = res.data.hitCount;
+    ret.total = res.data.hitCount
     ret.data = res.data.resultList?.result ? []
+    ret.cursor = res.data.nextCursorMark
+    if format
+      for r of ret.data
+        ret.data[r] = API.use.europepmc.format ret.data[r]
   else
     ret.status = 'error'
     ret.total = 0
@@ -122,11 +128,11 @@ API.use.europepmc.published = (startdate,enddate,from,size,qrystr='') ->
   catch
     return { status: 'error', total: 0}
 
-API.use.europepmc.indexed = (startdate,enddate,from,size,qrystr='') ->
-  qrystr += ' AND '
+API.use.europepmc.indexed = (qrystr='',startdate,enddate,from,size) ->
+  qrystr += ' AND ' if qrystr isnt ''
   if enddate
     qrystr += 'CREATION_DATE:[' + startdate + ' TO ' + enddate + ']'
-  else
+  else if startdate
     qrystr += 'CREATION_DATE:' + startdate
   url = 'https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=' + qrystr + '&resulttype=core&format=json'
   url += '&pageSize=' + size if size?
@@ -264,6 +270,56 @@ API.use.europepmc.xmlAvailable = (pmcid) ->
     else
       API.http.cache(pmcid, 'epmc_xml', false) if available is 404
       return false
+
+API.use.europepmc.format = (rec, metadata={}) ->
+  try metadata.pdf ?= rec.pdf
+  try metadata.open ?= rec.open
+  try metadata.redirect ?= rec.redirect
+  rec ?= if metadata.doi then API.use.europepmc.doi(metadata.doi) else if metadata.title then API.use.europepmc.title(metadata.title) else if metadata.pmid then API.use.europepmc.pmid(metadata.pmid) else API.use.europepmc.pmc metadata.pmcid
+  try metadata.pmcid = rec.pmcid if rec.pmcid?
+  try metadata.title = rec.title if rec.title?
+  try metadata.doi = rec.doi if rec.doi?
+  try metadata.pmid = rec.pmid if rec.pmid?
+  try
+    metadata.author = rec.authorList.author
+    for a in metadata.author
+      a.given = a.firstName
+      a.family = a.lastName
+      if a.affiliation?
+        a.affiliation = a.affiliation[0] if _.isArray a.affiliation
+        a.affiliation = {name: a.affiliation} if typeof a.affiliation is 'string'
+  try metadata.journal ?= rec.journalInfo.journal.title
+  try metadata.journal_short ?= rec.journalInfo.journal.isoAbbreviation
+  try metadata.issue = rec.journalInfo.issue
+  try metadata.volume = rec.journalInfo.volume
+  try metadata.issn = rec.journalInfo.journal.issn
+  try metadata.page = rec.pageInfo.toString()
+  try metadata.keyword = rec.keywordList.keyword
+  try
+    for m in rec.meshHeadingList.meshHeading
+      metadata.keyword ?= []
+      metadata.keyword.push m.descriptorName if m.descriptorName and m.descriptorName not in metadata.keyword
+  try
+    for c in rec.chemicalList.chemical
+      metadata.keyword ?= []
+      metadata.keyword.push c.name if c.name and c.name not in metadata.keyword
+  try metadata.year ?= rec.journalInfo.yearOfPublication
+  try metadata.year ?= rec.journalInfo.printPublicationDate.split('-')[0]
+  try 
+    metadata.published ?= if rec.journalInfo.printPublicationDate.indexOf('-') isnt -1 then rec.journalInfo.printPublicationDate else if rec.electronicPublicationDate then rec.electronicPublicationDate else undefined
+    delete metadata.published if metadata.published.split('-').length isnt 3
+  try metadata.abstract = API.convert.html2txt(rec.abstractText).replace(/\n/g,' ').replace('Abstract ','') if rec.abstractText?
+  if rec?.license?
+    metadata.licence = rec.license.trim().replace(/ /g,'-')
+  if rec?.url? and not metadata.redirect?
+    try metadata.redirect = API.service.oab.redirect rec.url
+    metadata.url ?= []
+    metadata.url.push rec.url
+  if rec?.url? and (not metadata.url? or typeof metadata.url is 'string' or rec.url not in metadata.url)
+    metadata.url = [metadata.url] if typeof metadata.url is 'string'
+    metadata.url ?= []
+    metadata.url.push(rec.url) if rec.url not in metadata.url
+  return metadata
 
 
 

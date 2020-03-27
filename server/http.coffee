@@ -24,7 +24,7 @@ API.add 'http/resolve', get: () -> return API.http.resolve this.queryParams.url,
 
 API.add 'http/puppeteer',
   get: () ->
-    refresh = if this.queryParams.refresh? then (try(parseInt(this.queryParams.refresh))) else undefined
+    refresh = if this.queryParams.refresh is 'true' then 0 else if this.queryParams.refresh? then (try(parseInt(this.queryParams.refresh))) else undefined
     url = this.queryParams.url
     url += if url.indexOf('?') isnt -1 then '&' else '?'
     for qp of this.queryParams
@@ -60,11 +60,14 @@ API.add 'http/cache/types',
 
 API.add 'http/cache/:type',
   get: () ->
-    q = if _.isEmpty(this.queryParams) then '' else API.collection._translate this.queryParams
-    if typeof q is 'string'
-      return API.es.call 'GET', API.settings.es.index + '_cache/' + this.urlParams.type + '/_search?' + q.replace('?', '')
+    if this.queryParams.lookup
+      return API.http.cache this.queryParams.lookup, this.urlParams.type
     else
-      return API.es.call 'POST', API.settings.es.index + '_cache/' + this.urlParams.type + '/_search', q
+      q = if _.isEmpty(this.queryParams) then '' else API.collection._translate this.queryParams
+      if typeof q is 'string'
+        return API.es.call 'GET', API.settings.es.index + '_cache/' + this.urlParams.type + '/_search?' + q.replace('?', '')
+      else
+        return API.es.call 'POST', API.settings.es.index + '_cache/' + this.urlParams.type + '/_search', q
 
 API.add 'http/cache/:types/clear',
   get:
@@ -115,7 +118,7 @@ API.http.cache = (lookup,type='cache',content,refresh=0) ->
   API.http._colls[type] ?= new API.collection index: API.settings.es.index + "_cache", type: type
   try
     fnd = 'lookup.exact:"' + lookup + '"'
-    if typeof refresh is 'number' and refresh isnt 0
+    if typeof refresh is 'number' and refresh isnt 0 and not isNaN refresh
       fnd += ' AND createdAt:>' + (Date.now() - refresh)
     res = API.http._colls[type].find fnd, true
     if res?._raw_result?.string?
@@ -125,7 +128,7 @@ API.http.cache = (lookup,type='cache',content,refresh=0) ->
     else if res?._raw_result?.number?
       return res._raw_result.number
     else if res?._raw_result?.content?
-      return res.content
+      return res._raw_result.content
     else if res?._raw_result?.stringify
       try
         parsed = JSON.parse res._raw_result.stringify
@@ -387,33 +390,31 @@ _puppeteer = (url,refresh=86400000,proxy,callback) ->
       return callback null, HTTP.call('GET',url,{timeout:20000,npmRequestOptions:{encoding:null}}).content
     catch
       return callback null, ''
-  if refresh isnt true and refresh isnt 0
+  if refresh isnt true and refresh isnt 0 and refresh isnt 'true'
     cached = API.http.cache url, 'puppeteer', undefined, refresh
     return callback(null,cached) if cached?
   API.log 'starting puppeteer retrieval of ' + url
+  args = ['--no-sandbox', '--disable-setuid-sandbox']
+  args.push('--proxy-server='+proxy) if proxy
+  pid = false
   try
-    #browser = false
-    #if _puppetEndpoint isnt false
-    #  try browser = await puppeteer.connect({browserWSEndpoint:_puppetEndpoint})
-    #if browser is false
-    args = ['--no-sandbox', '--disable-setuid-sandbox']
-    args.push('--proxy-server='+proxy) if proxy
     browser = await puppeteer.launch({args:args, ignoreHTTPSErrors:true, dumpio:false, timeout:12000, executablePath: '/usr/bin/google-chrome'})
-    #_puppetEndpoint = browser.wsEndpoint()
+    pid = browser.process().pid
     page = await browser.newPage()
-    #_puppetPages += 1
     await page.goto(url, {timeout:12000})
     content = await page.evaluate(() => new XMLSerializer().serializeToString(document.doctype) + '\n' + document.documentElement.outerHTML)
-    #_puppetPages -= 1
-    #if _puppetPages is 0
+    await page.close()
     await browser.close()
+    # no matter what i try this causes an error. Just going to have to let it do so. The content still gets returned before the error fires.
+    # tried all sorts of catch blocks, then layout instead of await, different catches and finally etc
     try
       API.http.cache(url, 'puppeteer', content) if typeof content is 'string' and content.length > 200
     return callback null, content
-  catch
-    try await browser.close()
-    #_puppetEndpoint = false
-    #_puppetPages = 0
+  catch err
+    process.kill(pid) if pid
+    return callback null, ''
+  finally
+    process.kill(pid) if pid
     return callback null, ''
 
 API.http.puppeteer = Meteor.wrapAsync(_puppeteer)

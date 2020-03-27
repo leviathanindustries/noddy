@@ -226,7 +226,7 @@ API.use.google.places.nearby = (params={}) ->
 
 API.use.google.places.search = (params) ->
 	url = 'https://maps.googleapis.com/maps/api/place/textsearch/json?'
-	params.key ?= API.settings.use.google.serverky
+	params.key ?= API.settings.use.google.serverkey
 	url += (if p is 'q' then 'input' else p) + '=' + params[p] + '&' for p of params
 	try
 		return HTTP.call('GET',url).data

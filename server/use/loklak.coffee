@@ -36,19 +36,3 @@ API.use.loklak.search = (params, timeout=API.settings.use?.loklak?.timeout ? API
     return {status: 'error', error: err.toString()}
 
 
-###API.use.loklak.get = (q) ->
-  res = API.http.cache q, 'loklak_get'
-  if not res?
-    ret = API.use.loklak.search qrystr
-    if ret.total
-      res = ret.data[0]
-      for i in ret.data
-        if i.hasFullText is "true"
-          res = i
-          break
-  if res?
-    op = API.use.core.redirect res
-    res.url = op.url
-    res.redirect = op.redirect
-    API.http.cache qrystr, 'core_get', res
-  return res###

@@ -92,7 +92,7 @@ API.blacklist = (request,stale=3600000) ->
           else if b.route and routematch
             bad = true
           if bad
-            if API.settings.dev
+            if API.settings.log?.level is 'all'
               # don't write proper logs by default cos if blacklisting due to bombardment, logs would put load on the system
               console.log 'Blacklisting'
               console.log request.headers

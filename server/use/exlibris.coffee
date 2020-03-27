@@ -74,7 +74,7 @@ API.use.exlibris.primo = (qry, from=0, size=10, institution='44IMP', tgt='http:/
       for f in fcts
         facets[f['@NAME']] = {}
         for fc in f.FACET_VALUES
-          facets[f['@NAME']][f.FACET_VALUES[fc]['@KEY']] = f.FACET_VALUES[fc]['@VALUE']
+          facets[f['@NAME']][fc['@KEY']] = fc['@VALUE']
       total = 0
       try total = res.data.SEGMENTS.JAGROOT.RESULT.DOCSET['@TOTALHITS']
       return { query: query, total: total, data: data, facets: facets}
