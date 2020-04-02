@@ -7,19 +7,19 @@ API.use ?= {}
 API.use.doaj = {journals: {}, articles: {}}
 
 API.add 'use/doaj/:which/es',
-  get: () -> return API.use.doaj.es this.urlParams.which, this.queryParams, undefined, this.queryParams.format?
-  post: () -> return API.use.doaj.es this.urlParams.which, this.queryParams, this.bodyParams, this.queryParams.format?
+  get: () -> return API.use.doaj.es this.urlParams.which, this.queryParams, undefined, this.queryParams.format isnt 'false'
+  post: () -> return API.use.doaj.es this.urlParams.which, this.queryParams, this.bodyParams, this.queryParams.format isnt 'false'
 
 API.add 'use/doaj/articles/search/:qry',
-  get: () -> return API.use.doaj.articles.search this.urlParams.qry, this.queryParams, this.queryParams.format?
+  get: () -> return API.use.doaj.articles.search this.urlParams.qry, this.queryParams, this.queryParams.format isnt 'false'
 
 API.add 'use/doaj/articles/title/:qry',
   get: () -> return API.use.doaj.articles.title this.urlParams.qry
 
 API.add 'use/doaj/articles/doi/:doipre/:doipost',
-  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format?
+  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format isnt 'false'
 API.add 'use/doaj/articles/doi/:doipre/:doipost/:doiextra',
-  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doiextra, this.queryParams.format?
+  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doiextra, this.queryParams.format isnt 'false'
 
 API.add 'use/doaj/journals/search/:qry',
   get: () -> return API.use.doaj.journals.search this.urlParams.qry
@@ -29,7 +29,7 @@ API.add 'use/doaj/journals/issn/:issn',
 
 
 
-API.use.doaj.es = (which='journal,article', params, body, format) ->
+API.use.doaj.es = (which='journal,article', params, body, format=true) ->
   # which could be journal or article or journal,article
   # but doaj only allows this type of query on journal,article, so will add this later as a query filter
   url = 'https://doaj.org/query/journal,article/_search?ref=public_journal_article&'
@@ -85,12 +85,12 @@ API.use.doaj.journals.search = (qry,params) ->
 API.use.doaj.articles.doi = (doi, format) ->
   return API.use.doaj.articles.get 'doi:' + doi, format
 
-API.use.doaj.articles.title = (title) ->
+API.use.doaj.articles.title = (title,format) ->
   try title = title.toLowerCase().replace(/(<([^>]+)>)/g,'').replace(/[^a-z0-9 ]+/g, " ").replace(/\s\s+/g, ' ')
-  return API.use.doaj.articles.get 'title:"' + title + '"'
+  return API.use.doaj.articles.get 'title:"' + title + '"', format
 
-API.use.doaj.articles.get = (qry,format) ->
-  res = API.use.doaj.articles.search qry
+API.use.doaj.articles.get = (qry,format=true) ->
+  res = API.use.doaj.articles.search qry, undefined, false
   rec = if res?.data?.length then res.data[0] else undefined
   if rec?
     op = API.use.doaj.articles.redirect rec
@@ -98,7 +98,7 @@ API.use.doaj.articles.get = (qry,format) ->
     rec.redirect = op.redirect
   return if format then API.use.doaj.articles.format(rec) else rec
 
-API.use.doaj.articles.search = (qry,params={},format) ->
+API.use.doaj.articles.search = (qry,params={},format=true) ->
   url = 'https://doaj.org/api/v1/search/articles/' + qry + '?'
   #params.sort ?= 'bibjson.year:desc'
   url += op + '=' + params[op] + '&' for op of params

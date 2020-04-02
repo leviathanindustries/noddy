@@ -240,11 +240,11 @@ API.use.crossref.works.indexed = (qrystr,startdate,enddate,from,size,filter,orde
   filter += ',until-index-date:' + enddate if enddate
   return API.use.crossref.works.search qrystr, from, size, filter, 'indexed', order, format
 
-API.use.crossref.works.format = (rec, metadata={}) ->
+API.use.crossref.works.format = (rec, metadata={}, reverse=true) ->
   if not rec?
     if metadata.doi?
       rec = API.use.crossref.works.doi metadata.doi
-    else if metadata.title? and metadata.title.length > 8 and metadata.title.split(' ').length > 2
+    else if metadata.title? and metadata.title.length > 8 and metadata.title.split(' ').length > 2 and reverse
       check = API.use.crossref.reverse metadata.title
       if check?.data?.doi and check.data.title? and check.data.title.length <= metadata.title.length*1.2 and check.data.title.length >= metadata.title.length*.8 and metadata.title.toLowerCase().replace(/ /g,'').indexOf(check.data.title.toLowerCase().replace(' ','').replace(' ','').replace(' ','').split(' ')[0]) isnt -1
         metadata.doi = check.data.doi

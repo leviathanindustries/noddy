@@ -4,11 +4,11 @@ API.use ?= {}
 API.use.oadoi = {}
 
 API.add 'use/oadoi/:doipre/:doipost',
-  get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost
+  get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost, not this.queryParams.format?
 API.add 'use/oadoi/:doipre/:doipost/:doimore',
-  get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore
+  get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, not this.queryParams.format?
 
-API.use.oadoi.doi = (doi) ->
+API.use.oadoi.doi = (doi,format=true) ->
   res = API.http.cache doi, 'oadoi_doi'
   if not res?
     url = 'https://api.oadoi.org/v2/' + doi + '?email=mark@cottagelabs.com'
@@ -26,7 +26,7 @@ API.use.oadoi.doi = (doi) ->
     catch
       return undefined
   #try res.redirect = API.service.oab.redirect res.url
-  return API.use.oadoi.format res
+  return if format then API.use.oadoi.format(res) else res
 
 API.use.oadoi.format = (rec, metadata={}) ->
   try metadata.doi ?= rec.doi

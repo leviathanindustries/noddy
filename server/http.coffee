@@ -28,9 +28,9 @@ API.add 'http/puppeteer',
     url = this.queryParams.url
     url += if url.indexOf('?') isnt -1 then '&' else '?'
     for qp of this.queryParams
-      if qp isnt 'url' and qp isnt 'refresh' and this.queryParams[qp]
+      if qp isnt 'url' and qp isnt 'refresh' and qp isnt 'proxy' and this.queryParams[qp]
         url += qp + '=' + this.queryParams[qp] + '&'
-    res = API.http.puppeteer url, refresh
+    res = API.http.puppeteer url, refresh, this.queryParams.proxy
     if typeof res is 'number'
       return res
     else
@@ -134,6 +134,25 @@ API.http.cache = (lookup,type='cache',content,refresh=0) ->
         parsed = JSON.parse res._raw_result.stringify
         return parsed
   return undefined
+
+API.http.proxy = (method='GET', url, opts={}, clustercheck=false) ->
+  if typeof opts is 'boolean'
+    clustercheck = opts
+    opts = {}
+  if typeof url is 'boolean'
+    clustercheck = url
+    url = undefined
+  if typeof url is 'object'
+    opts = url
+    url = undefined
+  if method not in ['GET','POST','PUT','DELETE','OPTIONS']
+    url = method
+    method = 'GET'
+  if API.settings.proxy? and (not clustercheck or not API.settings.cluster?.ip? or JSON.stringify(API.settings.cluster.ip).indexOf(API.status.ip()) isnt -1)
+    API.log 'Setting proxy for ' + url
+    opts.npmRequestOptions ?= {}
+    opts.npmRequestOptions.proxy = API.settings.proxy
+  return HTTP.call method, url, opts
 
 API.http.resolve = (url,refresh=false) ->
   cached = if not refresh then API.http.cache(url, 'http_resolve') else false
@@ -375,6 +394,9 @@ _phantom = (url,delay=1000,refresh=86400000,callback) ->
 #_puppetEndpoint = false
 #_puppetPages = 0
 _puppeteer = (url,refresh=86400000,proxy,callback) ->
+  if typeof url is 'function'
+    callback = url # passed a blank url
+    return callback(null,'')
   if typeof refresh is 'function'
     callback = refresh
     refresh = 86400000
@@ -383,7 +405,7 @@ _puppeteer = (url,refresh=86400000,proxy,callback) ->
     proxy = undefined
   return callback(null,'') if not url? or typeof url isnt 'string'
   url = 'http://' + url if url.indexOf('http') is -1
-  if url.indexOf('.pdf') isnt -1 
+  if url.indexOf('.pdf') isnt -1  or url.indexOf('.doc') isnt -1
     # go straight to PDFs - TODO what other page types are worth going straight to? or anything that does not say it will be html?
     # do a content type query on the url first?
     try
@@ -393,6 +415,18 @@ _puppeteer = (url,refresh=86400000,proxy,callback) ->
   if refresh isnt true and refresh isnt 0 and refresh isnt 'true'
     cached = API.http.cache url, 'puppeteer', undefined, refresh
     return callback(null,cached) if cached?
+  try
+    if typeof API.settings?.puppeteer is 'string' and API.settings.puppeteer.indexOf(API.status.ip()) is -1
+      pu = API.settings.puppeteer
+      pu = 'http://' + pu if pu.indexOf('://') is -1
+      if pu.split('://')[1].split('/').length < 3
+        if pu.indexOf(':3') is -1
+          pu += ':' + if API.settings.dev then '3002' else '3333'
+        pu += '/api/http/puppeteer' 
+      pu += '?refresh=' + refresh + '&'
+      pu += 'proxy=' + encodeURIComponent(proxy) + '&' if proxy?
+      pu += '&url=' + encodeURIComponent url
+      return callback null, HTTP.call('GET', pu).content
   API.log 'starting puppeteer retrieval of ' + url
   args = ['--no-sandbox', '--disable-setuid-sandbox']
   args.push('--proxy-server='+proxy) if proxy

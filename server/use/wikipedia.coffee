@@ -117,7 +117,7 @@ API.use.wikidata.drill = (qid) ->
     #    res[key] = API.use.wikidata.drill data.info[key][0].mainsnak.datavalue.value.id
   #return res
   
-API.use.wikidata.simplify = (qid,q,url) ->
+API.use.wikidata.simplify = (qid,q,url,drill=true) ->
   res = {}
   if qid
     res.qid = qid
@@ -133,10 +133,11 @@ API.use.wikidata.simplify = (qid,q,url) ->
     res.description = data.description
     res.wikipedia = data.wikipedia
     res.wid = data.wid
-    for key in data.infokeys
-      try
-        dk = API.use.wikidata.drill data.info[key][0].mainsnak.datavalue.value.id
-        res[key] = dk if dk
+    if drill
+      for key in data.infokeys
+        try
+          dk = API.use.wikidata.drill data.info[key][0].mainsnak.datavalue.value.id
+          res[key] = dk if dk
   return res
 
 # https://www.mediawiki.org/wiki/API:Main_page

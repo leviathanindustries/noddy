@@ -43,7 +43,7 @@ API.add 'use/europepmc/pmc/:qry/aam', get: () -> return API.use.europepmc.author
 API.add 'use/europepmc/title/:qry', get: () -> return API.use.europepmc.title this.urlParams.qry
 
 API.add 'use/europepmc/search/:qry',
-  get: () -> return API.use.europepmc.search this.urlParams.qry, this.queryParams.from, this.queryParams.size, this.queryParams.format?
+  get: () -> return API.use.europepmc.search this.urlParams.qry, this.queryParams.from, this.queryParams.size, this.queryParams.format isnt 'false'
 
 API.add 'use/europepmc/published/:startdate',
   get: () -> return API.use.europepmc.published this.urlParams.startdate, undefined, this.queryParams.from, this.queryParams.size
@@ -57,23 +57,23 @@ API.add 'use/europepmc/indexed/:startdate',
 API.add 'use/europepmc/indexed/:startdate/:enddate',
   get: () -> return API.use.europepmc.published this.urlParams.startdate, this.urlParams.enddate, this.queryParams.from, this.queryParams.size
 
-API.use.europepmc.doi = (doi) ->
-  return API.use.europepmc.get 'DOI:' + doi
+API.use.europepmc.doi = (doi,format) ->
+  return API.use.europepmc.get 'DOI:' + doi, format
 
-API.use.europepmc.pmid = (ident) ->
-  return API.use.europepmc.get 'EXT_ID:' + ident + ' AND SRC:MED'
+API.use.europepmc.pmid = (ident,format) ->
+  return API.use.europepmc.get 'EXT_ID:' + ident + ' AND SRC:MED', format
 
-API.use.europepmc.pmc = (ident) ->
-  return API.use.europepmc.get 'PMCID:PMC' + ident.toLowerCase().replace('pmc','')
+API.use.europepmc.pmc = (ident,format) ->
+  return API.use.europepmc.get 'PMCID:PMC' + ident.toLowerCase().replace('pmc',''), format
 
-API.use.europepmc.title = (title) ->
+API.use.europepmc.title = (title,format) ->
   try title = title.toLowerCase().replace(/(<([^>]+)>)/g,'').replace(/[^a-z0-9 ]+/g, " ").replace(/\s\s+/g, ' ')
-  return API.use.europepmc.get 'title:"' + title + '"'
+  return API.use.europepmc.get 'title:"' + title + '"', format
 
-API.use.europepmc.get = (qrystr) ->
+API.use.europepmc.get = (qrystr,format) ->
   res = API.http.cache qrystr, 'epmc_get'
   if not res?
-    res = API.use.europepmc.search qrystr
+    res = API.use.europepmc.search qrystr, undefined, undefined, format
     res = if res.total then res.data[0] else undefined
     if res?.fullTextUrlList?
       for oi in res.fullTextUrlList.fullTextUrl
@@ -86,7 +86,7 @@ API.use.europepmc.get = (qrystr) ->
       API.http.cache qrystr, 'epmc_get', res
   return res
 
-API.use.europepmc.search = (qrystr,from,size,format) ->
+API.use.europepmc.search = (qrystr,from,size,format=true) ->
   url = 'https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=' + qrystr + '%20sort_date:y&resulttype=core&format=json'
   url += '&pageSize=' + size if size? #can handle 1000, have not tried more, docs do not say
   if from?
@@ -306,19 +306,15 @@ API.use.europepmc.format = (rec, metadata={}) ->
   try metadata.year ?= rec.journalInfo.yearOfPublication
   try metadata.year ?= rec.journalInfo.printPublicationDate.split('-')[0]
   try 
-    metadata.published ?= if rec.journalInfo.printPublicationDate.indexOf('-') isnt -1 then rec.journalInfo.printPublicationDate else if rec.electronicPublicationDate then rec.electronicPublicationDate else undefined
+    metadata.published ?= if rec.journalInfo.printPublicationDate.indexOf('-') isnt -1 then rec.journalInfo.printPublicationDate else if rec.electronicPublicationDate then rec.electronicPublicationDate else if rec.firstPublicationDate then rec.firstPublicationDate else undefined
     delete metadata.published if metadata.published.split('-').length isnt 3
   try metadata.abstract = API.convert.html2txt(rec.abstractText).replace(/\n/g,' ').replace('Abstract ','') if rec.abstractText?
   if rec?.license?
     metadata.licence = rec.license.trim().replace(/ /g,'-')
-  if rec?.url? and not metadata.redirect?
-    try metadata.redirect = API.service.oab.redirect rec.url
-    metadata.url ?= []
-    metadata.url.push rec.url
-  if rec?.url? and (not metadata.url? or typeof metadata.url is 'string' or rec.url not in metadata.url)
-    metadata.url = [metadata.url] if typeof metadata.url is 'string'
-    metadata.url ?= []
-    metadata.url.push(rec.url) if rec.url not in metadata.url
+  if rec?.url?
+    metadata.url = rec.url
+    if not metadata.redirect?
+      try metadata.redirect = API.service.oab.redirect rec.url
   return metadata
 
 

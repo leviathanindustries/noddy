@@ -298,7 +298,7 @@ API.accounts.login = (params, user, request) ->
     return if request then 401 else false
   else if user
     API.log msg: 'Responding with confirmation of login for user', params: params, level: 'debug'
-    API.accounts.fingerprint(user, params.fingerprint, 'login') if params.fingerprint and not user.devices?[API.accounts.hash(params.fingerprint)]?
+    try API.accounts.fingerprint(user, params.fingerprint, 'login') if params.fingerprint
     API.accounts.addrole(user, params.service+'.user') if params.service and not user.roles?[params.service]?
     if request and API.settings.log.root and user.roles?.__global_roles__? and 'root' in user.roles?.__global_roles__
       API.log msg: 'Root login', notify: subject: 'root user login from ' + request.headers['x-real-ip'], text: 'root user logged in\n\n' + token?.url ? params.url + '\n\n' + request.headers['x-real-ip'] + '\n\n' + request.headers['x-forwarded-for'] + '\n\n'
@@ -423,14 +423,14 @@ API.accounts.create = (email, fingerprint) ->
     email: email
     password: API.accounts.hash(password)
     profile: {} # profile data that the user can edit will go here
-    devices: {} # user devices associated by device fingerprint can be stored here
+    device: [] # user devices associated by device fingerprint can be stored here - removed old devices object as bad mapping
     service: {} # services identified by service name, which can be changed by those in control of the service. Viewable by user unless in private key, but only editable by user if in profile key
     api: keys: [{ key: apikey, hash: API.accounts.hash(apikey), name: 'default' }]
     emails: [{ address: email, verified: true }]
   first = Users.count() is 0
   u._id = "0" if first and API.settings.dev
   u.roles = if first then __global_roles__: ['root'] else {}
-  u.devices[API.accounts.hash(fingerprint)] = {action: 'create', createdAt: Date.now()} if fingerprint
+  u.device.push {hash: API.accounts.hash(fingerprint), action: 'create', createdAt: Date.now()} if fingerprint
   u._id = Users.insert u
   API.log "Created user " + u._id
   return u # API.accounts.retrieve u._id is it worth doing a retrieve, or just pass back what has been calculated?
@@ -580,16 +580,18 @@ API.accounts.remove = (user, service, uacc) ->
   else
     return false
 
-# this should be developed further or in combo with a devices action, see below comments
+# this should be developed further or in combo with a device action, see below comments
 API.accounts.fingerprint = (uid, fingerprint, action) ->
   uid = API.accounts.retrieve(uid) if typeof uid is 'string'
-  dv = {}
-  dv['devices.'+API.accounts.hash(fingerprint)] = action:action, createdAt: Date.now()
-  Users.update(uid._id, dv) if not uid.devices?[fingerprint]?
+  dh = API.accounts.hash(fingerprint)
+  uid.device ?= []
+  if dh not in _.pluck uid.device, 'hash'
+    uid.device.push {hash: dh, action:action, createdAt: Date.now()}
+    Users.update(uid._id, device: uid.device)
 
 # TODO should have a function to add/remove emails to an account (no accounts should share emails)
 # and a function to change/get/create new API key, as well as one to set/change username (which must also be unique)
-# and one to manage the devices (could register a device as one to receive tokens on, when logged in on that device)
+# and one to manage the device (could register a device as one to receive tokens on, when logged in on that device)
 # this could also manage logins across devices, perhaps
 
 API.accounts.hash = (token) ->

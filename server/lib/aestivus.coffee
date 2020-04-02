@@ -262,24 +262,12 @@ class share.Route
     if API.settings.log.connections and endpointContext.request.method isnt 'OPTIONS' and blacklisted is false
       tu = endpointContext.request.url.split('?')[0].split('#')[0]
       if tu.replace('/api','').indexOf('/log') isnt 0 and (tu.indexOf('_log') is -1 and tu.indexOf('/es') is -1) and tu.indexOf('/reload/') is -1
-        ru = {}
-        for uu in ['url','originalUrl']
-          if endpointContext.request[uu].indexOf('apikey=') isnt -1
-            tas = endpointContext.request[uu].split('apikey=')
-            ru[uu] = tas[0] + 'apikey=XXXX' + if tas[1].indexOf('&') isnt -1 then '&' + tas[1].split(/&(.+)/)[1] else ''
-          else
-            ru[uu] = endpointContext.request[uu]
-        hh = _.clone endpointContext.request.headers
-        hh.apikey = 'XXXX' if hh.apikey?
-        hh['x-apikey'] = 'XXXX' if hh['x-apikey']?
-        qq = _.clone endpointContext.request.query
-        qq.apikey = 'XXXX' if qq.apikey?
         API.log
-          url: ru.url,
+          url: endpointContext.request.url,
           method: endpointContext.request.method,
-          originalUrl: ru.originalUrl,
-          headers: hh,
-          query: qq
+          originalUrl: endpointContext.request.originalUrl,
+          headers: endpointContext.request.headers,
+          query: endpointContext.request.query
       else if API.settings.log?.level is 'all'
         console.log 'Not creating log for query on a log URL, but logging to console because log level is all'
         console.log endpointContext.request.url, endpointContext.request.method, endpointContext.request.query, endpointContext.request.originalUrl
