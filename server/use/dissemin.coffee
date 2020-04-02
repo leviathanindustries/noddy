@@ -13,7 +13,7 @@ API.add 'use/dissemin/doi/:doipre/:doipost',
 
 
 API.use.dissemin.doi = (doi) ->
-  url = 'http://beta.dissem.in/api/' + doi
+  url = 'https://dissem.in/api/' + doi
   API.log 'Using dissemin for ' + url
   res = API.http.cache doi, 'dissemin_doi'
   if not res?
@@ -28,7 +28,7 @@ API.use.dissemin.doi = (doi) ->
 
 API.use.dissemin.status = () ->
   try
-    h = HTTP.call('GET', 'http://beta.dissem.in/api/10.1186/1758-2946-3-47',{timeout: API.settings.use?.dissemin?.timeout ? API.settings.use?._timeout ? 2000})
+    h = HTTP.call('GET', 'https://dissem.in/api/10.1186/1758-2946-3-47',{timeout: API.settings.use?.dissemin?.timeout ? API.settings.use?._timeout ? 2000})
     return if h.data.paper then true else h.data
   catch err
     return err.toString()
@@ -39,7 +39,7 @@ API.use.dissemin.test = (verbose) ->
   result = {passed:[],failed:[]}
   tests = [
     () ->
-      result.record = HTTP.call('GET', 'http://beta.dissem.in/api/10.1186/1758-2946-3-47')
+      result.record = HTTP.call('GET', 'https://dissem.in/api/10.1186/1758-2946-3-47')
       result.record = result.record.data.paper if result.record?.data?.paper?
       return false if not result.record.records? or result.record.records.length is 0 # this list can reasonably change length
       delete result.record.records

@@ -12,11 +12,11 @@
     user: () ->
       console.log('API checking auth') if API.settings.log?.level is 'debug'
 
-      xapikey = this.request.headers['x-apikey'] ? this.request.query.apikey
+      xapikey = this.request.headers['x-apikey'] ? this.request?.query?.apikey ? this.request?.query?.apiKey
       u = API.accounts.retrieve({apikey:xapikey}) if xapikey
-      xid = u._id if API.settings.accounts?.email and this.request.query.email and u?.emails[0].address is this.request.query.email
-      xid ?= this.request.query.id
-      xid ?= this.request.headers['x-id']
+      xid = u._id if API.settings.accounts?.email and this.request?.query?.email and u?.emails[0].address is this.request.query.email
+      xid ?= this.request?.query?.id
+      xid ?= this.request.headers['x-id'] if this.request?.headers?
       xid = undefined if API.settings.accounts?.xid and u?._id isnt xid
       xid = u._id if u and not API.settings.accounts?.xid
       console.log('Auth by header/param ' + xid + ' ' + xapikey + ' ' + (if u then u._id)) if API.settings.log?.level is 'debug' and xid
@@ -31,7 +31,7 @@
             xapikey = u.api.keys[0].key
             console.log('Auth by resume and timestamp in request body ' + xid + ' ' + xapikey + ' ' + (if u then u._id)) if API.settings.log?.level is 'debug'
 
-      if not xid and this.request.headers.cookie and API.settings.accounts?.cookie?.name
+      if not xid and this.request.headers?.cookie and API.settings.accounts?.cookie?.name
         console.log('Trying cookie auth') if API.settings.log?.level is 'debug'
         try
           cookie = JSON.parse(decodeURIComponent(this.request.headers.cookie).split(API.settings.accounts.cookie.name+"=")[1].split(';')[0])
@@ -92,7 +92,7 @@ API.blacklist = (request,stale=3600000) ->
           else if b.route and routematch
             bad = true
           if bad
-            if API.settings.dev
+            if API.settings.log?.level is 'all'
               # don't write proper logs by default cos if blacklisting due to bombardment, logs would put load on the system
               console.log 'Blacklisting'
               console.log request.headers

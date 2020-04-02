@@ -8,10 +8,13 @@ import xlsx from 'xlsx'
 import xml2js from 'xml2js'
 import PDFParser from 'pdf2json'
 import stream from 'stream'
+import html2txt from 'html-to-text'
 
-import canvg from 'canvg'
+#import canvg from 'canvg'
 import atob from 'atob'
-import Canvas from 'canvas' # note canvas requires sudo apt-get install libcairo2-dev libjpeg-dev libpango1.0-dev libgif-dev build-essential g++
+#import Canvas from 'canvas' # note canvas requires sudo apt-get install libcairo2-dev libjpeg-dev libpango1.0-dev libgif-dev build-essential g++
+# canvas and canvg cannot be installed in a working manner any more, need to find an alternative solution later
+# canvg may still be ok. Actually these will both run, it is their underlying libs on ubuntu that cannot run
 
 import Future from 'fibers/future'
 import moment from 'moment'
@@ -152,7 +155,8 @@ API.convert.run = (content,from,to,opts={}) ->
 
 
 API.convert.svg2png = (content,opts) ->
-  content = HTTP.call('GET',content,{npmRequestOptions:{encoding:null}}).content if content.indexOf('http') is 0
+  return false # need alternative to canvas and canvg for newer ubuntu where they try to use old libgif4 that can no longer run
+  '''content = HTTP.call('GET',content,{npmRequestOptions:{encoding:null}}).content if content.indexOf('http') is 0
   content = content.toString('utf-8') if Buffer.isBuffer content
   content = atob(content.substring('data:image/svg+xml;base64,'.length)) if content.indexOf('data:image/svg+xml;base64,') >= 0
   canvas = new Canvas()
@@ -166,7 +170,7 @@ API.convert.svg2png = (content,opts) ->
     future = new Future()
     Meteor.setTimeout (() -> future.return()), 500
     future.wait()
-  return Buffer.concat data
+  return Buffer.concat data'''
 
 API.convert.csv2json = Async.wrap (content,opts,callback) ->
   if typeof opts isnt 'object'
@@ -315,7 +319,7 @@ API.convert.mime = (fn) ->
   mime = mimes['.'+tp]
   return if typeof mime is 'string' then mime else false
 
-API.convert._docx2 = Async.wrap (what='txt', content, opts, callback) ->
+API.convert._docx2 = Async.wrap (what='txt', content, opts={}, callback) ->
   if typeof opts isnt 'object'
     callback = opts
     opts = {}
@@ -325,6 +329,7 @@ API.convert._docx2 = Async.wrap (what='txt', content, opts, callback) ->
     content = new Buffer content
   try
     # NOTE the convert to html fails within mammoth, but txt and markdown both work. Could add a markdown to html converter later if necessary
+    # some mammoth calls just go off into nowhere - need a way to return, but it throws no error no done...
     mammoth[(if what is 'html' then 'convertToHTML' else if what is 'markdown' then 'convertToMarkdown' else 'extractRawText')]({buffer: content})
       .then((res) ->
         return callback null, res.value
@@ -435,7 +440,8 @@ API.convert.pdf2txt = Async.wrap (content, opts={}, callback) ->
     completed = true
     return callback(null,'')
   try
-    content = new Buffer (if content.indexOf('http') is 0 then HTTP.call('GET',content,{timeout:20000,npmRequestOptions:{encoding:null}}).content else content)
+    console.log('CONVERT PDF retrieving from ' + content) if content.indexOf('http') is 0 and API.settings.dev
+    content = new Buffer (if content.indexOf('http') is 0 then HTTP.call('GET',content,{timeout:opts.timeout,npmRequestOptions:{encoding:null}}).content else content)
     pdfParser.parseBuffer(content)
   catch
     return callback(null,'')
@@ -503,11 +509,10 @@ API.convert._cleanJson = (val, k, clean) ->
         vv.push cv
       else
         singleKeyObjects = false
-    if singleKeyObjects
-      nv = {}
+    if false #singleKeyObjects
+      nv = []
       for sv in vv
-        svk = _.keys(sv)[0]
-        nv[svk] = sv[svk]
+        nv.push sv[_.keys(sv)[0]]
       val = nv
     else
       val = if vv.length then if vv.length is 1 and typeof vv[0] is 'string' then vv[0] else vv else ''

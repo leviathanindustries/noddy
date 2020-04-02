@@ -24,10 +24,12 @@ API.use.zenodo.deposition = {}
 API.use.zenodo.records = {}
 
 API.add 'use/zenodo',
-  get: () -> return API.use.zenodo.records.search this.queryParams.q
+  get: () -> return API.use.zenodo.records.search this.queryParams.q, not this.queryParams.dev?, this.queryParams.format?
 
 API.add 'use/zenodo/:doipre/:doipost',
-  get: () -> return API.use.zenodo.records.doi this.urlParams.doipre + '/' + this.urlParams.doipost
+  get: () -> return API.use.zenodo.records.doi this.urlParams.doipre + '/' + this.urlParams.doipost, not this.queryParams.dev?, this.queryParams.format?
+API.add 'use/zenodo/:doipre/:doipost/:doimore',
+  get: () -> return API.use.zenodo.records.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, not this.queryParams.dev?, this.queryParams.format?
 
 # oabutton also wants to be able to search zenodo for papers (unless SHARE covers it)
 # https://github.com/OAButton/backend/issues/110
@@ -37,24 +39,70 @@ API.add 'use/zenodo/:doipre/:doipost',
 # see search page for instructions (it is ES)
 # https://help.zenodo.org/guides/search/
 
-API.use.zenodo.records.search = (q,dev=API.settings.dev) ->
-  url = 'https://' + (if dev then 'sandbox.' else '') + 'zenodo.org/api/records?q=' + q # just do simple string queries for now
+API.use.zenodo.records.search = (q,dev=API.settings.dev,format,size=10) ->
+  # it does have sort but does not seem to parse direction yet, so not much use sorting on publication_date
+  # does not seem to do paging or cursors yet either - but size works
+  url = 'https://' + (if dev then 'sandbox.' else '') + 'zenodo.org/api/records?size=' + size + '&q=' + q # just do simple string queries for now
+  API.log 'Using zenodo records search for ' + url
   res = HTTP.call('GET', url).data # could do a post if q is more complex...
+  if format
+    for r of res.hits.hits
+      res.hits.hits[r] = API.use.zenodo.records.format res.hits.hits[r]
+    res.total = res.hits.total
+    res.data = res.hits.hits
+    delete res.hits
   return res
 
-API.use.zenodo.records.get = (q,dev=API.settings.dev) ->
-  r = API.use.zenodo.records.search q, dev
+API.use.zenodo.records.get = (q,dev=API.settings.dev,format) ->
+  r = API.use.zenodo.records.search q, dev, format
   try
     # worth doing any checks on this first result?
-    return r.hits.hits[0] # appears to be the complete record so no need to get from /api/records/CONCEPTRECID
+    return if r.data? then r.data[0] else r.hits.hits[0] # appears to be the complete record so no need to get from /api/records/CONCEPTRECID
   catch
     return undefined
 
-API.use.zenodo.records.doi = (doi,dev=API.settings.dev) ->
-  return API.use.zenodo.records.get 'doi:"' + doi + '"', dev
+API.use.zenodo.records.doi = (doi,dev=API.settings.dev,format) ->
+  return API.use.zenodo.records.get 'doi:"' + doi + '"', dev, format
 
-API.use.zenodo.records.title = (title,dev=API.settings.dev) ->
-  return API.use.zenodo.records.get 'title:"' + title + '"', dev
+API.use.zenodo.records.title = (title,dev=API.settings.dev,format) ->
+  return API.use.zenodo.records.get 'title:"' + title + '"', dev, format
+
+API.use.zenodo.records.format = (rec, metadata={}) ->
+  try metadata.pdf ?= rec.pdf
+  try metadata.url ?= rec.url
+  try metadata.open ?= rec.open
+  try metadata.redirect ?= rec.redirect
+  metadata.doi ?= rec.doi
+  try metadata.title ?= rec.metadata.title
+  try metadata.journal ?= rec.metadata.journal.title
+  try metadata.issue ?= rec.metadata.journal.issue
+  try metadata.page ?= rec.metadata.journal.pages
+  try metadata.volume ?= rec.metadata.journal.volume
+  try metadata.keyword ?= rec.metadata.keywords
+  try metadata.licence ?= rec.metadata.license.id
+  try metadata.abstract = API.convert.html2txt rec.metadata.description
+  try
+    if rec.metadata.access_right = "open"
+      metadata.url ?= if rec.files? and rec.files.length and rec.files[0].links?.self? then rec.files[0].links.self else rec.links.html
+      metadata.open ?= metadata.url
+  try
+    for f in rec.files
+      if f.type is 'pdf'
+        metadata.pdf ?= f.links.self
+        break
+  try
+    metadata.author ?= []
+    for a in rec.metadata.creators
+      a = {name: a} if typeof a is 'string'
+      if a.name? and a.name.toLowerCase() isnt 'unknown'
+        as = a.name.split ' '
+        try a.family = as[as.length-1]
+        try a.given = a.name.replace(a.family,'').trim()
+      if a.affiliation?
+        a.affiliation = a.affiliation[0] if _.isArray a.affiliation
+        a.affiliation = {name: a.affiliation} if typeof a.affiliation is 'string'
+      metadata.author.push a
+  return metadata
 
 API.use.zenodo.deposition.create = (metadata,up,token,dev=API.settings.dev) ->
   # necessary metadata is title and description and a creators list with at least one object containing name in format Surname, name(s)

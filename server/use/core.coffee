@@ -14,7 +14,7 @@ API.add 'use/core/doi/:doipre/:doipost',
 API.add 'use/core/title/:qry', get: () -> return API.use.core.title this.urlParams.qry
 
 API.add 'use/core/search/:qry',
-  get: () -> return API.use.core.search this.urlParams.qry, this.queryParams.from, this.queryParams.size
+  get: () -> return API.use.core.search this.urlParams.qry, this.queryParams.from, this.queryParams.size, this.queryParams.format?
 
 
 
@@ -43,7 +43,7 @@ API.use.core.get = (qrystr) ->
     API.http.cache qrystr, 'core_get', res
   return res
 
-API.use.core.search = (qrystr,from,size=10,timeout=API.settings.use?.core?.timeout ? API.settings.use?._timeout ? 10000) ->
+API.use.core.search = (qrystr, from, size=10, format, timeout=API.settings.use?.core?.timeout ? API.settings.use?._timeout ? 10000) ->
   # assume incoming query string is of ES query string format
   # assume from and size are ES typical
   # but core only accepts certain field searches:
@@ -58,7 +58,14 @@ API.use.core.search = (qrystr,from,size=10,timeout=API.settings.use?.core?.timeo
   API.log 'Using CORE for ' + url
   try
     res = HTTP.call 'GET', url, {timeout:timeout}
-    return if res.statusCode is 200 then { total: res.data.totalHits, data: res.data.data} else { status: 'error', data: res}
+    if res.statusCode is 200
+      rd = res.data.data
+      if format
+        for r of rd
+          rd[r] = API.use.core.format rd[r]
+      return { total: res.data.totalHits, data: rd}
+    else
+      return { status: 'error', data: res}
   catch err
     return {status: 'error', error: err.toString()}
 
@@ -81,6 +88,24 @@ API.use.core.redirect = (record) ->
           res.redirect = API.service.oab.redirect(res.url) if res.url? and API.service.oab?
           break if res.redirect isnt false
   return res
+
+API.use.core.format = (rec, metadata={}) ->
+  try metadata.title ?= rec.title
+  try metadata.doi ?= rec.doi
+  try
+    metadata.author ?= []
+    for ar in rec.authors
+      as = ar.split(' ')
+      a = {name: ar, given:as[0]}
+      try a.family = as[as.length-1]
+      metadata.author.push a
+  try metadata.publisher ?= rec.publisher
+  try metadata.year ?= rec.year
+  try metadata.pdf ?= rec.pdf
+  try metadata.url ?= rec.url
+  try metadata.open ?= rec.open
+  try metadata.redirect ?= rec.redirect
+  return metadata
 
 
 

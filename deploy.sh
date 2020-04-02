@@ -1,5 +1,43 @@
 
 
+'''commands needed to install everything noddy could use
+meteor for running meteor app without bundling
+curl https://install.meteor.com/ | sh
+
+chrome for http.puppeteer
+wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add - 
+sudo sh -c 'echo "deb https://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list'
+sudo apt-get update
+sudo apt-get install google-chrome-stable -q -y
+
+canvas stuff for convert.svg2png
+sudo apt-get install libcairo2-dev libjpeg-dev libpango1.0-dev libgif-dev build-essential g++
+
+which caused an error on a newer machine so had to do this
+wget -q -O /tmp/libpng12.deb http://mirrors.kernel.org/ubuntu/pool/main/libp/libpng/libpng12-0_1.2.54-1ubuntu1_amd64.deb && sudo dpkg -i /tmp/libpng12.deb && rm /tmp/libpng12.deb
+
+then still fails on libgif which appears to be out of date. Going to have to disable all this stuff I think
+
+antiword for some text extractions
+sudo apt-get install antiword
+
+tesseract for some image conversions
+sudo apt install tesseract-ocr
+
+phash was required by jimp on my image server, but it is obsolete now. Needs an alternative, may have to write phash myself
+
+'''
+
+# to start up direct on command line
+# typically use 3002 for dev and 3333 for live, and can add those URLs and ports to nginx config
+# remember also add internal IPs to index server firewall so they can contact it
+# and need to set some env variables for meteor to run properly
+# export MONGO_URL=http://nowhere && meteor --port 3002 --settings settings.json
+
+# can also start with setting job startup differently as that is the main one that changes on cluster machines
+# export MONGO_URL=http://nowhere && NODDY_SETTINGS_JOB_STARTUP=true && meteor --port 3002 --settings settings.json
+
+
 # ALTERING PRODUCTION DEPLOYMENT TO PM2 INSTEAD OF FOREVER
 # THE BELOW SCRIPT IS STILL IN TESTING AND NEEDS TO BE UPDATED TO USE PM2 INSTEAD
 # HERE ARE THE INSTRUCTIONS FOR INSTALLING PM2

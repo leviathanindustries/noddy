@@ -29,27 +29,26 @@ API.add 'use/wikinews/text/:qid',
 
 # https://en.wikinews.org/wiki/Category:Apple_Inc.
 API.use.wikinews.about = (qid, q, url, text=false) ->
-  news = {news: []}
+  res = {}
+  try res = API.use.wikidata.simplify qid, q, url
+  try res.category = data["topic's main category"].replace('Category:','')
+  res.news = []
+  res.text = '' if text
   try
-    data = API.use.wikidata.simplify qid, q, url
-    news.category = data["topic's main category"].replace('Category:','')
-    news.label = data.label
-    news.qid = data.qid
-    news.text = '' if text
-    if news.category?
-      pg = API.http.puppeteer 'https://en.wikinews.org/wiki/Category:' + news.category, 0
+    if res.category? or res.label?
+      pg = API.http.puppeteer 'https://en.wikinews.org/wiki/Category:' + (res.category ? res.label), 0
       pg = pg.split('wikidialog-alternative')[1].split('<ul>')[1].split('</ul>')[0]
       items = pg.split('</li>')
       for item in items
         try
-          news.news.push
+          res.news.push
             date: item.split('<li>')[1].split(':')[0]
             title: item.split('title="')[1].split('"')[0]
             url: 'https://en.wikinews.org' + item.split('href="')[1].split('"')[0]
           if text
-            news.text += '<br><br>' if news.text.length
-            news.text += API.use.wikinews.article 'https://en.wikinews.org/' + item.split('href="')[1].split('"')[0]
-  return news
+            res.text += '<br><br>' if res.text.length
+            res.text += API.use.wikinews.article 'https://en.wikinews.org/' + item.split('href="')[1].split('"')[0]
+  return res
 
 API.use.wikinews.article = (url) ->
   article = ''
@@ -118,7 +117,7 @@ API.use.wikidata.drill = (qid) ->
     #    res[key] = API.use.wikidata.drill data.info[key][0].mainsnak.datavalue.value.id
   #return res
   
-API.use.wikidata.simplify = (qid,q,url) ->
+API.use.wikidata.simplify = (qid,q,url,drill=true) ->
   res = {}
   if qid
     res.qid = qid
@@ -134,10 +133,11 @@ API.use.wikidata.simplify = (qid,q,url) ->
     res.description = data.description
     res.wikipedia = data.wikipedia
     res.wid = data.wid
-    for key in data.infokeys
-      try
-        dk = API.use.wikidata.drill data.info[key][0].mainsnak.datavalue.value.id
-        res[key] = dk if dk
+    if drill
+      for key in data.infokeys
+        try
+          dk = API.use.wikidata.drill data.info[key][0].mainsnak.datavalue.value.id
+          res[key] = dk if dk
   return res
 
 # https://www.mediawiki.org/wiki/API:Main_page

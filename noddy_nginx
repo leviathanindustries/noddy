@@ -16,6 +16,8 @@ keepalive_timeout 600;
 # DEFINE A DEV UPSTREAM CL API
 upstream noddy_dev {
     server localhost:3002;
+    server 10.131.124.133:3002 backup weight=5;
+    server 10.131.35.14:3002 backup;
 }
 
 # DEFINE A LOCAL UPSTREAM CL API FOR SOME SERVICE
@@ -25,7 +27,8 @@ upstream noddy_local {
 
 # DEFINE A CLUSTER UPSTREAM CL API FOR CHECKING
 upstream noddy_cluster {
-    server 10.131.12.33:3000 max_fails=1 fail_timeout=60;
+    server 10.131.12.33:3333 max_fails=1 fail_timeout=60;
+    server 10.131.124.133:3333 backup;
 }
 
 # LIVE API PROPER VIA CLUSTER
@@ -34,6 +37,8 @@ upstream noddy {
     #ip_hash;
     keepalive 16;
     server localhost:3333 max_fails=1 fail_timeout=60;
+    server 10.131.124.133:3333 backup weight=5;
+    server 10.131.12.33:3333 backup;
 }
 
 #REDIRECT PORT 80 TO PORT 443 FOR ANYTHING THAT SHOULD ONLY SERVE ON 443

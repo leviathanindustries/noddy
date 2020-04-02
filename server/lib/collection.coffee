@@ -129,17 +129,31 @@ API.collection.prototype.transactional = (obj) ->
   # all shards where that record is stored.
   return obj
   
-API.collection.prototype.insert = (q, obj, uid, refresh, dev=API.settings.dev) ->
+API.collection.prototype.insert = (q, obj, uid, refresh, deduplicate, prep, dev=API.settings.dev) ->
   if typeof q is 'string' and typeof obj is 'object'
     obj._id = q
   else if typeof q is 'object' and not obj?
     obj = q
   if Array.isArray obj
+    ups = []
     for o of obj
+      obj[o] = prep(obj[o]) if typeof prep is 'function'
       obj[o].createdAt = Date.now()
       obj[o].created_date = moment(obj[o].createdAt, "x").format "YYYY-MM-DD HHmm.ss"
       obj[o]._id ?= Random.id()
-    return this.bulk obj, 'index', uid, undefined, dev
+      deduplicate = deduplicate.join(',') if _.isArray deduplicate
+      if typeof deduplicate is 'string' # the name of a key with a value to search for dups, or comma-separated list of keys
+        srchs = []
+        for s in deduplicate.split(',')
+          srch = {}
+          srch[s] = API.collection.dot obj[o], s
+          srchs.push(srch) if srch[s]?
+        srchs = srchs[0] if srchs.length is 1
+        if _.isEmpty(srchs) or not this.find srchs
+          ups.push obj[o]
+      else if (typeof deduplicate is 'function' and deduplicate(obj[o]) is true) or not deduplicate?
+        ups.push obj[o]
+    return this.bulk ups, 'index', uid, undefined, dev
   else
     obj.createdAt = Date.now()
     obj.created_date = moment(obj.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
@@ -165,7 +179,7 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial, dev
         obj[_.keys(obj)[0]] = 1
     if not partial
       for k of obj
-        API.collection._dot(rec,k,obj[k]) if k isnt '_id'
+        API.collection.dot(rec,k,obj[k]) if k isnt '_id'
       rec.updatedAt = Date.now()
       rec.updated_date = moment(rec.updatedAt, "x").format "YYYY-MM-DD HHmm.ss"
     API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, refresh: refresh, versioned: versioned, partial: partial, level: 'debug' }) if this._route.indexOf('_log') is -1
@@ -205,6 +219,13 @@ API.collection.prototype.search = (q, opts, versioned, dev=API.settings.dev) ->
   # NOTE is there any case for recording who has done searches? - a write for every search could be a heavy load...
   # or should it be possible to apply certain restrictions on what the search returns?
   # Perhaps - but then this coud/should be applied by the service providing access to the collection
+  _es_meta = false
+  if typeof q is 'object' and q._es_meta?
+    _es_meta = q._es_meta
+    delete q._es_meta
+  if typeof opts is 'object' and opts._es_meta?
+    _es_meta = opts._es_meta
+    delete opts._es_meta
   try
     versioned = opts.versioned
     delete opts.versioned
@@ -221,12 +242,16 @@ API.collection.prototype.search = (q, opts, versioned, dev=API.settings.dev) ->
     res = undefined
   else if typeof q is 'string'
     res = API.es.call 'GET', this._route + '/_search?' + (if versioned then 'version=true&' else '') + (if q.indexOf('?') is 0 then q.replace('?', '') else q), undefined, undefined, undefined, undefined, undefined, undefined, dev
-    res.q = q if res? and API.settings.dev
   else
     res = API.es.call 'POST', this._route + '/_search' + (if versioned then '?version=true' else ''), q, undefined, undefined, undefined, undefined, undefined, dev
-    res.q = q if res? and API.settings.dev
+  if API.settings.dev
+    res ?= {}
+    res.q = q
   if dbq and q? and res?.hits?.total? and res.hits.total > 0 and dev # simple way to get rid of records in test indexes
     res.deleted = this.remove q
+  if res? and _es_meta is false
+    delete res.timed_out
+    delete res._shards
   return res
 
 API.collection.prototype.find = (q, opts, versioned, dev=API.settings.dev) ->
@@ -245,7 +270,8 @@ API.collection.prototype.find = (q, opts, versioned, dev=API.settings.dev) ->
       return undefined
 
 API.collection.prototype.import = (recs, uid, dev=API.settings.dev) ->
-  # this should only be used for importing records exactly as is - otherwise pass a list to insert to create mutliple items with proper timestamps
+  # this should only be used for importing records exactly as is
+  # otherwise pass a list to insert to create mutliple items with proper timestamps, or to avoid duplicates
   return this.bulk recs, 'index', uid, undefined, dev
 
 API.collection.prototype.bulk = (recs, action, uid, bulk, dev=API.settings.dev) ->
@@ -692,11 +718,22 @@ API.collection._translate = (q, opts) ->
   qry.query.filtered.query = { match_all: {} } if typeof qry is 'object' and qry.query?.filtered?.query? and _.isEmpty(qry.query.filtered.query)
   #qry.query.filtered.query.bool.must = [{"match_all":{}}] if typeof qry is 'object' and qry.query?.filtered?.query?.bool?.must? and qry.query.filtered.query.bool.must.length is 0 and not qry.query.filtered.query.bool.must_not? and not qry.query.filtered.query.bool.should and (qry.aggregations? or qry.aggs? or qry.facets?)
   console.log('Returning translated query',JSON.stringify(qry)) if API.settings.log?.level is 'all'
+  # clean slashes out of query strings
+  if qry.query?.filtered?.query?.bool?
+    for bm of qry.query.filtered.query.bool
+      for b of qry.query.filtered.query.bool[bm]
+        if qry.query.filtered.query.bool[bm][b].query_string?.query? and qry.query.filtered.query.bool[bm][b].query_string.query.indexOf('/') isnt -1
+          qry.query.filtered.query.bool[bm][b].query_string.query = qry.query.filtered.query.bool[bm][b].query_string.query.replace(/\//g,'\\/')
+  if qry.query?.filtered?.filter?.bool?
+    for fm of qry.query.filtered.filter.bool
+      for f of qry.query.filtered.filter.bool[fm]
+        if qry.query.filtered.filter.bool[fm][f].query_string?.query? and qry.query.filtered.filter.bool[fm][f].query_string.query.indexOf('/') isnt -1
+          qry.query.filtered.filter.bool[fm][f].query_string.query = qry.query.filtered.filter.bool[fm][f].query_string.query.replace(/\//g,'\\/')
   return qry
 
-API.collection._dot = (obj, key, value, del) ->
+API.collection.dot = (obj, key, value, del) ->
   if typeof key is 'string'
-    return API.collection._dot obj, key.split('.'), value, del
+    return API.collection.dot obj, key.split('.'), value, del
   else if key.length is 1 and (value? or del?)
     if del is true or value is '$DELETE'
       if obj instanceof Array
@@ -720,11 +757,37 @@ API.collection._dot = (obj, key, value, del) ->
         # and is it possible for this to work at all with value assignment?
       else if value?
         obj[key[0]] = if isNaN(parseInt(key[0])) then {} else []
-        return API.collection._dot obj[key[0]], key.slice(1), value, del
+        return API.collection.dot obj[key[0]], key.slice(1), value, del
       else
         return undefined
     else
-      return API.collection._dot obj[key[0]], key.slice(1), value, del
+      return API.collection.dot obj[key[0]], key.slice(1), value, del
+
+API.collection.flatten = (data) ->
+  res = {}
+  _flatten = (obj, key) ->
+    for k of obj
+      pk = if key then key + '.' + k else k
+      v = obj[k]
+      if typeof v is 'string'
+        res[pk] = v
+      else if _.isArray v
+        if typeof v[0] is 'object'
+          for n of v
+            _flatten v[n], pk + '.' + n
+        else
+          res[pk] = v.join(', ')
+      else
+        _flatten v, pk
+  if _.isArray data
+    results = []
+    for d in data
+      res = {}
+      results.push _flatten d
+    return results
+  else
+    _flatten data
+    return res
 
 
 

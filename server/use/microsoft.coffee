@@ -84,3 +84,4 @@ API.use.microsoft.bing.search = (q, cache=false, refresh, key=API.settings.use.m
     catch err
       return { status: 'error', data: 'error', error: err}
 
+# https://docs.microsoft.com/en-gb/azure/cognitive-services/bing-news-search/nodejs

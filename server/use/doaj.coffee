@@ -7,19 +7,19 @@ API.use ?= {}
 API.use.doaj = {journals: {}, articles: {}}
 
 API.add 'use/doaj/:which/es',
-  get: () -> return API.use.doaj.es this.urlParams.which, this.queryParams
-  post: () -> return API.use.doaj.es this.urlParams.which, this.queryParams, this.bodyParams
+  get: () -> return API.use.doaj.es this.urlParams.which, this.queryParams, undefined, this.queryParams.format isnt 'false'
+  post: () -> return API.use.doaj.es this.urlParams.which, this.queryParams, this.bodyParams, this.queryParams.format isnt 'false'
 
 API.add 'use/doaj/articles/search/:qry',
-  get: () -> return API.use.doaj.articles.search this.urlParams.qry
+  get: () -> return API.use.doaj.articles.search this.urlParams.qry, this.queryParams, this.queryParams.format isnt 'false'
 
 API.add 'use/doaj/articles/title/:qry',
   get: () -> return API.use.doaj.articles.title this.urlParams.qry
 
 API.add 'use/doaj/articles/doi/:doipre/:doipost',
-  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost
+  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format isnt 'false'
 API.add 'use/doaj/articles/doi/:doipre/:doipost/:doiextra',
-  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doiextra
+  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doiextra, this.queryParams.format isnt 'false'
 
 API.add 'use/doaj/journals/search/:qry',
   get: () -> return API.use.doaj.journals.search this.urlParams.qry
@@ -29,16 +29,19 @@ API.add 'use/doaj/journals/issn/:issn',
 
 
 
-API.use.doaj.es = (which='journal,article', params, body) ->
+API.use.doaj.es = (which='journal,article', params, body, format=true) ->
   # which could be journal or article or journal,article
   # but doaj only allows this type of query on journal,article, so will add this later as a query filter
   url = 'https://doaj.org/query/journal,article/_search?ref=public_journal_article&'
   # this only works with a source param, if one is not present, should convert the query into a source param
   if body
-    for p in params
+    for p of params
       body[p] = params[p] # allow params to override body?
   else
     body = params
+  if body.format?
+    delete body.format
+    format ?= true
   if not body.source?
     tr = API.collection._translate body
     body = source: tr # unless doing a post, in which case don't do this part
@@ -51,13 +54,22 @@ API.use.doaj.es = (which='journal,article', params, body) ->
   try
     res = HTTP.call 'GET', url
     try res.data.query = body
-    return if res.statusCode is 200 then res.data else {status: 'error', data: res.data, query: body}
+    if res.statusCode is 200
+      if format
+        res.data = res.data.hits
+        for d of res.data.hits
+          res.data.hits[d] = API.use.doaj.articles.format res.data.hits[d]._source
+        res.data.data = res.data.hits
+        delete res.data.hits
+      return res.data
+    else
+      return {status: 'error', data: res.data, query: body}
   catch err
     return {status: 'error', error: err, query: body, url: url}
 
 API.use.doaj.journals.issn = (issn) ->
   r = API.use.doaj.journals.search 'issn:' + issn
-  return if r.results?.length then r.results[0] else undefined
+  return if r.data?.length then r.data[0] else undefined
 
 # title search possible with title:MY JOURNAL TITLE
 # DOAJ API rate limit is 6r/s
@@ -70,30 +82,39 @@ API.use.doaj.journals.search = (qry,params) ->
   #res = HTTP.call 'GET', url
   return if res.statusCode is 200 then res.data else {status: 'error', data: res.data}
 
-API.use.doaj.articles.doi = (doi) ->
-  return API.use.doaj.articles.get 'doi:' + doi
+API.use.doaj.articles.doi = (doi, format) ->
+  return API.use.doaj.articles.get 'doi:' + doi, format
 
-API.use.doaj.articles.title = (title) ->
+API.use.doaj.articles.title = (title,format) ->
   try title = title.toLowerCase().replace(/(<([^>]+)>)/g,'').replace(/[^a-z0-9 ]+/g, " ").replace(/\s\s+/g, ' ')
-  return API.use.doaj.articles.get 'title:"' + title + '"'
+  return API.use.doaj.articles.get 'title:"' + title + '"', format
 
-API.use.doaj.articles.get = (qry) ->
-  res = API.use.doaj.articles.search qry
-  rec = if res?.results?.length then res.results[0] else undefined
+API.use.doaj.articles.get = (qry,format=true) ->
+  res = API.use.doaj.articles.search qry, undefined, false
+  rec = if res?.data?.length then res.data[0] else undefined
   if rec?
     op = API.use.doaj.articles.redirect rec
     rec.url = op.url
     rec.redirect = op.redirect
-  return rec
+  return if format then API.use.doaj.articles.format(rec) else rec
 
-API.use.doaj.articles.search = (qry,params) ->
+API.use.doaj.articles.search = (qry,params={},format=true) ->
   url = 'https://doaj.org/api/v1/search/articles/' + qry + '?'
+  #params.sort ?= 'bibjson.year:desc'
   url += op + '=' + params[op] + '&' for op of params
   API.log 'Using doaj for ' + url
   try
     #res = HTTP.call 'GET', url
     res = API.job.limit 200, 'HTTP.call', ['GET',url], "DOAJ"
-    return if res.statusCode is 200 then res.data else {status: 'error', data: res.data}
+    if res.statusCode is 200
+      if format
+        for d of res.data.results
+          res.data.results[d] = API.use.doaj.articles.format res.data.results[d]
+      res.data.data = res.data.results
+      delete res.data.results
+      return res.data
+    else 
+      return {status: 'error', data: res.data}
   catch err
     return {status: 'error', data: 'DOAJ error', error: err}
 
@@ -111,6 +132,63 @@ API.use.doaj.articles.redirect = (record) ->
         res.redirect = API.service.oab.redirect(res.url) if API.service.oab?
         break if res.url and res.redirect isnt false
   return res
+
+API.use.doaj.articles.format = (rec, metadata={}) ->
+  try metadata.pdf ?= rec.pdf
+  try metadata.url ?= rec.url
+  try metadata.open ?= rec.open
+  try metadata.redirect ?= rec.redirect
+  try rec = rec.bibjson
+  try metadata.title ?= rec.title
+  try metadata.abstract ?= rec.abstract.replace(/\n/g,' ')
+  try metadata.volume ?= rec.journal.volume
+  try metadata.issn ?= rec.journal.issns[0]
+  if not metadata.page?
+    try metadata.page = rec.start_page
+    try metadata.page += '-' + rec.end_page if rec.end_page?
+  try metadata.journal ?= rec.journal.title
+  try metadata.publisher ?= rec.journal.publisher
+  try metadata.year ?= rec.year
+  try
+    rm = rec.month ? '01'
+    rm = 1 if rm is 0 or rm is "0"
+    if rec.month?
+      try
+        rmt = rec.month.substring(0,3).toLowerCase()
+        if rmt.length is 3
+          idx = ['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'].indexOf rmt
+          rm = idx+1 if idx isnt -1
+    metadata.published ?= rec.year + '-' + rm + '-' + (rec.day ? '01')
+  try
+    metadata.author ?= []
+    for a in rec.author
+      as = a.name.split(' ')
+      a.family = as[as.length-1]
+      a.given = a.name.replace(a.family,'').trim()
+      if a.affiliation?
+        a.affiliation = a.affiliation[0] if _.isArray a.affiliation
+        a.affiliation = {name: a.affiliation} if typeof a.affiliation is 'string'
+      metadata.author.push a
+  try
+    metadata.keyword ?= []
+    metadata.keyword.push(s.term) for s in rec.subject
+  try
+    for id in rec.identifier
+      if id.type.toLowerCase() is 'doi'
+        metadata.doi ?= id.id
+        break
+  try
+    for l in rec.journal.license
+      if l.open_access or not metadata.licence? or metadata.licence.indexOf('cc') isnt 0
+        metadata.licence ?= l.type
+        if l.open_access and not metadata.url?
+          try
+            for l in rec.link
+              if l.type is 'fulltext'
+                metadata.url = l.url
+          metadata.url ?= 'https://doi.org/' + metadata.doi if metadata.doi?
+          break
+  return metadata  
 
 
 

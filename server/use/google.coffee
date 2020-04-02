@@ -102,7 +102,7 @@ API.add 'use/google/clear',
 # free tier only up to 100 queries a day. After that, $5 per 1000, up to 10k
 API.use.google.search.custom = (q, id=API.settings.use.google.search.id, key=API.settings.use.google.search.key) ->
 	url = 'https://www.googleapis.com/customsearch/v1?key=' + key + '&cx=' + id + '&q=' + q
-	return HTTP.call('GET',url).data
+	return API.http.proxy('GET',url,true).data
 
 	
 	
@@ -117,7 +117,7 @@ API.use.google.knowledge.retrieve = (mid,types,wikidata) ->
 		u += '&types=' + types
 	ret = {}
 	try
-		res = HTTP.call 'GET',u
+		res = API.http.proxy 'GET', u, true
 		ret = res.data.itemListElement[0].result
 		ret.score = res.data.itemListElement[0].resultScore
 		if wikidata
@@ -129,7 +129,7 @@ API.use.google.knowledge.retrieve = (mid,types,wikidata) ->
 API.use.google.knowledge.search = (qry,limit=10) ->
 	# don't cache searches because result sets should change over time - so most of below is not cached either
 	u = 'https://kgsearch.googleapis.com/v1/entities:search?key=' + API.settings.use.google.serverkey + '&limit=' + limit + '&query=' + qry
-	return HTTP.call('GET',u).data
+	return API.http.proxy('GET',u,true).data
 
 API.use.google.knowledge.find = (qry) ->
 	res = API.use.google.knowledge.search qry
@@ -161,9 +161,9 @@ API.use.google.cloud.language = (content, actions=['entities','sentiment'], auth
 	document = {document: {type: "PLAIN_TEXT",content:content},encodingType:"UTF8"}
 	result = {}
 	if 'entities' in actions
-		result.entities = HTTP.call('POST',lurl,{data:document,headers:{'Content-Type':'application/json'}}).data.entities
+		result.entities = API.http.proxy('POST',lurl,{data:document,headers:{'Content-Type':'application/json'}},true).data.entities
 	if 'sentiment' in actions
-		result.sentiment = HTTP.call('POST',lurl.replace('analyzeEntities','analyzeSentiment'),{data:document,headers:{'Content-Type':'application/json'}}).data
+		result.sentiment = API.http.proxy('POST',lurl.replace('analyzeEntities','analyzeSentiment'),{data:document,headers:{'Content-Type':'application/json'}},true).data
 	API.http.cache checksum, 'google_language', result
 	return result
 
@@ -176,7 +176,7 @@ API.use.google.cloud.translate = (q, source, target='en', format='text') ->
 	exists = API.http.cache checksum, 'google_translate'
 	return exists if exists
 	lurl = 'https://translation.googleapis.com/language/translate/v2?key=' + API.settings.use.google.serverkey
-	result = HTTP.call('POST', lurl, {data:{q:q, source:source, target:target, format:format}, headers:{'Content-Type':'application/json'}})
+	result = API.http.proxy('POST', lurl, {data:{q:q, source:source, target:target, format:format}, headers:{'Content-Type':'application/json'}},true)
 	if result?.data?.data?.translations
 		res = result.data.data.translations[0].translatedText
 		API.http.cache(checksum, 'google_language', res) if res.length
@@ -191,7 +191,7 @@ API.use.google.places.autocomplete = (qry,location,radius) ->
 	url = 'https://maps.googleapis.com/maps/api/place/autocomplete/json?input=' + qry + '&key=' + API.settings.use.google.serverkey
 	url += '&location=' + location + '&radius=' + (radius ? '10000') if location?
 	try
-		return HTTP.call('GET',url).data
+		return API.http.proxy('GET',url,true).data
 	catch err
 		return {status:'error', error: err}
 
@@ -204,7 +204,7 @@ API.use.google.places.place = (id,qry,location,radius) ->
 			return {status:'error', error: err}
 	url = 'https://maps.googleapis.com/maps/api/place/details/json?placeid=' + id + '&key=' + API.settings.use.google.serverkey
 	try
-		return HTTP.call('GET',url).data
+		return API.http.proxy('GET',url,true).data
 	catch err
 		return {status:'error', error: err}
 
@@ -220,16 +220,16 @@ API.use.google.places.nearby = (params={}) ->
 	params.key ?= API.settings.use.google.serverkey
 	url += (if p is 'q' then 'input' else p) + '=' + params[p] + '&' for p of params
 	try
-		return HTTP.call('GET',url).data
+		return API.http.proxy('GET',url,true).data
 	catch err
 		return {status:'error', error: err}
 
 API.use.google.places.search = (params) ->
 	url = 'https://maps.googleapis.com/maps/api/place/textsearch/json?'
-	params.key ?= API.settings.use.google.serverky
+	params.key ?= API.settings.use.google.serverkey
 	url += (if p is 'q' then 'input' else p) + '=' + params[p] + '&' for p of params
 	try
-		return HTTP.call('GET',url).data
+		return API.http.proxy('GET',url,true).data
 	catch err
 		return {status:'error', error: err}
 
