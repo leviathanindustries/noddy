@@ -96,7 +96,7 @@ API.use.doaj.articles.get = (qry,format=true) ->
     op = API.use.doaj.articles.redirect rec
     rec.url = op.url
     rec.redirect = op.redirect
-  return if format then API.use.doaj.articles.format(rec) else rec
+  return if format and typeof rec is 'object' then API.use.doaj.articles.format(rec) else rec
 
 API.use.doaj.articles.search = (qry,params={},format=true) ->
   url = 'https://doaj.org/api/v1/search/articles/' + qry + '?'
@@ -138,7 +138,8 @@ API.use.doaj.articles.format = (rec, metadata={}) ->
   try metadata.url ?= rec.url
   try metadata.open ?= rec.open
   try metadata.redirect ?= rec.redirect
-  try rec = rec.bibjson
+  try 
+    rec = rec.bibjson if rec.bibjson?
   try metadata.title ?= rec.title
   try metadata.abstract ?= rec.abstract.replace(/\n/g,' ')
   try metadata.volume ?= rec.journal.volume

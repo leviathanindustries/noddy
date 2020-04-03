@@ -37,8 +37,8 @@ upstream noddy {
     #ip_hash;
     keepalive 16;
     server localhost:3333 max_fails=1 fail_timeout=60;
-    server 10.131.124.133:3333 backup weight=5;
-    server 10.131.12.33:3333 backup;
+    #server 10.131.124.133:3333 backup weight=5;
+    #server 10.131.12.33:3333 backup;
 }
 
 #REDIRECT PORT 80 TO PORT 443 FOR ANYTHING THAT SHOULD ONLY SERVE ON 443
