@@ -130,7 +130,7 @@ API.status.rsync = (ips,src,dest) ->
       ip = ip.split('/')[0] if ip.indexOf('/') isnt -1
       rs = new rsync()
         .shell('ssh')
-        .flags('az')
+        .flags('azL')
         .set('exclude','.meteor/local')
         .source(src)
         .destination(ip + ':' + dest)
