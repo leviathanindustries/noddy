@@ -288,8 +288,10 @@ API.use.crossref.works.format = (rec, metadata={}, reverse=true) ->
         if typeof l.URL is 'string' and (typeof metadata.licence isnt 'string' or (metadata.licence.indexOf('creativecommons') is -1 and l.URL.indexOf('creativecommons') isnt -1))
           metadata.licence = l.URL
           if l.URL.indexOf('creativecommons') isnt -1
-            metadata.url ?= 'https://doi.org/' + metadata.doi
-            try metadata.redirect = API.service.oab.redirect metadata.url
+            md = 'https://doi.org/' + metadata.doi
+            metadata.url ?= md
+            metadata.url.push(md) if _.isArray(metadata.url) and md not in metadata.url
+            try metadata.redirect = API.service.oab.redirect md
             break
   try metadata.pdf ?= rec.pdf
   try metadata.url ?= rec.url
