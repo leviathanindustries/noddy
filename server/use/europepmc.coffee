@@ -313,7 +313,7 @@ API.use.europepmc.format = (rec, metadata={}) ->
     metadata.licence = rec.license.trim().replace(/ /g,'-')
   if rec?.url?
     metadata.url = rec.url
-    if not metadata.redirect?
+    if not metadata.redirect? and typeof rec.url is 'string'
       try metadata.redirect = API.service.oab.redirect rec.url
   return metadata
 
