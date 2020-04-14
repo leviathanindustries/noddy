@@ -26,6 +26,9 @@ API.use.zenodo.records = {}
 API.add 'use/zenodo',
   get: () -> return API.use.zenodo.records.search this.queryParams.q, not this.queryParams.dev?, this.queryParams.format?
 
+API.add 'use/zenodo/:zid',
+  get: () -> return API.use.zenodo.records.record this.urlParams.zid, not this.queryParams.dev?, this.queryParams.format?
+
 API.add 'use/zenodo/:doipre/:doipost',
   get: () -> return API.use.zenodo.records.doi this.urlParams.doipre + '/' + this.urlParams.doipost, not this.queryParams.dev?, this.queryParams.format?
 API.add 'use/zenodo/:doipre/:doipost/:doimore',
@@ -52,6 +55,12 @@ API.use.zenodo.records.search = (q,dev=API.settings.dev,format,size=10) ->
     res.data = res.hits.hits
     delete res.hits
   return res
+
+API.use.zenodo.records.record = (zid,dev=API.settings.dev,format) ->
+  url = 'https://' + (if dev then 'sandbox.' else '') + 'zenodo.org/api/records/' + zid
+  API.log 'Using zenodo records get for ' + url
+  res = HTTP.call('GET', url).data
+  return if format then API.use.zenodo.records.format(res) else res
 
 API.use.zenodo.records.get = (q,dev=API.settings.dev,format) ->
   r = API.use.zenodo.records.search q, dev, format
