@@ -18,13 +18,13 @@ API.use ?= {}
 API.use.europepmc = {}
 
 API.add 'use/europepmc/doi/:doipre/:doipost',
-  get: () -> return API.use.europepmc.doi this.urlParams.doipre + '/' + this.urlParams.doipost
+  get: () -> return API.use.europepmc.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format isnt 'false'
 API.add 'use/europepmc/doi/:doipre/:doipost/:doimore',
-  get: () -> return API.use.europepmc.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore
+  get: () -> return API.use.europepmc.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format isnt 'false'
 
-API.add 'use/europepmc/pmid/:qry', get: () -> return API.use.europepmc.pmid this.urlParams.qry
+API.add 'use/europepmc/pmid/:qry', get: () -> return API.use.europepmc.pmid this.urlParams.qry, this.queryParams.format isnt 'false'
 
-API.add 'use/europepmc/pmc/:qry', get: () -> return API.use.europepmc.pmc this.urlParams.qry
+API.add 'use/europepmc/pmc/:qry', get: () -> return API.use.europepmc.pmc this.urlParams.qry, this.queryParams.format isnt 'false'
 
 API.add 'use/europepmc/pmc/:qry/xml',
   get: () ->
@@ -40,7 +40,7 @@ API.add 'use/europepmc/pmc/:qry/licence', get: () -> return API.use.europepmc.li
 
 API.add 'use/europepmc/pmc/:qry/aam', get: () -> return API.use.europepmc.authorManuscript this.urlParams.qry
 
-API.add 'use/europepmc/title/:qry', get: () -> return API.use.europepmc.title this.urlParams.qry
+API.add 'use/europepmc/title/:qry', get: () -> return API.use.europepmc.title this.urlParams.qry, this.queryParams.format isnt 'false'
 
 API.add 'use/europepmc/search/:qry',
   get: () -> return API.use.europepmc.search this.urlParams.qry, this.queryParams.from, this.queryParams.size, this.queryParams.format isnt 'false'

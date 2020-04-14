@@ -191,9 +191,8 @@ API.use.crossref.journals.search = (qrystr,from,size,filter) ->
 API.use.crossref.works.doi = (doi,format) ->
   url = 'https://api.crossref.org/works/' + doi
   API.log 'Using crossref for ' + url
-  cached = API.http.cache doi, 'crossref_works_doi'
-  if cached
-    return cached
+  if cached = API.http.cache doi, 'crossref_works_doi'
+    return if format then API.use.crossref.works.format(cached) else cached
   else
     try
       res = HTTP.call 'GET', url, {headers: header}
@@ -269,9 +268,37 @@ API.use.crossref.works.format = (rec, metadata={}, reverse=true) ->
   try metadata.issn = rec.ISSN[0]
   try metadata.keyword = rec.subject if rec.subject? # is a list of strings - goes in keywords because subject was already previously used as an object
   try metadata.publisher = rec.publisher if rec.publisher?
-  try metadata.year = rec['published-print']['date-parts'][0][0]
-  try metadata.year = rec.created['date-time'].split('-')[0]
-  try metadata.published = if rec['published-online']?['date-parts'] and rec['published-online']['date-parts'][0].length is 3 then rec['published-online']['date-parts'][0].join('-') else if rec['published-print']?['date-parts'] and rec['published-print']?['date-parts'][0].length is 3 then rec['published-print']['date-parts'][0].join('-') else if rec['deposited']?['date-parts'] and rec['deposited']?['date-parts'][0].length is 3 then rec['deposited']['date-parts'][0].join('-') else undefined
+  for p in ['published-print','journal-issue.published-print','issued','published-online','created','deposited']
+    try
+      if rt = rec[p] ? rec['journal-issue']?[p.replace('journal-issue.','')]
+        if typeof rt['date-time'] is 'string' and rt['date-time'].indexOf('T') isnt -1 and rt['date-time'].split('T')[0].split('-').length is 3
+          metadata.published = rt['date-time'].split('T')[0]
+          metadata.year = metadata.published.split('-')[0]
+          break
+        else if rt['date-parts']? and rt['date-parts'].length and _.isArray(rt['date-parts'][0]) and rt['date-parts'][0].length
+          rp = rt['date-parts'][0]
+          pbl = rp[0].toString()
+          if pbl.length > 2 # needs to be a year
+            metadata.year ?= pbl
+            if rp.length is 1
+              pbl += '-01-01'
+            else
+              m = false
+              d = false
+              if not isNaN(parseInt(rp[1])) and parseInt(rp[1]) > 12
+                d = rp[1].toString()
+              else
+                m = rp[1].toString()
+              if rp.length is 2
+                if d isnt false
+                  m = rp[2].toString()
+                else
+                  d = rp[2].toString()
+              m = if m is false then '01' else if m.length is 1 then '0' + m else m
+              d = if d is false then '01' else if d.length is 1 then '0' + d else d
+              pbl += '-' + m + '-' + d
+            metadata.published = pbl
+            break
   try metadata.abstract = API.convert.html2txt(rec.abstract).replace(/\n/g,' ') if rec.abstract?
   try
     if rec.reference? and rec.reference.length

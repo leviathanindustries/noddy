@@ -16,7 +16,7 @@ import puppeteer from 'puppeteer'
 import fs from 'fs'
 import formdata from 'form-data'
 import stream from 'stream'
-#import phantom from 'phantom'
+import XMLHttpRequest from 'xmlhttprequest' # could also try xmlhttprequest-cooke
 
 API.http = {}
 
@@ -39,6 +39,10 @@ API.add 'http/puppeteer',
         headers:
           'Content-Type': 'text/' + this.queryParams.format ? 'plain'
         body: res
+
+API.add 'http/get', get: () -> return API.http.get this.queryParams.url, this.queryParams
+API.add 'http/head', get: () -> return API.http.get this.queryParams.url, {action: 'head'}
+API.add 'http/xhr', get: () -> return API.http.xhr this.queryParams.url, this.queryParams
 
 API.add 'http/cache',
   get: () ->
@@ -135,6 +139,7 @@ API.http.cache = (lookup,type='cache',content,refresh=0) ->
         return parsed
   return undefined
 
+
 API.http.proxy = (method='GET', url, opts={}, clustercheck=false) ->
   if typeof opts is 'boolean'
     clustercheck = opts
@@ -163,17 +168,20 @@ API.http.resolve = (url,refresh=false) ->
       try
         resolved = API.use.crossref.resolve(url) if url.indexOf('10') is 0 or url.indexOf('doi.org/') isnt -1
       resolve = (url, callback) ->
-        API.log 'Resolving ' + url
-        # unfortunately this has to return the URL rather than false if it fails,
-        # because some URLs are valid but blocked to our server, such as http://journals.sagepub.com/doi/pdf/10.1177/0037549715583150
-        request.head url, {rejectUnauthorized: false, timeout:7000, jar:true, headers: {'User-Agent':'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36'}}, (err, res, body) ->
-          if err and JSON.stringify(err).indexOf('TIMEDOUT') isnt -1
-            API.log msg: 'http resolve timed out', url: url, error: err, level: 'warn'
-            callback null, url
-          else
-            callback null, (if not res? or (res.statusCode? and res.statusCode > 399) then false else res.request.uri.href)
+        if typeof url isnt 'string' or url.indexOf('http') isnt 0
+          return callback null, url
+        else
+          API.log 'Resolving ' + url
+          # unfortunately this has to return the URL rather than false if it fails,
+          # because some URLs are valid but blocked to our server, such as http://journals.sagepub.com/doi/pdf/10.1177/0037549715583150
+          request.head url, {rejectUnauthorized: false, timeout:7000, jar:true, headers: {'User-Agent':'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36'}}, (err, res, body) ->
+            if err and JSON.stringify(err).indexOf('TIMEDOUT') isnt -1
+              API.log msg: 'http resolve timed out', url: url, error: err, level: 'warn'
+              callback null, url
+            else
+              callback null, (if not res? or (res.statusCode? and res.statusCode > 399) then false else res.request.uri.href)
       aresolve = Meteor.wrapAsync resolve
-      resolved = aresolve resolved ? url
+      resolved = aresolve (if resolved then resolved else url)
       API.http.cache(url, 'http_resolve', resolved) if resolved?
       return resolved ? url
     catch
@@ -230,6 +238,44 @@ API.http.post = (url, file, vars) ->
   _apost = Meteor.wrapAsync _post
   res = _apost url, file, vars
   return res
+
+API.http.get = (url,opts={}) ->
+  opts.action ?= 'get'
+  opts.rejectUnauthorized ?= false
+  opts.timeout ?= 120000
+  opts.jar ?= true
+  opts.headers ?= {}
+  opts.headers['User-Agent'] ?= 'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36'
+  _get = (url, callback) ->
+    request[opts.action] url, {rejectUnauthorized: opts.rejectUnauthorized, timeout:opts.timeout, jar:true, headers: opts.headers}, (err, res, body) ->
+      if err and JSON.stringify(err).indexOf('TIMEDOUT') isnt -1
+        API.log msg: 'http get timed out', url: url, error: err, level: 'warn'
+        callback null, url
+      else
+        # (if not res? or (res.statusCode? and res.statusCode > 399) then false else res.request.uri.href)
+        callback null, response: res # content would be in res.body
+  _aget = Async.wrap _get
+  return _aget url
+
+API.http.xhr = (url) ->
+  res = {}
+  opts.action ?= 'get'
+  xhr = new XMLHttpRequest.XMLHttpRequest()
+  xhr.onreadystatechange = () ->
+    if xhr.readyState is 4
+      console.log this.responseText.length
+      res.headers = xhr.getAllResponseHeaders()
+      res.response = xhr # for arraybuffer looks like response, otherwise responseText
+  xhr.open "GET", url
+  xhr.withCredentials = true
+  xhr.send()
+  while _.isEmpty res
+    future = new Future()
+    Meteor.setTimeout (() -> future.return()), 200
+    future.wait()
+  return res
+
+
 
 API.http.getFile = (url,definite) ->
   file = {}

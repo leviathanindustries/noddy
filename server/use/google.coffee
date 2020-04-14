@@ -129,6 +129,7 @@ API.use.google.knowledge.retrieve = (mid,types,wikidata) ->
 API.use.google.knowledge.search = (qry,limit=10) ->
 	# don't cache searches because result sets should change over time - so most of below is not cached either
 	u = 'https://kgsearch.googleapis.com/v1/entities:search?key=' + API.settings.use.google.serverkey + '&limit=' + limit + '&query=' + qry
+	API.log 'Searching google knowledge for ' + qry
 	return API.http.proxy('GET',u,true).data
 
 API.use.google.knowledge.find = (qry) ->

@@ -73,7 +73,7 @@ API.add 'log/stack',
     authRequired: if API.settings.dev then undefined else 'root'
     action: () ->
       if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
-        return {length: _log_stack.length, last: moment(_log_last, "x").format("YYYY-MM-DD HHmm.ss"), bulk: API.settings.log.bulk, timeout: API.settings.log.timeout, current: _lsp, a: _ls.a, b: _ls.b}
+        return API.log.stack if this.queryParams.local and this.queryParams.local isnt 'false' then true else false
       else
         return {status: 'error', info: 'Log stack is not in use'}
 
@@ -183,6 +183,7 @@ API.log = (opts, fn, lvl='debug') ->
         API.settings.log.bulk ?= 5000
         API.settings.log.timeout ?= 300000
         opts._id = Random.id()
+        try opts._ip = API.status.ip() #this would not be possible right at start up
         _log_stack.unshift opts
         if _log_stack.length >= API.settings.log.bulk or Date.now() - _log_last > API.settings.log.timeout or opts.flush?
           _log_flush()
@@ -213,6 +214,33 @@ API.logstack = (key,val) ->
         if val in JSON.stringify ln
           logs.push ln
     return logs
+
+API.log.stack = (local) ->
+  if local or not API.settings.cluster?.ip?
+    return
+      length: _log_stack.length
+      last: moment(_log_last, "x").format("YYYY-MM-DD HHmm.ss")
+      bulk: API.settings.log.bulk
+      timeout: API.settings.log.timeout
+      current: _lsp
+      a: _ls.a
+      b: _ls.b
+  else
+    res = _.clone _log_stack
+    for ip in API.settings.cluster.ip
+      try
+        lu = if ip.indexOf('://') is -1 then 'http://' + ip else ip 
+        if lu.indexOf('log/stack') is -1
+          if lu.indexOf(':3') is -1
+            lu += ':' + if API.settings.dev then '3002' else '3333'
+          lu += '/api/log/stack'
+        if lu.indexOf('?') is -1
+          lu += '?local=true'
+        rml = HTTP.call('GET', lu).data
+        res = res.concat rml[rml.current]
+    res = res.sort (a,b) -> return if a.createdAt > b.createdAt then -1 else 1
+    return res
+    
 
 API.notify = (opts) ->
   try

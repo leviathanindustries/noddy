@@ -239,6 +239,7 @@ API.convert.html2txt = (content,render=false) ->
   return text
 
 API.convert.mime = (fn) ->
+  # plus some programming languages with text/plain, useful for filtering on filenames
   mimes = {
     '.aac': 'audio/aac', # AAC audio	
     '.abw': 'application/x-abiword', # AbiWord document
@@ -284,7 +285,9 @@ API.convert.mime = (fn) ->
     '.php': 'application/php', # Hypertext Preprocessor (Personal Home Page)
     '.ppt': 'application/vnd.ms-powerpoint', # Microsoft PowerPoint
     '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', # Microsoft PowerPoint (OpenXML)
+    '.py': 'text/plain',
     '.rar': 'application/vnd.rar', # RAR archive
+    '.rb': 'text/plain',
     '.rtf': 'application/rtf', # Rich Text Format (RTF)
     '.sh': 'application/x-sh', # Bourne shell script
     '.svg': 'image/svg+xml', # Scalable Vector Graphics (SVG)

@@ -24,7 +24,7 @@ API.use.medrxiv.covid = (params={}) ->
   params.size ?= 10
   params.from = parseInt(params.from) if typeof params.from is 'string'
   params.refresh = parseInt(params.refresh) if typeof params.refresh is 'string'
-  params.refresh ?= 900000 # fifteen minutes
+  params.refresh ?= 14400000 # four hours
   originals = []
   localcopy = '.medrxivlocalcopy/covid.json'
   if fs.existsSync(localcopy) and ((new Date()) - fs.statSync(localcopy).mtime) < params.refresh

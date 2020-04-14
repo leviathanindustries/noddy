@@ -1,4 +1,19 @@
 
+# can build a local wikidata from dumps
+# https://dumps.wikimedia.org/wikidatawiki/entities/latest-all.json.gz
+# https://www.mediawiki.org/wiki/Wikibase/DataModel/JSON
+# it is about 80gb compressed. Each line is a json object so can uncompress and read line by line then load into an index
+# then make available all the usual search operations on that index
+# then could try to make a way to find all mentions of an item in any block of text
+# and make wikidata searches much faster
+# downloading to index machine which has biggest disk takes about 5 hours
+# there is also a recent changes API where could get last 30 days changes to items to keep things in sync once first load is done
+# to bulk load 5000 every 10s would take about 48 hours
+
+# may also be able to get properties by query
+# https://www.wikidata.org/w/api.php?action=wbsearchentities&search=doctoral%20advisor&language=en&type=property&format=json
+# gets property ID for string, just need to reverse. (Already have a dump accessible below, but for keeping up to date...)
+
 
 API.use ?= {}
 API.use.wikipedia = {}
@@ -9,7 +24,7 @@ API.add 'use/wikipedia', get: () -> return API.use.wikipedia.lookup this.queryPa
 
 API.add 'use/wikidata/:qid', get: () -> return API.use.wikidata.retrieve this.urlParams.qid, this.queryParams.all
 
-API.add 'use/wikidata/find', get: () -> return API.use.wikidata.find this.queryParams.q, this.queryParams.url
+API.add 'use/wikidata/find', get: () -> return API.use.wikidata.find this.queryParams.q, this.queryParams.url, this.queryParams.retrieve isnt 'false'
 
 API.add 'use/wikidata/simplify', get: () -> return API.use.wikidata.simplify this.queryParams.qid, this.queryParams.q, this.queryParams.url
 API.add 'use/wikidata/simplify/:qid', get: () -> return API.use.wikidata.simplify this.urlParams.qid
@@ -63,10 +78,15 @@ API.use.wikinews.article = (url) ->
   article += '</p>' if paras.length
   return article
 
-API.use.wikidata.retrieve = (qid,all) ->
-  if not all
-    exists = API.http.cache qid, 'wikidata_retrieve'
-    return exists if exists
+API.use.wikidata.retrieve = (qid,all,matched) ->
+  if not all and exists = API.http.cache qid, 'wikidata_retrieve'
+    try
+      if matched and (not exists.matched? or matched not in exists.matched)
+        exists.matched ?= []
+        exists.matched.push matched
+        if f = API.http._colls.wikidata_retrieve.find 'lookup.exact:"' + qid + '"', true
+          API.http._colls.wikidata_retrieve.update f._id, {'_raw_result.content.matched':exists.matched}
+    return exists
   try
     u = 'https://www.wikidata.org/wiki/Special:EntityData/' + qid + '.json'
     res = HTTP.call 'GET',u
@@ -74,6 +94,7 @@ API.use.wikidata.retrieve = (qid,all) ->
     r.type = res.data.entities[qid].type
     r.qid = res.data.entities[qid].id
     r.label = res.data.entities[qid].labels?.en?.value
+    r.matched = [matched] if matched?
     r.description = res.data.entities[qid].descriptions?.en?.value
     r.wikipedia = res.data.entities[qid].sitelinks?.enwiki?.url
     r.wid = res.data.entities[qid].sitelinks?.enwiki?.url?.split('wiki/').pop()
@@ -94,9 +115,16 @@ API.use.wikidata.retrieve = (qid,all) ->
 API.use.wikidata.find = (entity,wurl,retrieve=true) ->
   res = {}
   entity ?= wurl?.split('wiki/').pop()
-  w = API.use.wikipedia.lookup {title:entity}
-  res.qid = w.data?.pageprops?.wikibase_item
-  res.data = API.use.wikidata.retrieve(res.qid) if res.qid? and retrieve
+  try
+    # search wikidata cache direct just in case the exact entity name matches something already looked up
+    if API.http?._colls?.wikidata_retrieve?
+      f = API.http._colls.wikidata_retrieve.find '_raw_result.content.label.exact:"' + entity + '" OR _raw_result.content.matched.exact:"' + entity + '"', true
+      res.qid = f._raw_result.content.qid
+      res.data = f._raw_result.content if retrieve
+  if not res.qid
+    w = API.use.wikipedia.lookup {title:entity}
+    res.qid = w.data?.pageprops?.wikibase_item
+    res.data = API.use.wikidata.retrieve(res.qid,undefined,entity) if res.qid? and retrieve
   return res
 
 API.use.wikidata.drill = (qid) ->

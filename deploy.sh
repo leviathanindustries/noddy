@@ -1,4 +1,11 @@
 
+'''nltk on resources server
+http://www.nltk.org/install.html
+sudo apt-get install python3-pip
+pip3 install --user -U nltk
+sudo python3 -m nltk.downloader -d /usr/local/share/nltk_data all
+
+'''
 
 '''commands needed to install everything noddy could use
 meteor for running meteor app without bundling
