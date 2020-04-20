@@ -83,9 +83,19 @@ API.use.openaire.format = (rec,metadata={}) ->
     clean.redirect = op.redirect
     for k of rec.metadata['oaf:entity']['oaf:result']
       try
-        if k in ['description','dateofacceptance','creator','title','country','resulttype','language','subject','resourcetype']
-          if typeof rec.metadata['oaf:entity']['oaf:result'][k] is 'string' and rec.metadata['oaf:entity']['oaf:result'][k].length
+        if k in ['description','dateofacceptance','creator','title','country','resulttype','language','subject','resourcetype','bestaccessright','pid']
+          if k is 'pid'
+            try
+              tp = rec.metadata['oaf:entity']['oaf:result'][k]['@classname']
+              if tp is 'doi'
+                clean.doi = rec.metadata['oaf:entity']['oaf:result'][k].$
+          else if typeof rec.metadata['oaf:entity']['oaf:result'][k] is 'string' and rec.metadata['oaf:entity']['oaf:result'][k].length
             clean[k] = rec.metadata['oaf:entity']['oaf:result'][k]
+          else if _.isArray(rec.metadata['oaf:entity']['oaf:result'][k]) and rec.metadata['oaf:entity']['oaf:result'][k].length
+            c = if k is 'subject' then 'keyword' else k
+            clean[c] = []
+            for ar in rec.metadata['oaf:entity']['oaf:result'][k]
+              try clean[c].push ar.$
           else
             clean[k] = if rec.metadata['oaf:entity']['oaf:result'][k].$? then rec.metadata['oaf:entity']['oaf:result'][k].$ else rec.metadata['oaf:entity']['oaf:result'][k]['@classname']
         else if k is 'journal'
@@ -95,15 +105,19 @@ API.use.openaire.format = (rec,metadata={}) ->
         else if k is 'pid'
           clean[rec.metadata['oaf:entity']['oaf:result'].pid['@classid']] = rec.metadata['oaf:entity']['oaf:result'].pid.$
     rec = clean
-  try metadata.abstract ?= API.convert.html2txt rec.description
+  try metadata.abstract ?= API.convert.html2txt(rec.description).replace(/\n/g,' ').replace(/\t/g,'').trim()
   try metadata.title ?= rec.title.replace(/\n/g,' ').replace(/\t/g,'').trim()
   try metadata.issn ?= rec.journal.issn
   try metadata.volume ?= rec.journal.vol
   try metadata.issue ?= rec.journal.iss
   try metadata.page ?= rec.journal.sp
+  try metadata.doi ?= rec.doi
+  try
+    metadata.published ?= rec.dateofacceptance
+    delete metadata.published if metadata.published.split('-').length isnt 3
+    try metadata.year ?= metadata.published.split('-')[0]
   try metadata.pdf ?= rec.pdf
   try metadata.url ?= rec.url
-  try metadata.open ?= rec.open
   try metadata.redirect ?= rec.redirect
   if not metadata.author? and rec.creator?
     metadata.author ?= []

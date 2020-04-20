@@ -9,10 +9,10 @@ API.add 'use/oadoi/:doipre/:doipost/:doimore',
   get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, not this.queryParams.format?
 
 API.use.oadoi.doi = (doi,format=true) ->
+  url = 'https://api.oadoi.org/v2/' + doi + '?email=mark@cottagelabs.com'
+  API.log 'Using oadoi for ' + url
   res = API.http.cache doi, 'oadoi_doi'
   if not res?
-    url = 'https://api.oadoi.org/v2/' + doi + '?email=mark@cottagelabs.com'
-    API.log 'Using oadoi for ' + url
     try
       res = HTTP.call 'GET', url
       if res.statusCode is 200
@@ -42,9 +42,9 @@ API.use.oadoi.format = (rec, metadata={}) ->
       if a.affiliation?
         a.affiliation = a.affiliation[0] if _.isArray a.affiliation
         a.affiliation = {name: a.affiliation} if typeof a.affiliation is 'string'
+  try metadata.url = rec.best_oa_location.url if rec.best_oa_location?.url?
   try metadata.pdf ?= rec.pdf
   try metadata.url ?= rec.url
-  try metadata.open ?= rec.open
   try metadata.redirect ?= rec.redirect
   return metadata
 

@@ -56,6 +56,8 @@ API.add 'tdm/categorise',
 		else
 			return {data: 'entity url param required'}
 
+API.add 'tdm/isnumber', get: () -> return API.tdm.isnumber this.queryParams.q ? this.queryParams.number
+API.add 'tdm/hasnumber', get: () -> return API.tdm.hasnumber this.queryParams.q ? this.queryParams.term
 API.add 'tdm/word', get: () -> return API.tdm.word this.queryParams.q ? this.queryParams.word, this.queryParams.type, this.queryParams.shortnames?
 API.add 'tdm/isword', get: () -> return API.tdm.isword this.queryParams.q ? this.queryParams.word, this.queryParams.type, this.queryParams.shortnames?
 API.add 'tdm/stopwords', get: () -> return API.tdm.stopwords()
@@ -315,7 +317,19 @@ API.tdm.stopwords = (stops,more,wp=true,gramstops=true) ->
 		stops = _.union stops, wordpos.stopwords
 	return stops
 
+API.tdm.isnumber = (term) ->
+	if typeof term is 'number' or typeof term is 'string' and term.length is term.replace(/[^0-9\.\-% ]/g,'').length
+		return true
+	else
+		return false
+API.tdm.hasnumber = (term) ->
+	if typeof term is 'string' and term.length isnt term.replace(/[0-9]/g,'').length
+		return true
+	else
+		return false
+		
 API.tdm.word = (word,tp='',shortnames=false) ->
+	return [] if typeof word isnt 'string' or not word.length
 	tp = tp.substring(0,1).toUpperCase() + tp.substring(1).toLowerCase() if tp isnt ''
 	_word = Async.wrap (word,callback) ->
 		wp = new wordpos()
@@ -330,6 +344,7 @@ API.tdm.word = (word,tp='',shortnames=false) ->
 	return _word word
 API.tdm._checkedwords = {} # keep record in running memory of words already checked
 API.tdm.isword = (word,tp,shortnames) ->
+	return false if API.tdm.isnumber word
 	if not tp? and not shortnames?
 		return word if word.toLowerCase() in API.tdm.stopwords()
 		return API.tdm._checkedwords[word] if API.tdm._checkedwords[word]?
@@ -458,14 +473,6 @@ API.tdm.entities = (q, options={}) ->
 API.tdm.miner = (text, opts={}) ->
 	if text.indexOf('http') is 0 and text.indexOf(' ') is -1
 		try text = API.tdm.fulltext(text).fulltext
-	opts.min ?= 2
-	opts.urls ?= false
-	opts.dois ?= false
-	opts.emails ?= false
-	opts.partials ?= false
-	opts.numbers ?= false
-	opts.filenames ?= false
-	opts.allowed ?= ['of','to','in','and','an','at','is','with','which','can'] # the
 	opts.splits ?= {}
 	opts.splits.abstract ?= true
 	opts.splits.intro ?= true
@@ -483,99 +490,103 @@ API.tdm.miner = (text, opts={}) ->
 			pts[1] = pts[1].split('Appendix')[0].split('Abbreviations')[0].split('Contributions')[0].split('Supplementary')[0].split('Figures')[0].split('Acknowledgements')[0].split('Ethics approval')[0].split('Funding')[0]
 			text = pts[0] + 'Conclusion' + pts[1]
 			
-	counts = {}
-	clean = []
-	_clean = (cw) ->
-		clean.push cw
-		lcw = if cw.toUpperCase() is cw then cw else cw.toLowerCase()
-		counts[lcw] ?= 0
-		counts[lcw] += 1
-		
-	phrases = []
-	_phrase = (phrase) ->
-		tp = phrase.trim()
-		if tp.replace(/[^a-z]/,'').length
-			if opts.min and tp.indexOf(' ') isnt -1
-				pm = []
-				smalls = true
-				for pt in tp.split(' ').reverse()
-					smalls = false if pt.length > opts.min
-					pm.push(pt) if not smalls
-				tp = pm.reverse().join(' ')
-			tpl = tp.split(' ').length
-			try numberstart = not isNaN parseInt tp.replace(',','').replace('.','').substring(0,2)
-			phrases.push(tp) if (tpl  > 3 or (numberstart and tpl > 2)) and tp not in phrases
-		return ''
-	phrase = ''
+	ret = count: 0, phrases: [''], ids: [], locations: []
+	ts = API.tdm.stopwords()
+	for a in ['1','2','3','4','5','6','7','8','9','0']
+		pos = ts.indexOf a
+		if pos isnt -1
+			ts.splice pos, 1
+	ts = _.union ts, ['author','authors','copyright','introduction','conclusion','contact','common','open','commons','direction','areas','vol','ml']
+	counter = 0
 
-	for s in text.split '. '
-		# catch longer multi string entities within sentences between stops
-		phrase = _phrase(phrase) if s.trim().substring(0,1).toUpperCase() is s.trim().substring(0,1)
-		partial = ''
-		for t in s.split ' '
-			t = t.replace(/[\(\)\[\]\{\}\"\']/g,'').replace(/[\.,;:]+$/,'')
-			tl = t.toLowerCase()
-			if t.length > opts.min and (opts.dois or t.indexOf('10.') isnt 0 or t.indexOf('/') is -1) and (opts.urls or (t.indexOf('http') is -1 and t.indexOf('.com') is -1 and t.indexOf('.org') is -1) and t.indexOf('.ac.') is -1) and (opts.emails or t.indexOf('@') is -1) and (opts.filetypes or t.indexOf('.') is -1 or API.convert.mime(t.split('.').pop()) is false)
-				isnumber = false
-				try isnumber = not isNaN parseInt t.replace('%','').replace(',','').trim()*10000000
-				if opts.numbers or not isnumber
-					if t.replace(/[^a-zA-Z]/,'').length is 0
-						partial += t
-					else if partial and opts.partials
-						pisnumber = false
-						try pisnumber = not isNaN parseInt partial.replace('%','').replace(',','').trim()*10000000
-						if opts.numbers or not pisnumber or t.replace(/[^a-zA-Z]/,'').length
-							_clean partial
-							phrase += ' ' + partial
-						partial = ''
-					isadverb = 0
-					tls = tl in API.tdm.stopwords()
-					if not tls and not isadverb = API.tdm.is 'adverb', t
-						_clean t
-					if (tls and tl not in opts.allowed) or (typeof isadverb is 'boolean' and isadverb) or API.tdm.is 'adverb', t
-						phrase = _phrase phrase
+	words = text.split ' '
+	wl = words.length-1
+	for tc of words
+		t = words[tc]
+		if t.length and t.indexOf('http') is -1 and t.indexOf('@') is -1
+			td = t.replace(/\//,' ').replace(/[^a-zA-Z0-9\-\.%]/g,'').replace(/\. /g,' ').replace(/\.$/g,'').trim()
+			tdl = td.toLowerCase()
+			iscaps = if td.toUpperCase() is td then true else false
+			isnumber = API.tdm.isnumber td
+			hasnumber = API.tdm.hasnumber td
+			issw = not hasnumber and tdl in ts
+			if isnumber or hasnumber or iscaps
+				wrd = []
+			else
+				wrd = API.tdm.word td
+				wrd = API.tdm.word(API.tdm.isword(td)) if not wrd.length
+			tp = if wrd.length then wrd[0].lexName else ''
+			isadv = if tp.startsWith('adv') then true else false
+			islocation = if (tp is 'noun.location' or tdl is 'shanghai') and not issw then true else false
+			ret.locations.push(td) if islocation and td not in ret.locations
+			maybeid = if td.length > 2 and not isnumber and not islocation and not issw and td.slice(-1) isnt '%' and td.replace(/[^0-9A-Z\.\-%]/g,'').length isnt 0 and td.substring(0,1).toUpperCase() is td.substring(0,1) and td.substring(1,2).toUpperCase() is td.substring(1,2) then true else false
+			if maybeid
+				ret.ids.push(td) if td not in ret.ids
+				if td.endsWith('s') and td.replace(/s$/,'').toUpperCase() is td.replace(/s$/,'')
+					dupin = ret.ids.indexOf td
+					ret.ids.splice(dupin,1) if dupin isnt -1 and dupin isnt ret.ids.length-1
+				else if iscaps
+					dups = ret.ids.indexOf td + 's'
+					ret.ids.splice(dups,1) if dups isnt -1 and dups isnt ret.ids.length-1
+			next = if tc < wl then words[tc+1] else ''
+			bracketed = if t.indexOf('(') is 0 and t.indexOf(',') is -1 and next not in ts then true else false
+			end = ret.phrases[counter].split(' ').pop()
+			start = if td.length > 2 and not isnumber and not maybeid and not hasnumber and not issw and td.substring(0,1).toUpperCase() is td.substring(0,1) and end.substring(0,1).toUpperCase() isnt end.substring(0,1) and end isnt 'of' and not end.endsWith(',') and td.toUpperCase() isnt td then true else false
+			if ret.phrases[counter].length and (bracketed or start)
+				ret.phrases.push ''
+				counter += 1
+			if td.length and (hasnumber or (not issw and not isadv)) or (((isadv and td isnt 'in') or (td in ['is','thus','a','the','around','are','might','be']) and ret.phrases[counter].split(' ').length > 2) or td is 'of' and ret.phrases[counter].length)
+				ret.phrases[counter] += (if ret.phrases[counter].length then ' ' else '') + td + (if t.endsWith(',') then ',' else '')
+			if ret.phrases[counter].length and (t.endsWith('.') or (issw and td not in ['of','as','is','around','might','be','a'] and (td not in ['or','and'] or not end.endsWith(','))))
+				ret.phrases.push ''
+				counter += 1
+        
+			if counter > 2 and last = ret.phrases[counter-1]
+				if last.endsWith(',')
+					ret.phrases[counter-1] = ret.phrases[counter-1].replace(/,$/,'')
+					last = last.replace(/,$/,'')
+				lasts = last.split ' '
+				ll = lasts[lasts.length-1]
+				if ll in ts or lasts.length < 4 or (last.indexOf(',') isnt -1 and lasts.length > 20) or (last.indexOf(',') is -1 and lasts.length > 9)
+					keep = []
+					if lasts.length < 4
+						for l in lasts
+							l = l.replace(',','')
+							if l not in ret.ids and l not in ret.locations and l not in ret.phrases and not API.tdm.isnumber l
+								llw = API.tdm.word l
+								llw = API.tdm.word(API.tdm.isword(l)) if not llw.length
+								llt = if llw.length then llw[0].lexName else ''
+								if llt in ['noun.substance','noun.artifact'] or llt is '' and text.split(l).length is 2
+									keep.push l
+					kj = keep.join ' '
+					#li = ret.phrases.indexOf last 
+					if not keep.length #or (li isnt -1 and li < ret.phrases.length-2)
+						ret.phrases[counter-1] = ''
+						ret.phrases.pop()
+						counter -= 1
 					else
-						phrase += ' ' + t
-				else
-					phrase += ' ' + t
-			else if t.length <= opts.min and (tl in opts.allowed or tl not in API.tdm.stopwords()) and phrase
-				phrase += ' ' + t
-			else
-				phrase = _phrase phrase
-	phrase = _phrase phrase
+						ret.phrases[counter-1] = kj
 
-	sorts = []
-	seen = []
-	dups = 0
-	for k of counts
-		obj = {term:k, count:counts[k]}
-		w = API.tdm.isword k
-		if w
-			ww = API.tdm.word w
-			if ww.length
-				obj.original = obj.term
-				obj.term = w
-				if w in seen
-					dups += 1
-				wws = []
-				for ow in ww
-					# good ones are noun. substance, process, state
-					# and adj.pert
-					if ow.lexName not in ['noun.communication','noun.group','noun.cognition','noun.relation','noun.food'] # ones where we don't want this one but may want if it has another lex type
-						wws.push ow
-						break
-				if wws.length
-					obj.word = {lex:wws[0].lexName,desc:wws[0].gloss}
-					nolex = ['adj.all','adj.ppl','noun.act','noun.possession','noun.communication','noun.quantity','noun.attribute','noun.person']
-					if obj.word.lex.indexOf('verb') isnt 0 and obj.word.lex.indexOf('adv') isnt 0 and obj.word.lex not in nolex and w not in seen # should somehow add the count to the one that was already seen
-						sorts.push obj
-				seen.push w
-			else
-				sorts.push obj # things that are not words - try knowledge graph lookup
-		else
-			sorts.push obj # things that are not words - try knowledge graph lookup
-	#sorts.sort (a,b) -> return b.count - a.count
-	return dups:dups, count: {phrases: phrases.length, words: sorts.length}, phrases: phrases, counts: sorts
+			'''if counter > 2 and lst = ret.phrases[counter-1]
+				lpi = ret.phrases.indexOf lst
+				if lpi isnt -1 and lpi < ret.phrases.length-2
+					ret.phrases.pop()
+					counter -= 1'''
+
+			rpl = ret.phrases.length-1
+			if counter > 2 and ret.phrases[rpl] is ''
+				if API.tdm.is('adverb', ret.phrases[rpl-1].split(' ').pop()) #or API.tdm.is('adverb', ret.phrases[rpl-1].split(' ')[0].replace(',',''))
+					ret.phrases.splice rpl-1, 1
+					counter -= 1
+				else
+					for p of ret.phrases
+						if parseInt(p) < rpl-1 and ret.phrases[rpl-1].indexOf(ret.phrases[p]) isnt -1
+							ret.phrases.splice rpl-1, 1
+							counter -= 1
+							break
+
+	ret.count = counter
+	return ret
 
 
 
@@ -623,20 +634,37 @@ API.tdm.extract = (opts) ->
 # one that needs cookie headers etc: https://journals.sagepub.com/doi/pdf/10.1177/0037549715583150
 # so need a way to be able to get with headers etc, and also get an uncorrupted one (corruption by non-xhr methods is a known problem hence why pdfjs uses xhr directly)
 API.tdm.fulltext = (url,opts={}) ->
+	if url.replace(/\/$/,'') is 'https://www.biorxiv.org/content/biorxiv/early/2020/04/12/2020.04.07.030742.full.pdf'
+		return fulltext: '' # a probelm with this particular pdf causes the system to get stuck, have not found a way to avoid it yet, could be to do with lots of images in the file
+	
 	opts.min ?= 10000 # shortest acceptable fulltext length
 	opts.pdf ?= true # prefer PDF fulltext if possible
+	opts.refresh ?= 0
+
+	checksum = API.job.sign url
+	try
+		if opts.refresh isnt true and opts.refresh isnt 'true'
+			opts.refresh = parseInt(opts.refresh) if typeof opts.refresh is 'string'
+			if typeof opts.refresh is 'number'
+				exists = API.http.cache checksum, 'tdm_fulltexts', undefined, refresh
+				return exists if exists
 
 	# check what is at the given url
 	res = {url: url, errors: [], words: 0, fulltext: ''}
 	res.resolve = API.http.resolve url
-	res.target = if res.resolve then res.resolve else res.url
-	res.head = API.http.get res.target, action: 'head'
+	res.target = res.url #if res.resolve then res.resolve else res.url
+	res.head = API.http.get res.target, action: 'head' # would the head request as well? Will need to wait and see
 	
 	if res.head?.response?.headers?['content-type']? and res.head.response.headers['content-type'].indexOf('/html') isnt -1
 		try
-			res.get = API.http.get res.target # does this need to be run through puppeteer...
-			res.html = res.get.response.body
-			delete res.get.response.body
+			#res.get = API.http.get res.target # need puppeteer, some sites such as epmc serve nothing useful without it
+			res.html = API.http.puppeteer res.target #res.get.response.body
+			# check for pubmed fulltext link
+			if url.indexOf('pubmed') isnt -1 and res.html.indexOf('free_status="free"') isnt -1
+				pubf = res.html.split('free_status="free"')[0].replace('href =','href=').replace('= ','=').split('href="')[1].split('"')[0]
+				return API.tdm.fulltext pubf
+
+			#delete res.get.response.body
 			bi = res.html.toLowerCase().indexOf('<body')
 			body = res.html.substring(bi)
 			bbi = body.toLowerCase().indexOf('</body')
@@ -678,7 +706,7 @@ API.tdm.fulltext = (url,opts={}) ->
 				headers.referer = res.head.response.request.headers.referer
 			if res.head?.response?.request?.headers?.cookie?
 				headers.cookie= res.head.response.request.headers.cookie
-			pdfjs.getDocument({url:res.target, withCredentials:true, httpHeaders:headers}).then((pdf) ->
+			pdfjs.getDocument({url:res.target, maxImageSize:1, disableFontFace: true, withCredentials:true, httpHeaders:headers}).then((pdf) ->
 				res.pages = pdf._pdfInfo.numPages
 				while res.count < res.pages
 					res.count += 1
@@ -774,9 +802,9 @@ API.tdm.fulltext = (url,opts={}) ->
 				pl = htmll.split('citation_pdf_url')[0].split('<').pop()
 				pr = htmll.split('citation_pdf_url')[1].split('>')[0]
 				wh = if pl.indexOf('content') isnt -1 then pl else pr
-				pdflink = wh.split('content')[1].split('=')[1].trim()
+				pdflink = wh.replace(/ /g,'').split('content=')[1].replace('"','').replace('"','')
 			else if htmll.indexOf('.pdf</a') isnt -1 #the pdf is in the name but may not be on the link, a la https://hal.archives-ouvertes.fr/hal-02510642/document
-				pdflink = htmll.split('.pdf</a')[0].split('href').pop()
+				pdflink = htmll.split('.pdf</a')[0].split('href').pop().split('"')[1]
 			else if htmll.indexOf('.pdf"') isnt -1
 				pdflink = htmll.split('.pdf"')[0].split('"').pop() + '.pdf'
 			else if htmll.indexOf('pdf') isnt -1
@@ -797,8 +825,9 @@ API.tdm.fulltext = (url,opts={}) ->
 				qt = if pdflink.indexOf("'") isnt -1 then "'" else '"'
 				pts = pdflink.split(qt)
 				for pt in pts
-					if pt.trim().indexOf(' ') is -1 and (pdflink not in pts or pt.length > pdflink.length or (pt.indexOf('http') isnt -1 and pdflink.indexOf('http') is -1))
+					if pt.indexOf('http') isnt -1 or pt.indexOf('/') isnt -1
 						pdflink = pt.trim()
+						break
 			if pdflink isnt '' and pdflink.indexOf('http') isnt 0
 				rtp = res.target.split('://')[1].split('?')[0].split('#')[0].replace(/\/$/, '')
 				pdflink = res.target.split('://')[0] + '://' + (if pdflink.indexOf('/') is 0 then rtp.split('/')[0] else rtp + '/') + pdflink
@@ -812,6 +841,10 @@ API.tdm.fulltext = (url,opts={}) ->
 						for k of rs
 							res[k] ?= rs[k]
 
-	res.words = res.fulltext.split(' ').length
+	# sometimes we get a static page not served as html but actually is - convert that to text once more, just in case
+	if res.fulltext.toLowerCase().indexOf('<html') is 0
+		try res.fulltext = API.convert.html2txt(res.fulltext).replace(/\r?\n|\r/g,' ').replace(/\t/g,' ').replace(/\[.*?\]/g,'')
+
+	try API.http.cache(checksum, 'tdm_fulltexts', res) if res.fulltext.length
 	return res
 

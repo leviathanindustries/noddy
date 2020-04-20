@@ -136,7 +136,6 @@ API.use.doaj.articles.redirect = (record) ->
 API.use.doaj.articles.format = (rec, metadata={}) ->
   try metadata.pdf ?= rec.pdf
   try metadata.url ?= rec.url
-  try metadata.open ?= rec.open
   try metadata.redirect ?= rec.redirect
   try 
     rec = rec.bibjson if rec.bibjson?

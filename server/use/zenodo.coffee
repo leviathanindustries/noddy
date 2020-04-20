@@ -79,9 +79,12 @@ API.use.zenodo.records.title = (title,dev=API.settings.dev,format) ->
 API.use.zenodo.records.format = (rec, metadata={}) ->
   try metadata.pdf ?= rec.pdf
   try metadata.url ?= rec.url
-  try metadata.open ?= rec.open
   try metadata.redirect ?= rec.redirect
   metadata.doi ?= rec.doi
+  try 
+    if typeof rec.metadata.publication_date is 'string' and rec.metadata.publication_date.split('-').length is 3
+      metadata.published = rec.metadata.publication_date
+      try metadata.year = metadata.published.split('-')[0]
   try metadata.title ?= rec.metadata.title
   try metadata.journal ?= rec.metadata.journal.title
   try metadata.issue ?= rec.metadata.journal.issue

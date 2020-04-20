@@ -100,7 +100,32 @@ API.use.core.format = (rec, metadata={}) ->
       try a.family = as[as.length-1]
       metadata.author.push a
   try metadata.publisher ?= rec.publisher
-  try metadata.year ?= rec.year
+  try
+    metadata.published ?= rec.datePublished
+    if metadata.published.indexOf('-') is -1
+      if metadata.published.toString().length is 4
+        metadata.year = metadata.published
+        metadata.published += '-01-01'
+      else
+        delete metadata.published
+    else
+      parts = metadata.published.split '-'
+      if parts[0].length is 4
+        if parts.length is 2
+          parts.push '01'
+        if parts.length is 1
+          parts.push '01'
+          parts.push '01'
+        metadata.published = parts.join '-'
+      else
+        delete metadata.published
+  try
+    metadata.year ?= rec.year
+    metadata.year = metadata.year.toString() if typeof metadata.year is 'number'
+    delete metadata.year if typeof metadata.year isnt 'string' or metadata.year.length isnt 4
+    try
+      if not metadata.published? and metadata.year?
+        metadata.published = metadata.year + '-01-01'
   try metadata.pdf ?= rec.pdf
   try metadata.url ?= rec.url
   try metadata.open ?= rec.open
