@@ -304,12 +304,13 @@ API.collection.prototype.bulk = (recs, action, uid, bulk, dev=API.settings.dev) 
   else
     return false
 
-API.collection.prototype.each = (q, opts, fn, action, uid, scroll, dev=API.settings.dev) ->
+API.collection.prototype.each = (q, opts, fn, action, uid, scroll='20m', dev=API.settings.dev) ->
   # each executes the function for each record. If the function makes changes to a record and saves those changes, 
   # this can cause many writes to the collection. So, instead, that sort of function could return something
   # and if the action has also been specified then all the returned values will be used to do a bulk write to the collection index.
   # suitable returns would be entire records for insert, record update objects for update, or record IDs for remove
   # this does not allow different actions for different records that are operated on - so has to be bulks of the same action
+  started = Date.now()
   if fn is undefined and typeof opts is 'function'
     fn = opts
     opts = undefined
@@ -332,14 +333,19 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll, dev=API.setti
   total = res.hits.total
   processed = 0
   updates = []
-  while (res.hits.hits.length)
+  while res?.hits?.hits? and res.hits.hits.length
     for h in res.hits.hits
       fn = fn.bind this
       fr = fn h._source ? h.fields ? {_id: h._id}
       processed += 1
       updates.push(fr) if fr? and (typeof fr is 'object' or typeof fr is 'string')
     if res._scroll_id?
-      res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
+      rss = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
+      if not rss?
+        API.log 'Scroll failure after ' + processed + ' for ' + res._scroll_id + ' with timeout ' + scroll + ' after ' + (Date.now() - started)
+        res = undefined
+      else
+        res = rss
     else
       res.hits.hits = []
   if action? and updates.length

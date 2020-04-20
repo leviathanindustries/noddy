@@ -54,7 +54,9 @@ API.use.arxiv.title = (title,format) ->
     
 API.use.arxiv.format = (rec, metadata={}) ->
   try metadata.title ?= rec.title
-  try metadata.published ?= rec.published.split('T')[0]
+  try
+    metadata.published ?= rec.published.split('T')[0]
+    delete metadata.published if metadata.published.split('-').length isnt 3
   try metadata.year ?= metadata.published.split('-')[0]
   try metadata.abstract ?= rec.summary.replace(/\r?\n|\r/g,' ').trim()
   try

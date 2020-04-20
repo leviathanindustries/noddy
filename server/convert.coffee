@@ -349,17 +349,17 @@ API.convert.file2txt = Async.wrap (content, opts={}, callback) ->
     opts = {}
   # NOTE for this to work, see textract on npm - requires other things (antiword for word docs) installed. May not be useful.
   opts.from = undefined if typeof opts.from is 'string' and opts.from.indexOf('/') is -1 # need a proper mime type here
+  from = opts.from
   delete opts.from
   named = opts.name ? false
   delete opts.name
-  from = opts.from
   if named and not from
     mime = API.convert.mime named
     if mime
       from = mime
       named = false
   from ?= 'application/msword'
-  return API.convert.docx2txt(content, opts) if (typeof content is 'string' and content.indexOf('.docx') isnt -1) or (typeof named is 'string' and content.indexOf('.docx') isnt -1)
+  return API.convert.docx2txt(content, opts) if (typeof content is 'string' and content.split('?')[0].endsWith('.docx')) or (typeof named is 'string' and content.split('?')[0].endsWith('.docx'))
   try
     if typeof content is 'string' and content.indexOf('http') is 0
       textract.fromUrl content, opts, ( err, result ) ->

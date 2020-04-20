@@ -171,7 +171,12 @@ API.use.wikidata.simplify = (qid,q,url,drill=true) ->
 # https://www.mediawiki.org/wiki/API:Main_page
 # https://en.wikipedia.org/w/api.php
 
-API.use.wikipedia.lookup = (opts,type) ->
+API.use.wikipedia.lookup = (opts,type,refresh=604800000) -> # default 7 day cache
+  checksum = API.job.sign opts, type
+  try
+    if exists = API.http.cache checksum, 'wikipedia_lookup', undefined, refresh
+      return exists
+
   if not opts.titles and opts.title
     opts.titles = opts.title
     delete opts.title
@@ -216,6 +221,7 @@ API.use.wikipedia.lookup = (opts,type) ->
     ret = {data:res.data.query.pages[key]}
     ret.disambiguation ?= disambiguation
     ret.redirect ?= redirect
+    try API.http.cache checksum, 'wikipedia_lookup', ret
     return ret
   catch err
     return {status:'error',data:err, error: err}

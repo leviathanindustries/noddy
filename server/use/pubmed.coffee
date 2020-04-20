@@ -36,7 +36,7 @@ API.use.pubmed.entrez.summary = (qk,webenv,id) ->
   else
     url += '&query_key=' + qk + '&WebEnv=' + webenv
   API.log 'Using pubmed entrez summary for ' + url
-  try
+  if 1 is 1 #try
     res = HTTP.call 'GET', url
     md = API.convert.xml2json res.content, undefined, false
     recs = []
@@ -57,8 +57,8 @@ API.use.pubmed.entrez.summary = (qk,webenv,id) ->
         return recs[0]
         break
     return recs
-  catch
-    return undefined
+  #catch
+  #  return undefined
 
 API.use.pubmed.entrez.pmid = (pmid) ->
   url = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/epost.fcgi?db=pubmed&id=' + pmid
@@ -88,7 +88,7 @@ API.use.pubmed.search = (str,full,size=10,ids=false) ->
         ids = result.eSearchResult.IdList[0].Id
     if full # may need a rate limiter on this
       for uid in ids
-        pg = API.job.limit 300, 'API.use.pubmed.pmid', [uid], "PUBMED_SEARCH_PMID"
+        pg = API.job.limit 300, 'API.use.pubmed.pmid', [uid], "PUBMED_EUTILS"
         res.data.push pg
         break if res.data.length is size
     else
@@ -97,11 +97,13 @@ API.use.pubmed.search = (str,full,size=10,ids=false) ->
         break if res.data.length is size
         urlids.push id
         if urlids.length is 40
+          #summaries = API.job.limit 300, 'API.use.pubmed.entrez.summary', [undefined,undefined,urlids], "PUBMED_EUTILS"
           for rec in API.use.pubmed.entrez.summary undefined, undefined, urlids
             res.data.push API.use.pubmed.format rec
             break if res.data.length is size
           urlids = []
       if urlids.length
+        #remains = API.job.limit 300, 'API.use.pubmed.entrez.summary', [undefined,undefined,urlids], "PUBMED_EUTILS"
         for rec in API.use.pubmed.entrez.summary undefined, undefined, urlids
           res.data.push API.use.pubmed.format rec
           break if res.data.length is size

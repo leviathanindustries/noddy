@@ -164,7 +164,7 @@ API.job.sign = (fn='', args, ignores=['apikey','_'], lower=true) ->
       delete args[k]
   try fn += (if fn is '' then '' else '_') + JSON.stringify(args).split('').sort().join('')
   fn = fn.toLowerCase() if lower
-  return crypto.createHash('md5').update(encodeURIComponent(fn), 'utf8').digest('base64')
+  return crypto.createHash('md5').update(encodeURIComponent(fn), 'utf8').digest('base64') # TODO change this to 'hex' but first need to convert stored ones
 
 API.job.allowed = (job,uacc) ->
   job = job_job.get(job) if typeof job is 'string'

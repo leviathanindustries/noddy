@@ -25,22 +25,23 @@ API.use.medrxiv.covid = (params={}) ->
   params.from = parseInt(params.from) if typeof params.from is 'string'
   params.refresh = parseInt(params.refresh) if typeof params.refresh is 'string'
   params.refresh ?= 14400000 # four hours
-  originals = []
+  originals = {}
   localcopy = '.medrxivlocalcopy/covid.json'
   if fs.existsSync(localcopy) and ((new Date()) - fs.statSync(localcopy).mtime) < params.refresh
-    original = JSON.parse fs.readFileSync(localcopy)
+    originals = JSON.parse fs.readFileSync(localcopy)
   else
     res = HTTP.call 'GET', 'https://connect.medrxiv.org/relate/collection_json.php?grp=181'
-    original = JSON.parse res.content
+    originals = JSON.parse res.content
     fs.mkdirSync('.medrxivlocalcopy') if not fs.existsSync '.medrxivlocalcopy'
     fs.writeFileSync localcopy, JSON.stringify(originals)
   recs = []
-  for c of original.rels
+  for c of originals.rels
     if params.size and recs.length is params.size
       break
     else if not params.from or parseInt(c) >= params.from
-      recs.push if params.format then API.use.medrxiv.format(original.rels[c]) else original.rels[c]
-  return total: original.rels.length, data: recs
+      if not params.q or JSON.stringify(originals.rels[c]).toLowerCase().indexOf(params.q.toLowerCase()) isnt -1
+        recs.push if params.format then API.use.medrxiv.format(originals.rels[c]) else originals.rels[c]
+  return total: _.keys(originals.rels).length, data: recs
 
 API.use.medrxiv.format = (rec, metadata={}) ->
   try metadata.title ?= rec.rel_title
@@ -56,5 +57,7 @@ API.use.medrxiv.format = (rec, metadata={}) ->
       a.given = a.name.split(' ')[0]
       a.affiliation = {name: ar.author_inst} if ar.author_inst
       metadata.author.push a
-  try metadata.published = re.rel_date
+  try
+    metadata.published ?= rec.rel_date
+    delete metadata.published if metadata.published.split('-').length isnt 3
   return metadata

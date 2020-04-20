@@ -73,7 +73,7 @@ API.add 'log/stack',
     authRequired: if API.settings.dev then undefined else 'root'
     action: () ->
       if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
-        return API.log.stack if this.queryParams.local and this.queryParams.local isnt 'false' then true else false
+        return API.log.stack this.queryParams
       else
         return {status: 'error', info: 'Log stack is not in use'}
 
@@ -181,7 +181,7 @@ API.log = (opts, fn, lvl='debug') ->
 
       if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
         API.settings.log.bulk ?= 5000
-        API.settings.log.timeout ?= 300000
+        API.settings.log.timeout ?= 1800000
         opts._id = Random.id()
         try opts._ip = API.status.ip() #this would not be possible right at start up
         _log_stack.unshift opts
@@ -215,7 +215,9 @@ API.logstack = (key,val) ->
           logs.push ln
     return logs
 
-API.log.stack = (local) ->
+API.log.stack = (params={}) ->
+  local = if params.local and params.local isnt 'false' then true else false
+  delete params.local
   if local or not API.settings.cluster?.ip?
     return
       length: _log_stack.length
@@ -227,7 +229,7 @@ API.log.stack = (local) ->
       b: _ls.b
   else
     res = _.clone _log_stack
-    for ip in API.settings.cluster.ip
+    for ip in API.settings.cluster?.ip ? []
       try
         lu = if ip.indexOf('://') is -1 then 'http://' + ip else ip 
         if lu.indexOf('log/stack') is -1
@@ -239,6 +241,22 @@ API.log.stack = (local) ->
         rml = HTTP.call('GET', lu).data
         res = res.concat rml[rml.current]
     res = res.sort (a,b) -> return if a.createdAt > b.createdAt then -1 else 1
+    params.from ?= 0
+    if params.q?
+      rq = []
+      k = false
+      v = params.q
+      if params.q.indexOf(':') isnt -1
+        parts = params.q.split(':')
+        k = parts[0]
+        v = parts[1]
+      v = v.toLowerCase().replace(/"/g,'')
+      for r in res # could improve this to handle AND OR NOT etc, or complex query objects, but this should do for now
+        break if params.size and rq.length >= (params.size + params.from)
+        rq.push(r) if (k isnt false and r[k]? and r[k].toLowerCase().indexOf(v) isnt -1) or JSON.stringify(r).toLowerCase().indexOf(v) isnt -1
+      res = rq
+    res = res.slice(params.from) if params.from and res.length > params.from
+    res = res.slice(0,params.size) if params.size and res.length > params.size
     return res
     
 

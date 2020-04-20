@@ -238,7 +238,7 @@ API.job.sign = (fn='', args, checksum=true) ->
     catch
       fn += JSON.stringify args
   sig = encodeURIComponent(fn) # just used to use this, but got some where args were too long
-  return if checksum then crypto.createHash('md5').update(sig, 'utf8').digest('base64') else sig
+  return if checksum then crypto.createHash('md5').update(sig, 'utf8').digest('base64') else sig #m TODO change this to use 'hex' instead, but need to change anything that has used it already
 
 API.job.allowed = (job,uacc) ->
   job = job_job.get(job) if typeof job is 'string'

@@ -126,11 +126,17 @@ API.use.google.knowledge.retrieve = (mid,types,wikidata) ->
 		API.http.cache {mid:mid,types:types,wikidata:wikidata}, 'google_knowledge_retrieve', ret
 	return ret
 
-API.use.google.knowledge.search = (qry,limit=10) ->
-	# don't cache searches because result sets should change over time - so most of below is not cached either
-	u = 'https://kgsearch.googleapis.com/v1/entities:search?key=' + API.settings.use.google.serverkey + '&limit=' + limit + '&query=' + qry
+API.use.google.knowledge.search = (qry,limit=10,refresh=604800000) -> # default 7 day cache
+	u = 'https://kgsearch.googleapis.com/v1/entities:search?key=' + API.settings.use.google.serverkey + '&limit=' + limit + '&query=' + encodeURIComponent qry
 	API.log 'Searching google knowledge for ' + qry
-	return API.http.proxy('GET',u,true).data
+
+	checksum = API.job.sign qry
+	exists = API.http.cache checksum, 'google_knowledge_search', undefined, refresh
+	return exists if exists
+
+	res = API.http.proxy('GET',u,true).data
+	try API.http.cache checksum, 'google_knowledge_search', res
+	return res
 
 API.use.google.knowledge.find = (qry) ->
 	res = API.use.google.knowledge.search qry
@@ -162,10 +168,10 @@ API.use.google.cloud.language = (content, actions=['entities','sentiment'], auth
 	document = {document: {type: "PLAIN_TEXT",content:content},encodingType:"UTF8"}
 	result = {}
 	if 'entities' in actions
-		result.entities = API.http.proxy('POST',lurl,{data:document,headers:{'Content-Type':'application/json'}},true).data.entities
+		try result.entities = API.http.proxy('POST',lurl,{data:document,headers:{'Content-Type':'application/json'}},true).data.entities
 	if 'sentiment' in actions
-		result.sentiment = API.http.proxy('POST',lurl.replace('analyzeEntities','analyzeSentiment'),{data:document,headers:{'Content-Type':'application/json'}},true).data
-	API.http.cache checksum, 'google_language', result
+		try result.sentiment = API.http.proxy('POST',lurl.replace('analyzeEntities','analyzeSentiment'),{data:document,headers:{'Content-Type':'application/json'}},true).data
+	API.http.cache(checksum, 'google_language', result) if not _.isEmpty result
 	return result
 
 # https://cloud.google.com/translate/docs/quickstart

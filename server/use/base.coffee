@@ -58,7 +58,7 @@ API.use.base.search = (qry='*', from, size, format, timeout=API.settings.use?.ba
     return { status: 'error', data: 'NO BASE PROXY SETTING PRESENT!', error: 'NO BASE PROXY SETTING PRESENT!'}
   qry = qry.replace(/ /g,'+') if qry.indexOf('"') is -1 and qry.indexOf(' ') isnt -1
   url = 'https://api.base-search.net/cgi-bin/BaseHttpSearchInterface.fcgi?func=PerformSearch&format=json&query=' + qry
-  url += '&offset=' + from if from
+  url += '&offset=' + from if from # max 1000
   url += '&hits=' + size if size # max 125
   url += '&sortBy=dcdate+desc'
   API.log 'Using BASE for ' + url
@@ -94,6 +94,9 @@ API.use.base.format = (rec, metadata={}) ->
   try metadata.page ?= rec.dcsource.toLowerCase().split('iss')[1].split('p')[1].split('(')[0].trim()
   try metadata.year ?= rec.dcyear
   try metadata.published ?= rec.dcdate.split('T')[0]
+  try
+    if metadata.year and not metadata.published
+      metadata.published = metadata.year + '-01-01'
   try metadata.publisher ?= rec.dcpublisher[0]
   try
     for id in rec.dcrelation
@@ -105,7 +108,6 @@ API.use.base.format = (rec, metadata={}) ->
   try metadata.url ?= rec.dclink
   try metadata.pdf ?= rec.pdf
   try metadata.url ?= rec.url
-  try metadata.open ?= rec.open
   try metadata.redirect ?= rec.redirect
   return metadata
 
