@@ -40,7 +40,7 @@ API.use.core.get = (qrystr) ->
     op = API.use.core.redirect res
     res.url = op.url
     res.redirect = op.redirect
-    API.http.cache qrystr, 'core_get', res
+    #API.http.cache qrystr, 'core_get', res
   return res
 
 API.use.core.search = (qrystr, from, size=10, format, timeout=API.settings.use?.core?.timeout ? API.settings.use?._timeout ? 10000) ->

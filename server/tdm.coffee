@@ -68,6 +68,10 @@ API.add 'tdm/words',
 			try content = API.tdm.fulltext(this.queryParams.url).fulltext
 		return if typeof content is 'string' and content.length then API.tdm.words(content) else []
 
+API.add 'tdm/wikidata',
+	get: () ->
+		return API.tdm.wikidata (this.queryParams.url ? this.queryParams.content), this.queryParams
+
 API.add 'tdm/keywords',
 	get: () ->
 		content = this.queryParams.content
@@ -445,28 +449,121 @@ API.tdm.keywords = (content,opts={},defaults=true) ->
 API.tdm.entities = (q, options={}) ->
 	ret = {ners: [], person: [], organisation: [], location: [], other: []}
 	try
-		res = API.use.corenlp.entities q, options
+		checksum = API.job.sign q, options
+		exists = API.http.cache checksum, 'tdm_entities_corenlp'
+		res = if exists? then exists else API.use.corenlp.entities q, options
+		API.http.cache(checksum, 'tdm_entities_corenlp', res) if not exists? and res?.sentences?
 		finds = {}
 		for s in res.sentences
 			for e in s.entitymentions
 				if e.text and e.ner and (not finds[e.ner] or e.text.toLowerCase() not in finds[e.ner])
-					ret.ners.push e.ner
+					ret.ners.push(e.ner) if e.ner not in ret.ners
 					finds[e.ner] ?= []
 					finds[e.ner].push e.text.toLowerCase()
 					if e.ner is 'PERSON'
 						ret.person.push {value: e.text}
 					else if e.ner is 'ORGANIZATION'
 						ret.organisation.push {value: e.text}
-					else if e.ner in ['CITY','COUNTRY','LOCATION'] # location is a guess, what else might it put out as locations?
+					else if e.ner in ['CITY','COUNTRY','LOCATION','STATE_OR_PROVINCE'] and e.text.substring(0,1).toUpperCase() is e.text.substring(0,1) # location is a guess, what else might it put out as locations?
 						ret.location.push {value: e.text, type: e.ner.toLowerCase()}
 					else
-						ret.other.push {value: e.text, type: e.ner.toLowerCase()}
+						if e.ner not in ['DATE','TIME','NUMBER','ORDINAL','PERCENT','TITLE','SET','URL']
+							ret.other.push {value: e.text, type: e.ner.toLowerCase()}
 						# other interesting ones seen so far include 
 						# cause-of-death, ordinal, number, date, duration, email, misc, set, percent (for both a number with the word or the symbol), title
 		ret.res = res if options.full
 		return ret
 	catch
 		return ret
+
+
+
+API.tdm.wikidata = (text,opts={}) ->
+	if text.indexOf('http') is 0 and text.indexOf(' ') is -1
+		try text = API.tdm.fulltext(text).fulltext
+
+	ts = API.tdm.stopwords()
+	for a in ['1','2','3','4','5','6','7','8','9','0']
+		pos = ts.indexOf a
+		ts.splice(pos, 1) if pos isnt -1
+	ts = _.union ts, ['author','authors','copyright','introduction','conclusion','contact','common','open','commons','direction','areas','vol','ml']
+	counter = 0
+
+	textl = text.toLowerCase()
+	words = text.split ' '
+	ret = words: words.length, searched: 0, found: 0, terms: [], locations: [], ids: [], qrs: []
+	rtj = ''
+	searched = []
+	while counter < words.length
+		console.log counter
+		t = words[counter]
+		counter += 1
+		if t.length and t.indexOf('http') is -1 and t.indexOf('@') is -1
+			td = t.replace(/\//,' ').replace(/[^a-zA-Z0-9\-\.%]/g,'').replace(/\.$/g,'').trim()
+			tdl = td.toLowerCase()
+			iscaps = if td.toUpperCase() is td then true else false
+			isnumber = API.tdm.isnumber td
+			hasnumber = API.tdm.hasnumber td
+			issw = not hasnumber and tdl in ts
+			capstart = if not iscaps and not isnumber and not hasnumber and not issw and td isnt tdl and td.substring(0,1).toUpperCase() is td.substring(0,1) then true else false
+			if isnumber or hasnumber or iscaps
+				wrd = []
+			else
+				wrd = API.tdm.word td
+				wrd = API.tdm.word(API.tdm.isword(td)) if not wrd.length
+			tp = if wrd.length then wrd[0].lexName else ''
+			isadv = if tp.startsWith('adv') then true else false
+			stative = if tp is 'verb.stative' then true else false
+			adj = if tp is 'adj.all' then true else false
+			islocation = if (tp is 'noun.location' or tdl is 'shanghai') and not issw and capstart then true else false
+			if islocation and td not in ret.locations and tdl not in searched
+				searched.push tdl
+				inwd = wikidata_record.find 'label.exact': td
+				if inwd
+					ret.locations.push td
+			maybeid = if td.length > 2 and not isnumber and not islocation and not issw and not stative and td.slice(-1) isnt '%' and td.replace(/[^0-9A-Z\.\-%]/g,'').length isnt 0 and td.substring(0,1).toUpperCase() is td.substring(0,1) and td.substring(1,2).toUpperCase() is td.substring(1,2) then true else false
+			if maybeid # check it with a query? on snak values?
+				if td not in ret.ids and tdl not in searched
+					searched.push tdl
+					idwd = wikidata_record.find 'label.exact': td
+					if idwd
+						ret.ids.push td
+						if td.endsWith('s') and td.replace(/s$/,'').toUpperCase() is td.replace(/s$/,'')
+							dupin = ret.ids.indexOf td
+							ret.ids.splice(dupin,1) if dupin isnt -1 and dupin isnt ret.ids.length-1
+						else if iscaps
+							dups = ret.ids.indexOf td + 's'
+							ret.ids.splice(dups,1) if dups isnt -1 and dups isnt ret.ids.length-1
+
+			if not isnumber and not issw and not islocation and not maybeid and not adj and not isadv and not stative and td not in ret.terms and td.length > 2 and tdl not in searched
+				searched.push tdl
+				srch = {should: [{prefix: {'label.exact': td}},{prefix: {'sitelinks.enwiki.title.exact': td}}], must: [{term: {'snaks.key':'mesh'}}], must_not: [{term: {'snaks.qid.exact':'Q13442814'}}, {term: {'snaks.qid.exact':'Q30612'}}, {term: {'snaks.qid.exact':'Q4167410'}}]} 
+				if capstart
+					srch.should.push {prefix: {'label.exact': tdl}}
+					srch.should.push {prefix: {'sitelinks.enwiki.title.exact': tdl}}
+				wd = wikidata_record.search srch, {fields:['label','sitelinks.enwiki.title'],size:20}
+				#ret.qrs.push wd
+				closest = false
+				for w in wd?.hits?.hits ? []
+					if w.fields?.label?
+						wt = w.fields.label[0]
+						wtl = wt.toLowerCase()
+						if (closest is false or wt.length > closest.length) and textl.indexOf(wtl) isnt -1 and rtj.indexOf(wtl) is -1
+							closest = wt
+					if w.fields?['sitelinks.enwiki.title']?
+						lt = w.fields['sitelinks.enwiki.title'][0]
+						ltl = lt.toLowerCase()
+						if (closest is false or lt.length > closest.length) and textl.indexOf(ltl) isnt -1 and rtj.indexOf(ltl) is -1
+							closest = lt
+				if closest
+					ret.terms.push closest
+					rtj += (if rtj.length then ' ' else '') + closest.toLowerCase()
+					counter += closest.split(' ').length-1
+	ret.searched = searched.length
+	ret.found = ret.terms.length + ret.ids.length + ret.locations.length
+	#ret.searched = searched
+	delete ret.qrs
+	return ret
 
 
 
@@ -517,7 +614,7 @@ API.tdm.miner = (text, opts={}) ->
 				wrd = API.tdm.word(API.tdm.isword(td)) if not wrd.length
 			tp = if wrd.length then wrd[0].lexName else ''
 			isadv = if tp.startsWith('adv') then true else false
-			islocation = if (tp is 'noun.location' or tdl is 'shanghai') and not issw then true else false
+			islocation = if (tp is 'noun.location' or tdl is 'shanghai') and not issw and td.substring(0,1).toUpperCase() is td.substring(0,1) then true else false
 			ret.locations.push(td) if islocation and td not in ret.locations
 			maybeid = if td.length > 2 and not isnumber and not islocation and not issw and td.slice(-1) isnt '%' and td.replace(/[^0-9A-Z\.\-%]/g,'').length isnt 0 and td.substring(0,1).toUpperCase() is td.substring(0,1) and td.substring(1,2).toUpperCase() is td.substring(1,2) then true else false
 			if maybeid
@@ -639,15 +736,14 @@ API.tdm.fulltext = (url,opts={}) ->
 	
 	opts.min ?= 10000 # shortest acceptable fulltext length
 	opts.pdf ?= true # prefer PDF fulltext if possible
-	opts.refresh ?= 0
+	opts.refresh ?= false
 
 	checksum = API.job.sign url
-	try
-		if opts.refresh isnt true and opts.refresh isnt 'true'
-			opts.refresh = parseInt(opts.refresh) if typeof opts.refresh is 'string'
-			if typeof opts.refresh is 'number'
-				exists = API.http.cache checksum, 'tdm_fulltexts', undefined, refresh
-				return exists if exists
+	#try
+	'''if opts.refresh isnt true and opts.refresh isnt 'true'
+		opts.refresh = parseInt(opts.refresh) if typeof opts.refresh is 'string'
+		exists = API.http.cache checksum, 'tdm_fulltexts', undefined, refresh
+		return exists if exists'''
 
 	# check what is at the given url
 	res = {url: url, errors: [], words: 0, fulltext: ''}
@@ -845,6 +941,8 @@ API.tdm.fulltext = (url,opts={}) ->
 	if res.fulltext.toLowerCase().indexOf('<html') is 0
 		try res.fulltext = API.convert.html2txt(res.fulltext).replace(/\r?\n|\r/g,' ').replace(/\t/g,' ').replace(/\[.*?\]/g,'')
 
-	try API.http.cache(checksum, 'tdm_fulltexts', res) if res.fulltext.length
+	#if res.fulltext.length
+	#	chc = fulltext: res.fulltext, url: res.url, pdf: res.pdf, references: res.references
+	#	API.http.cache(checksum, 'tdm_fulltexts', chc)
 	return res
 

@@ -97,7 +97,7 @@ API.blacklist = (request,stale=3600000) ->
               console.log 'Blacklisting'
               console.log request.headers
               console.log request.query
-              console.log request.body
+              #console.log request.body
               console.log request.url
               console.log b
             try

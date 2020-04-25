@@ -11,8 +11,8 @@ API.add 'use/oadoi/:doipre/:doipost/:doimore',
 API.use.oadoi.doi = (doi,format=true) ->
   url = 'https://api.oadoi.org/v2/' + doi + '?email=mark@cottagelabs.com'
   API.log 'Using oadoi for ' + url
-  res = API.http.cache doi, 'oadoi_doi'
-  if not res?
+  #res = API.http.cache doi, 'oadoi_doi' #don't use oadoi cache for now
+  if true #not res?
     try
       res = HTTP.call 'GET', url
       if res.statusCode is 200
@@ -20,7 +20,7 @@ API.use.oadoi.doi = (doi,format=true) ->
         #res.url = API.http.resolve(res.best_oa_location.url) if res?.best_oa_location?.url?
         # for now we trust oadoi URLs instead of resolving them, to speed things up
         res.url = res?.best_oa_location?.url
-        API.http.cache doi, 'oadoi_doi', res
+        #API.http.cache doi, 'oadoi_doi', res
       else
         return undefined
     catch

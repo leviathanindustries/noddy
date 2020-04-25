@@ -102,7 +102,7 @@ API.http._save = (lookup,type='cache',content) ->
       saved = API.http._colls[type].insert sv
   return saved
 
-API.http.cache = (lookup,type='cache',content,refresh=0) ->
+API.http.cache = (lookup,type='cache',content,refresh=false) ->
   return undefined if API.settings.cache is false
   try
     if Array.isArray lookup
@@ -122,7 +122,7 @@ API.http.cache = (lookup,type='cache',content,refresh=0) ->
   API.http._colls[type] ?= new API.collection index: API.settings.es.index + "_cache", type: type
   try
     fnd = 'lookup.exact:"' + lookup + '"'
-    if typeof refresh is 'number' and refresh isnt 0 and not isNaN refresh
+    if typeof refresh is 'number' and not isNaN refresh
       fnd += ' AND createdAt:>' + (Date.now() - refresh)
     res = API.http._colls[type].find fnd, true
     if res?._raw_result?.string?
@@ -263,7 +263,6 @@ API.http.xhr = (url) ->
   xhr = new XMLHttpRequest.XMLHttpRequest()
   xhr.onreadystatechange = () ->
     if xhr.readyState is 4
-      console.log this.responseText.length
       res.headers = xhr.getAllResponseHeaders()
       res.response = xhr # for arraybuffer looks like response, otherwise responseText
   xhr.open "GET", url

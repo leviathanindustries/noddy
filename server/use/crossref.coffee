@@ -75,7 +75,7 @@ API.use.crossref.types = () ->
     else
       return undefined
 
-API.use.crossref.reverse = (citations,score=80) ->
+API.use.crossref.reverse = (citations,score=80,format=false) ->
   citations = [citations] if typeof citations is 'string'
   url = 'https://api.crossref.org/reverse'
   API.log 'Using crossref for ' + url + ' with citation ' + JSON.stringify citations
@@ -97,7 +97,10 @@ API.use.crossref.reverse = (citations,score=80) ->
           found.push(w) if w in cites for w in titles
           sc += bonus * found.length if titles.length is found.length and found.join() is found.sort().join()
         if sc >= score
-          return { data: {doi:res.data.message.DOI, title:res.data.message.title[0], received:res.data.message.score, adjusted: sc}, original:res.data}
+          if format
+            return API.use.crossref.works.format res.data.message
+          else
+            return { data: {doi:res.data.message.DOI, title:res.data.message.title[0], received:res.data.message.score, adjusted: sc}, original:res.data}
         else
           return { data: {info: 'below score', received:res.data.message.score, adjusted: sc}, original:res.data}
       else
@@ -239,16 +242,7 @@ API.use.crossref.works.indexed = (qrystr,startdate,enddate,from,size,filter,orde
   filter += ',until-index-date:' + enddate if enddate
   return API.use.crossref.works.search qrystr, from, size, filter, 'indexed', order, format
 
-API.use.crossref.works.format = (rec, metadata={}, reverse=true) ->
-  if not rec?
-    if metadata.doi?
-      rec = API.use.crossref.works.doi metadata.doi
-    else if metadata.title? and metadata.title.length > 8 and metadata.title.split(' ').length > 2 and reverse
-      check = API.use.crossref.reverse metadata.title
-      if check?.data?.doi and check.data.title? and check.data.title.length <= metadata.title.length*1.2 and check.data.title.length >= metadata.title.length*.8 and metadata.title.toLowerCase().replace(/ /g,'').indexOf(check.data.title.toLowerCase().replace(' ','').replace(' ','').replace(' ','').split(' ')[0]) isnt -1
-        metadata.doi = check.data.doi
-        metadata.title = check.data.title
-        rec = check.original.message if check.original?.message?
+API.use.crossref.works.format = (rec, metadata={}) ->
   try metadata.title = rec.title[0]
   try metadata.doi = rec.DOI if rec.DOI?
   try metadata.doi = rec.doi if rec.doi? # just in case
@@ -260,6 +254,7 @@ API.use.crossref.works.format = (rec, metadata={}, reverse=true) ->
       if a.affiliation?
         a.affiliation = a.affiliation[0] if _.isArray a.affiliation
         a.affiliation = {name: a.affiliation} if typeof a.affiliation is 'string'
+        try a.affiliation.name = a.affiliation.name.replace(/\s\s+/g,' ').trim()
   try metadata.journal = rec['container-title'][0]
   try metadata.journal_short = rec['short-container-title'][0]
   try metadata.issue = rec.issue if rec.issue?
@@ -320,10 +315,6 @@ API.use.crossref.works.format = (rec, metadata={}, reverse=true) ->
             metadata.url.push(md) if _.isArray(metadata.url) and md not in metadata.url
             try metadata.redirect = API.service.oab.redirect md
             break
-  try metadata.pdf ?= rec.pdf
-  try metadata.url ?= rec.url
-  try metadata.open ?= rec.open
-  try metadata.redirect ?= rec.redirect
   return metadata  
 
 

@@ -74,11 +74,12 @@ API.use.doaj.journals.issn = (issn) ->
 # title search possible with title:MY JOURNAL TITLE
 # DOAJ API rate limit is 6r/s
 # a 200ms limit would stay above that, and also the noddy limiter sets a min of 500ms anyway, and actually only runs one task per second if just one machine running
+# adjusted to 400ms
 API.use.doaj.journals.search = (qry,params) ->
   url = 'https://doaj.org/api/v1/search/journals/' + qry + '?'
   url += op + '=' + params[op] + '&' for op of params
   API.log 'Using doaj for ' + url
-  res = API.job.limit 200, 'HTTP.call', ['GET',url], "DOAJ"
+  res = API.job.limit 400, 'HTTP.call', ['GET',url], "DOAJ"
   #res = HTTP.call 'GET', url
   return if res.statusCode is 200 then res.data else {status: 'error', data: res.data}
 
@@ -105,7 +106,7 @@ API.use.doaj.articles.search = (qry,params={},format=true) ->
   API.log 'Using doaj for ' + url
   try
     #res = HTTP.call 'GET', url
-    res = API.job.limit 200, 'HTTP.call', ['GET',url], "DOAJ"
+    res = API.job.limit 400, 'HTTP.call', ['GET',url], "DOAJ"
     if res.statusCode is 200
       if format
         for d of res.data.results
