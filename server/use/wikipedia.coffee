@@ -14,6 +14,8 @@
 # https://www.wikidata.org/w/api.php?action=wbsearchentities&search=doctoral%20advisor&language=en&type=property&format=json
 # gets property ID for string, just need to reverse. (Already have a dump accessible below, but for keeping up to date...)
 
+@wikidata_record = new API.collection {index:"wikidata",type:"record"}
+
 
 API.use ?= {}
 API.use.wikipedia = {}
@@ -22,16 +24,18 @@ API.use.wikinews = {}
 
 API.add 'use/wikipedia', get: () -> return API.use.wikipedia.lookup this.queryParams, this.queryParams.type
 
-API.add 'use/wikidata/:qid', get: () -> return API.use.wikidata.retrieve this.urlParams.qid, this.queryParams.all
+API.add 'use/wikidata', () -> return wikidata_record.search this
+API.add 'use/wikidata/:qid', get: () -> return wikidata_record.get this.urlParams.qid
 
+API.add 'use/wikidata/retrieve/:qid', get: () -> return API.use.wikidata.retrieve this.urlParams.qid, this.queryParams.all
 API.add 'use/wikidata/find', get: () -> return API.use.wikidata.find this.queryParams.q, this.queryParams.url, this.queryParams.retrieve isnt 'false'
-
 API.add 'use/wikidata/simplify', get: () -> return API.use.wikidata.simplify this.queryParams.qid, this.queryParams.q, this.queryParams.url
 API.add 'use/wikidata/simplify/:qid', get: () -> return API.use.wikidata.simplify this.urlParams.qid
 
-API.add 'use/wikidata/properties', get: () -> return wikidata_properties
-
-API.add 'use/wikidata/properties/:prop', get: () -> return wikidata_properties[this.urlParams.prop]
+API.add 'use/wikidata/properties', get: () -> return API.use.wikidata.properties(this.queryParams.refresh)
+API.add 'use/wikidata/properties/generate', get: () -> return API.use.wikidata.properties(true)
+API.add 'use/wikidata/properties/:prop', get: () -> return API.use.wikidata.property this.urlParams.prop, this.queryParams.simple
+API.add 'use/wikidata/import', post: () -> return API.use.wikidata.import this.request.body
 
 API.add 'use/wikinews', get: () -> return API.use.wikinews.about this.queryParams.qid, this.queryParams.q, this.queryParams.url, this.queryParams.text?
 API.add 'use/wikinews/:qid', get: () -> return API.use.wikinews.about this.urlParams.qid, undefined, undefined, this.queryParams.text?
@@ -102,7 +106,7 @@ API.use.wikidata.retrieve = (qid,all,matched) ->
     r.info = {}
     for c of res.data.entities[qid].claims
       claim = res.data.entities[qid].claims[c]
-      wdp = wikidata_properties[c]
+      wdp = API.use.wikidata.property c
       wdp ?= c
       r.infokeys.push wdp
       #for s in claim, do something...
@@ -168,6 +172,70 @@ API.use.wikidata.simplify = (qid,q,url,drill=true) ->
           res[key] = dk if dk
   return res
 
+_got_props = false
+_got_props_when = false
+API.use.wikidata.properties = (refresh=604800000) ->
+  refresh = 0 if refresh is true or refresh is 'true'
+  try refresh = parseInt(refresh) if typeof refresh is 'string'
+  refresh = 0 if isNaN refresh or typeof refresh isnt 'number'
+  if _got_props_when isnt false and Date.now() - _got_props_when < refresh
+    return _got_props
+  else
+    props = API.http.cache 'generated', 'wikidata_properties', undefined, refresh
+    if props?
+      _got_props = props
+      _got_props_when = Date.now()
+      return props
+    else
+      props = {}
+      content = API.http.cache 'wikipage', 'wikidata_properties', undefined, Math.floor(refresh/2)
+      if not content?
+        res = HTTP.call 'GET', 'https://www.wikidata.org/wiki/Wikidata:Database_reports/List_of_properties/all'
+        if res?.content
+          API.http.cache 'wikipage', 'wikidata_properties', res.content
+          content = res.content
+      if content?
+        try
+          tb = content.split('<table class="wikitable sortable">')[1].split('</table>')[0]
+          rows = tb.split '</tr>'
+          rows.shift() # the first row is headers
+          pids = 0
+          for row in rows
+            try
+              prop = {}
+              parts = row.split '</td>'
+              try prop.pid = parts[0].replace('</a>','').split('>').pop().trim().replace('\n','')
+              try prop.label = parts[1].replace('</a>','').split('>').pop().trim().replace('\n','')
+              try prop.desc = parts[2].replace('</a>','').split('>').pop().trim().replace('\n','')
+              try prop.alias = parts[3].replace('</a>','').split('>').pop().replace(/, or/g,',').replace(/, /g,',').trim().replace('\n','').split(',')
+              try prop.type = parts[4].replace('</a>','').split('>').pop().trim().replace('\n','')
+              try prop.count = parts[5].replace('</a>','').split('>').pop().replace(/,/g,'').trim().replace('\n','')
+              if typeof prop.pid is 'string' and prop.pid.length and prop.pid.startsWith 'P'
+                props[prop.pid] = prop
+                pids += 1
+          console.log pids
+          if not _.isEmpty props
+            API.http.cache 'generated', 'wikidata_properties', props
+            _got_props = props
+            _got_props_when = Date.now()
+      return props
+
+API.use.wikidata.property = (prop,simple=true) ->
+  simple = false if simple is 'false'
+  res = API.use.wikidata.properties()[prop]
+  if res?
+    return if simple then res.label else res
+  else
+    return undefined
+
+API.use.wikidata.import = (recs) ->
+  if _.isArray(recs) and recs.length
+    return wikidata_record.insert recs
+  else
+    return undefined
+
+  
+  
 # https://www.mediawiki.org/wiki/API:Main_page
 # https://en.wikipedia.org/w/api.php
 

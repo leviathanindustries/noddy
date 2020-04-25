@@ -609,7 +609,14 @@ API.collection._translate = (q, opts) ->
       for o of q
         opts[o] ?= q[o] if o not in ['source']
     else if q.q?
-      qry.query.filtered.query.bool.must.push query_string: query: q.q
+      if q.prefix? and q.q.indexOf(':') isnt -1
+        delete q.prefix
+        pfx = {}
+        qpts = q.q.split ':'
+        pfx[qpts[0]] = qpts[1]
+        qry.query.filtered.query.bool.must.push prefix: pfx
+      else
+        qry.query.filtered.query.bool.must.push query_string: query: q.q
       opts ?= {}
       for o of q
         opts[o] ?= q[o] if o not in ['q']

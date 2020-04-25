@@ -71,19 +71,12 @@ API.use.europepmc.title = (title,format) ->
   return API.use.europepmc.get 'title:"' + title + '"', format
 
 API.use.europepmc.get = (qrystr,format) ->
-  res = API.http.cache qrystr, 'epmc_get'
-  if not res?
+  #res = API.http.cache qrystr, 'epmc_get'
+  if true #not res?
     res = API.use.europepmc.search qrystr, undefined, undefined, format
     res = if res.total then res.data[0] else undefined
-    if res?.fullTextUrlList?
-      for oi in res.fullTextUrlList.fullTextUrl
-        # we only accepted oa and html previously - TODO find out why, and if we have to be so strict for a reason
-        if oi.availabilityCode.toLowerCase() in ['oa','f'] and oi.documentStyle.toLowerCase() in ['pdf','html']
-          try
-            resolves = HTTP.call 'HEAD', oi.url
-            res.url = oi.url
-            break
-      API.http.cache qrystr, 'epmc_get', res
+    #if res?.url?
+    #  API.http.cache qrystr, 'epmc_get', res
   return res
 
 API.use.europepmc.search = (qrystr,from,size,format=true) ->
@@ -273,9 +266,7 @@ API.use.europepmc.xmlAvailable = (pmcid) ->
 
 API.use.europepmc.format = (rec, metadata={}) ->
   try metadata.pdf ?= rec.pdf
-  try metadata.open ?= rec.open
   try metadata.redirect ?= rec.redirect
-  rec ?= if metadata.doi then API.use.europepmc.doi(metadata.doi) else if metadata.title then API.use.europepmc.title(metadata.title) else if metadata.pmid then API.use.europepmc.pmid(metadata.pmid) else API.use.europepmc.pmc metadata.pmcid
   try metadata.pmcid = rec.pmcid if rec.pmcid?
   try metadata.title = rec.title if rec.title?
   try metadata.doi = rec.doi if rec.doi?
@@ -287,7 +278,8 @@ API.use.europepmc.format = (rec, metadata={}) ->
       a.family = a.lastName
       if a.affiliation?
         a.affiliation = a.affiliation[0] if _.isArray a.affiliation
-        a.affiliation = {name: a.affiliation} if typeof a.affiliation is 'string'
+        a.affiliation = {name: a.affiliation.replace(/\s\s+/g,' ').trim()} if typeof a.affiliation is 'string'
+        try a.affiliation.name = a.affiliation.name.replace(/\s\s+/g,' ').trim()
   try metadata.journal ?= rec.journalInfo.journal.title
   try metadata.journal_short ?= rec.journalInfo.journal.isoAbbreviation
   try metadata.issue = rec.journalInfo.issue
@@ -311,7 +303,15 @@ API.use.europepmc.format = (rec, metadata={}) ->
   try metadata.abstract = API.convert.html2txt(rec.abstractText).replace(/\n/g,' ').replace('Abstract ','') if rec.abstractText?
   if rec?.license?
     metadata.licence = rec.license.trim().replace(/ /g,'-')
-  if rec?.url?
+  if rec?.fullTextUrlList?
+    for oi in rec.fullTextUrlList.fullTextUrl
+      # we only accepted oa and html previously - TODO find out why, and if we have to be so strict for a reason
+      if oi.availabilityCode.toLowerCase() in ['oa','f'] and oi.documentStyle.toLowerCase() in ['pdf','html']
+        try
+          resolves = HTTP.call 'HEAD', oi.url
+          rec.url = oi.url
+          break
+  if rec?.url? and not metadata.url?
     metadata.url = rec.url
     if not metadata.redirect? and typeof rec.url is 'string'
       try metadata.redirect = API.service.oab.redirect rec.url
