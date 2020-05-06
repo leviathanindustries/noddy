@@ -306,7 +306,7 @@ API.es.call = (action, route, data, refresh, version, scan, scroll='10m', partia
     try
       if action is 'POST' and data?.query? and data.sort? and routeparts.length > 1
         skey = _.keys(data.sort)[0].replace('.exact','')
-        delete opts.data.sort if JSON.stringify(API.es.mapping(routeparts[0],routeparts[1]),dev,url).indexOf(skey) is -1
+        delete opts.data.sort if JSON.stringify(API.es.mapping(routeparts[0],(if routeparts.length > 1 and routeparts[1] isnt '_search' then routeparts[1] else '')),dev,url).indexOf(skey) is -1
     opts.retry = API.es._retries
     #console.log action, url, route, opts
     ret = RetryHttp.call action, url + route, opts

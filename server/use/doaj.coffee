@@ -7,19 +7,19 @@ API.use ?= {}
 API.use.doaj = {journals: {}, articles: {}}
 
 API.add 'use/doaj/:which/es',
-  get: () -> return API.use.doaj.es this.urlParams.which, this.queryParams, undefined, this.queryParams.format isnt 'false'
-  post: () -> return API.use.doaj.es this.urlParams.which, this.queryParams, this.bodyParams, this.queryParams.format isnt 'false'
+  get: () -> return API.use.doaj.es this.urlParams.which, this.queryParams, undefined, this.queryParams.format
+  post: () -> return API.use.doaj.es this.urlParams.which, this.queryParams, this.bodyParams, this.queryParams.format
 
 API.add 'use/doaj/articles/search/:qry',
-  get: () -> return API.use.doaj.articles.search this.urlParams.qry, this.queryParams, this.queryParams.format isnt 'false'
+  get: () -> return API.use.doaj.articles.search this.urlParams.qry, this.queryParams, this.queryParams.format
 
 API.add 'use/doaj/articles/title/:qry',
   get: () -> return API.use.doaj.articles.title this.urlParams.qry
 
 API.add 'use/doaj/articles/doi/:doipre/:doipost',
-  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format isnt 'false'
+  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format
 API.add 'use/doaj/articles/doi/:doipre/:doipost/:doiextra',
-  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doiextra, this.queryParams.format isnt 'false'
+  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doiextra, this.queryParams.format
 
 API.add 'use/doaj/journals/search/:qry',
   get: () -> return API.use.doaj.journals.search this.urlParams.qry

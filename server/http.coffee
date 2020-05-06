@@ -24,7 +24,7 @@ API.add 'http/resolve', get: () -> return API.http.resolve this.queryParams.url,
 
 API.add 'http/puppeteer',
   get: () ->
-    refresh = if this.queryParams.refresh is 'true' then 0 else if this.queryParams.refresh? then (try(parseInt(this.queryParams.refresh))) else undefined
+    refresh = if this.queryParams.refresh is true then 0 else if this.queryParams.refresh? then (try(parseInt(this.queryParams.refresh))) else undefined
     url = this.queryParams.url
     url += if url.indexOf('?') isnt -1 then '&' else '?'
     for qp of this.queryParams
@@ -457,7 +457,7 @@ _puppeteer = (url,refresh=86400000,proxy,callback) ->
       return callback null, HTTP.call('GET',url,{timeout:20000,npmRequestOptions:{encoding:null}}).content
     catch
       return callback null, ''
-  if refresh isnt true and refresh isnt 0 and refresh isnt 'true'
+  if refresh isnt true and refresh isnt 0
     cached = API.http.cache url, 'puppeteer', undefined, refresh
     return callback(null,cached) if cached?
   try

@@ -163,10 +163,25 @@ class share.Route
         self.endpoints[method] = self.endpoints[self.endpoints[method]] if typeof self.endpoints[method] is 'string'
         endpoint = self.endpoints[method]
         @JsonRoutes.add method, fullPath, (req, res) ->
+          try
+            rq = _.clone req.query
+            try
+              for q of rq
+                try
+                  if rq[q] is 'true'
+                    rq[q] = true
+                  else if rq[q] is 'false'
+                    rq[q] = false
+                  else if typeof rq[q] is 'string' and rq[q].replace(/[0-9]/g,'').length is 0 and (rq[q].length > 1 or not rq[q].startsWith('0'))
+                    try
+                      pn = parseInt rq[q]
+                      rq[q] = pn if not isNaN pn
+          catch
+            rq = req.query
 
           endpointContext =
             urlParams: req.params
-            queryParams: req.query
+            queryParams: rq
             bodyParams: req.body
             request: req
             response: res

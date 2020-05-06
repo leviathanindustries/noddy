@@ -4,6 +4,7 @@ import diskspace from 'diskspace'
 import os from 'os'
 import rsync from 'rsync'
 import Future from 'fibers/future'
+import fs from 'fs'
 
 API.add 'stats',
   get: () ->
@@ -28,9 +29,12 @@ API.add 'status/ip', get: () -> return API.status.ip()
 API.add 'status/rsync', 
   get: 
     roleRequired: if API.settings.dev then undefined else 'root'
-    action: () -> 
-      return API.status.rsync()
-
+    action: () -> return API.status.rsync()
+API.add 'status/bounce',
+  get:
+    roleRequired: if API.settings.dev then undefined else 'root'
+    action: () -> return API.status.bounce()
+    
 
 
 API.status = (email=true) ->
@@ -147,8 +151,25 @@ API.status.rsync = (ips,src,dest) ->
       future = new Future()
       Meteor.setTimeout (() -> future.return()), 500
       future.wait()
+    checkup = {}
+    while _.keys(checkup).length isnt ips.length
+      future = new Future()
+      Meteor.setTimeout (() -> future.return()), 12000
+      future.wait()
+      for ip in ips
+        if ip.indexOf(API.status.ip()) is -1 and not checkup[ip]?
+          ip = ip.split('//')[1] if ip.indexOf('//') isnt -1
+          ip = ip.split('/')[0] if ip.indexOf('/') isnt -1
+          addr = (if ip.indexOf('http') isnt 0 then 'http://' else '') + ip + (if ip.indexOf(':') is -1 then (if API.settings.dev then ':3002' else ':3333') else '') + '/api/stats'
+          try
+            console.log 'RSYNC checking up on ' + addr
+            cm = HTTP.call 'GET',addr, {timeout:5500}
+            checkup[ip] = cm?.data?.version ? true
+          catch
+            console.log 'RYSNC not yet up on ' + addr
     _rsync_running = false
-  return done
+    console.log 'RSYNC done'
+  return version: (if API.settings.version then API.settings.version else "0.0.1"), done: done, checkup: checkup
 
 _status_ip = false
 API.status.ip = () ->
@@ -162,8 +183,32 @@ API.status.ip = () ->
           _status_ip = ift.address
           return ift.address
 
-# whenever the app gets reloaded due to file change on the main machine which is not in the cluster
-# trigger an automatic rsync to the cluster machines - if the rsync.reload setting is true
-if API.settings.cluster?.ip? and API.settings.cluster.rsync?.reload and API.status.ip() not in API.settings.cluster.ip
-  console.log 'TRIGGERING AUTOMATIC RSYNC TO CLUSTER MACHINES DUE TO MAIN APP RELOAD ON FILE CHANGE WHILE RUNNING'
-  API.status.rsync()
+# write a timestamp to a file in the code directory to cause a restart
+API.status.bounce = () ->
+  fn = if API.settings?.cluster?.bounce?.src? then API.settings.cluster.bounce.src else if API.settings?.cluster?.rsync?.src? then API.settings.cluster.rsync.src else '/home/cloo/' + (if API.settings.dev then 'dev' else 'live') + '/noddy/'
+  fn += '/' if not fn.endsWith('/')
+  fn += 'bounce.js'
+  dn = Date.now()
+  API.log 'Bounce'
+  fs.writeFileSync fn, '_last_bounce=' + dn
+  return dn
+
+# whenever the system restarts check if auto rsync is set
+# or if the last bounce date in file is within the last 30 seconds, call rsync
+if API.settings.cluster?.ip? and API.status.ip() not in API.settings.cluster.ip
+  fn = if API.settings?.cluster?.bounce?.src? then API.settings.cluster.bounce.src else if API.settings?.cluster?.rsync?.src? then API.settings.cluster.rsync.src else '/home/cloo/' + (if API.settings.dev then 'dev' else 'live') + '/noddy/'
+  fn += '/' if not fn.endsWith('/')
+  fn += 'bounce.js'
+  try
+    content = fs.readFileSync(fn).toString()
+    last = parseInt content.split('=')[1]
+  catch
+    last = false
+
+  if API.settings.cluster.rsync? or last isnt false and last > Date.now() - 30000
+    if last isnt false and last > Date.now() - 30000
+      console.log 'TRIGGERING AUTOMATIC RSYNC TO CLUSTER MACHINES DUE TO BOUNCE AT ' + last
+      Meteor.setTimeout (() -> API.log msg: 'System successfully manually bounced at ' + Date.now(), notify: true), 10000
+    else
+      console.log 'TRIGGERING AUTOMATIC RSYNC TO CLUSTER MACHINES DUE TO MAIN APP RELOAD ON FILE CHANGE WHILE RUNNING'
+    API.status.rsync()

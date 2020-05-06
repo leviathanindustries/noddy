@@ -13,31 +13,31 @@ API.use ?= {}
 API.use.crossref = {works:{},journals:{}}
 
 API.add 'use/crossref/works/doi/:doipre/:doipost',
-  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format?
+  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format
 # there are DOIs that can have slashes within their second part and are valid. Possibly could have more than one slash
 # and there does not seem to be a way to pass wildcards to the urlparams to match multiple / routes
 # so this will do for now...
 API.add 'use/crossref/works/doi/:doipre/:doipost/:doimore',
-  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format?
+  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format
 
 API.add 'use/crossref/works',
-  get: () -> return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format
 API.add 'use/crossref/works/search',
-  get: () -> return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format
 
 API.add 'use/crossref/works/published',
-  get: () -> return API.use.crossref.works.published (this.queryParams.q ? this.queryParams.query), undefined, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.published (this.queryParams.q ? this.queryParams.query), undefined, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
 API.add 'use/crossref/works/published/:startdate',
-  get: () -> return API.use.crossref.works.published (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.published (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
 API.add 'use/crossref/works/published/:startdate/:enddate',
-  get: () -> return API.use.crossref.works.published (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, this.urlParams.enddate, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.published (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, this.urlParams.enddate, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
 
 API.add 'use/crossref/works/indexed',
-  get: () -> return API.use.crossref.works.indexed (this.queryParams.q ? this.queryParams.query), undefined, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.indexed (this.queryParams.q ? this.queryParams.query), undefined, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
 API.add 'use/crossref/works/indexed/:startdate',
-  get: () -> return API.use.crossref.works.indexed (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.indexed (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
 API.add 'use/crossref/works/indexed/:startdate/:enddate',
-  get: () -> return API.use.crossref.works.indexed (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, this.urlParams.enddate, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.indexed (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, this.urlParams.enddate, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
 
 API.add 'use/crossref/types',
   get: () -> return API.use.crossref.types()

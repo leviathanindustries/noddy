@@ -4,9 +4,9 @@ API.use ?= {}
 API.use.oadoi = {}
 
 API.add 'use/oadoi/:doipre/:doipost',
-  get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost, not this.queryParams.format?
+  get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format
 API.add 'use/oadoi/:doipre/:doipost/:doimore',
-  get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, not this.queryParams.format?
+  get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format
 
 API.use.oadoi.doi = (doi,format=true) ->
   url = 'https://api.oadoi.org/v2/' + doi + '?email=mark@cottagelabs.com'
