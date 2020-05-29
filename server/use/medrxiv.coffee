@@ -20,7 +20,6 @@ API.use.medrxiv.search = (params) ->
 
 API.use.medrxiv.covid = (params={}) ->
   params.format ?= true
-  params.format = false if params.format is 'false' or params.format is false
   params.size ?= 10
   params.from = parseInt(params.from) if typeof params.from is 'string'
   params.refresh = parseInt(params.refresh) if typeof params.refresh is 'string'

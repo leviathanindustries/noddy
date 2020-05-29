@@ -1,6 +1,5 @@
 
 import gramophone from 'gramophone'
-import CryptoJS from 'crypto-js' # TODO no need for this when crypto is available, fix below then remove
 import crypto from 'crypto'
 import natural from 'natural'
 import wordpos from 'wordpos'
@@ -8,6 +7,7 @@ import stopword from 'stopword'
 import languagedetect from 'languagedetect'
 import Future from 'fibers/future'
 import pdfjs from 'pdfjs-dist'
+import diff from 'diff'
 
 # TODO check out nodenatural and add it in here where useful
 # https://github.com/NaturalNode/natural#tf-idf
@@ -17,6 +17,10 @@ import pdfjs from 'pdfjs-dist'
 # https://github.com/moos/wordpos
 
 API.tdm = {}
+
+API.add 'tdm/clean', get: () -> return API.tdm.clean this.queryParams.q
+
+API.add 'tdm/diff', get: () -> return API.tdm.diff this.queryParams.a, this.queryParams.b, this.queryParams
 
 API.add 'tdm/fulltext', 
   get: () -> 
@@ -68,10 +72,6 @@ API.add 'tdm/words',
 			try content = API.tdm.fulltext(this.queryParams.url).fulltext
 		return if typeof content is 'string' and content.length then API.tdm.words(content) else []
 
-API.add 'tdm/wikidata',
-	get: () ->
-		return API.tdm.wikidata (this.queryParams.url ? this.queryParams.content), this.queryParams
-
 API.add 'tdm/keywords',
 	get: () ->
 		content = this.queryParams.content
@@ -107,7 +107,9 @@ API.add 'tdm/keywords',
 				opts.ngrams = parseInt(this.queryParams.ngrams)
 		return if content? then API.tdm.keywords(content,opts) else {}
 
-API.add 'tdm/miner', get: () -> return API.tdm.miner this.queryParams.content ? this.queryParams.url, this.queryParams
+API.add 'tdm/miner', 
+	get: () -> return API.tdm.miner this.queryParams.content ? this.queryParams.url, this.queryParams
+	post: () -> return API.tdm.miner this.bodyParams.content ? this.bodyParams.url ? this.queryParams.url, this.bodyParams
 
 API.add 'tdm/extract',
 	get: () ->
@@ -124,11 +126,89 @@ API.add 'tdm/extract',
 		params.end ?= this.queryParams.end
 		return API.tdm.extract params
 
-API.add 'tdm/difference/:str',
-	get: () ->
-		return API.tdm.difference this.urlParams.str.split(',')[0], this.urlParams.str.split(',')[1]
 
 
+API.tdm._bad_chars = [
+	{bad: '‘', good: "'"},
+	{bad: '’', good: "'"},
+	{bad: '´', good: "'"},
+	{bad: '“', good: '"'},
+	{bad: '”', good: '"'},
+	{bad: '–', good: '-'},
+	{bad: '-', good: '-'}
+]
+API.tdm.clean = (text) ->
+	# get rid of MS formatting, stuff like that
+	_cln = (t) ->
+		nt = false
+		if typeof t isnt 'string'
+			nt = true
+			t = JSON.stringify t
+		for c in API.tdm._bad_chars
+			re = new RegExp(c.bad,"g")
+			t = t.replace(re,c.good)
+		return if nt then JSON.parse(t) else t
+	if typeof text is 'object'
+		for k of text
+			try text[k] = _cln text[k]
+		return text
+	else
+		try
+			return _cln text
+		catch
+			return text
+
+API.tdm.diff = (a, b, opts={}) ->
+	# can be Chars for comparison char by char. Or Words to compare words ignoring whitespace. Or WordsWithSpace to care about whitespace
+	# Or Lines to compare lines. Or Sentences for sentences. Or Patch will do structuredPatch (there are other action options but just use these)
+	# may need some pre-processing to handle html without being too fragile to changes humans cannot see
+	# or just strip all the content out of the html, unless passed a var saying that it matter?
+	# but then how to match back to the correct object? just by content map?
+	# https://github.com/kpdecker/jsdiff
+	if typeof a is 'string' and a.startsWith('http')
+		a = if opts.puppeteer then API.http.puppeteer(a) else HTTP.call('GET', a).content
+	if typeof b is 'string' and b.startsWith('http')
+		b = if opts.puppeteer then API.http.puppeteer(b) else HTTP.call('GET', b).content
+	delete opts.puppeteer
+	action = opts.action ? 'Words'
+	action = if action.toLowerCase() is 'wordswithspace' then 'WordsWithSpace' else action.substring(0,1).toUpperCase() + action.substring(1).toLowerCase()
+	delete opts.action
+	#if action in ['Chars','Words']
+	#	opts.ignoreCase ?= true
+	if action is 'Lines'
+		opts.newlineIsToken ?= true
+		opts.ignoreWhitespace ?= true
+	else
+		a = a.replace(/\\n/g,' ').replace(/\s{2,}/g,' ')
+		b = b.replace(/\\n/g,' ').replace(/\s{2,}/g,' ')
+	if typeof a is 'string' and (a.indexOf('{') is 0 or a.indexOf('[') is 0) and (a.endsWith('}') or a.endsWith(']'))
+		try a = JSON.parse a
+	if typeof b is 'string' and (b.indexOf('{') is 0 or b.indexOf('[') is 0) and (b.endsWith('}') or b.endsWith(']'))
+		try b = JSON.parse b
+	if typeof a is 'object' and typeof b isnt 'object'
+		a = JSON.stringify a
+	if typeof b is 'object' and typeof a isnt 'object'
+		b = JSON.stringify b
+	if typeof a is 'object' and typeof b is 'object'
+		if _.isArray(a) and _.isArray(b)
+			# what does this do with arrays of objects? better just to stick with diffJson? or recurse?
+			return diff.diffArrays a, b
+		else
+			# if as above passed arrays to this, does it handle them? or only objects
+			return diff.diffJson a, b
+	else if action is 'Chars'
+		return diff.diffChars a, b, opts
+	else if action is 'Words'
+		return diff.diffWords a, b, opts
+	else if action is 'WordsWithSpace'
+		return diff.diffWordsWithSpace a, b, opts
+	else if action is 'Lines'
+		return diff.diffLines a, b, opts
+	else if action is 'Sentences'
+		return diff.diffSentences a, b, opts
+	else if action is 'Patch'
+		return diff.structuredPatch 'a', 'b', a, b
+	
 # https://www.npmjs.com/package/languagedetect
 API.tdm.language = (content) ->
 	try content = content.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()0123456789]/g," ")
@@ -259,7 +339,7 @@ API.tdm.categorise = (entity) ->
 		img = rec.data.pageprops.page_image_free
 		img ?= rec.data.pageprops.page_image
 		if img?
-			imghash = CryptoJS.MD5(img).toString() # TODO use crypto instead of crypto-js here
+			imghash = crypto.createHash('md5').update(img, 'utf8').digest('hex')
 			img = 'https://upload.wikimedia.org/wikipedia/commons/' + imghash.charAt(0) + '/' + imghash.charAt(0) + imghash.charAt(1) + '/' + img
 		wikibase = rec.data.pageprops.wikibase_item
 		wikidata = if wikibase then 'https://www.wikidata.org/wiki/' + wikibase else undefined
@@ -269,11 +349,11 @@ API.tdm.categorise = (entity) ->
 	return res
 
 API.tdm.stopwords = (stops,more,wp=true,gramstops=true) -> 
-	stops ?= ['purl','w3','http','https','ref','html','www','ref','cite','url','title','date','state','nbsp','doi','fig','figure',
+	stops ?= ['purl','w3','http','https','ref','html','www','ref','cite','url','title','date','nbsp','doi','fig','figure','supplemental',
 		'year','time','january','february','march','april','may','june','july','august','september','october','november','december',
-		'jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec',
+		'jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec','keywords','revised','accepted','file','attribution',
 		'org','com','id','wp','main','website','blogs','media','people','years','made','location','its','asterisk','called','xp','er'
-		'image','jpeg','jpg','png','php','object','false','true','article','chapter','book','caps','isbn','scale','axis','accessed'
+		'image','jpeg','jpg','png','php','object','false','true','article','chapter','book','caps','isbn','scale','axis','accessed','email','e-mail',
 		'story','first1','first2','last1','last2','general','list','accessdate','view_news','d0','dq','sfnref','onepage','sfn','authorlink']
 	gramstops = ["apos", "as", "able", "about", "above", "according", "accordingly", "across", "actually", "after", "afterwards", 
 		"again", "against", "aint", "all", "allow", "allows", "almost", "alone", "along", "already", "also", "although", "always", "am", 
@@ -322,7 +402,7 @@ API.tdm.stopwords = (stops,more,wp=true,gramstops=true) ->
 	return stops
 
 API.tdm.isnumber = (term) ->
-	if typeof term is 'number' or typeof term is 'string' and term.length is term.replace(/[^0-9\.\-% ]/g,'').length
+	if typeof term is 'number' or typeof term is 'string' and term.length is term.replace(/[^0-9\~\,\.\-% ]/g,'').length
 		return true
 	else
 		return false
@@ -359,8 +439,8 @@ API.tdm.isword = (word,tp,shortnames) ->
 	if _.isEmpty(tw) and hasing
 		word = word.replace(/e$/,'')
 		tw = API.tdm.word word,tp,shortnames
-	if _.isEmpty(tw) and word.endsWith('ies')
-		word = word.replace(/ies$/,'y')
+	if _.isEmpty(tw) and (word.endsWith('ies') or word.endsWith('ied'))
+		word = word.replace(/ies$/,'y').replace(/ied$/,'y')
 		tw = API.tdm.word word,tp,shortnames
 	if _.isEmpty(tw) and word.endsWith('es')
 		word = word.replace(/es$/,'')
@@ -398,6 +478,32 @@ API.tdm.isword = (word,tp,shortnames) ->
 	API.tdm._checkedwords[original] = res
 	API.tdm._checkedwords[word] = res if word isnt original
 	return res
+
+_lookups = {}
+API.tdm.type = (word,verbose) ->
+	if _lookups[word]? and not verbose
+		return _lookups[word]
+	else
+		wrd = API.tdm.word word
+		wrd = API.tdm.word(API.tdm.isword(word)) if not wrd.length
+		if wrd.length
+			_lookups[word] = wrd[0].lexName
+			return if verbose then wrd else wrd[0].lexName
+		else
+			return false
+
+API.tdm.generic = (word,filters,verbose) ->
+	filters ?= ['adv','verb.stative','noun.act','noun.location','noun.time']
+	filters = filters.split(',') if typeof filters is 'string'
+	tp = API.tdm.type word, verbose
+	if tp is false
+		return false
+	else
+		st = if typeof tp is 'string' then tp else tp[0].lexName
+		for f in filters
+			if st.indexOf(f) is 0
+				return tp
+		return false
 
 API.tdm.is = (tp,word) ->
 	_word = Async.wrap (tp,word,callback) ->
@@ -446,247 +552,6 @@ API.tdm.keywords = (content,opts={},defaults=true) ->
 	try API.http.cache(opts.checksum, 'tdm_keywords', res) if res.length
 	return res
 
-API.tdm.entities = (q, options={}) ->
-	ret = {ners: [], person: [], organisation: [], location: [], other: []}
-	try
-		checksum = API.job.sign q, options
-		exists = API.http.cache checksum, 'tdm_entities_corenlp'
-		res = if exists? then exists else API.use.corenlp.entities q, options
-		API.http.cache(checksum, 'tdm_entities_corenlp', res) if not exists? and res?.sentences?
-		finds = {}
-		for s in res.sentences
-			for e in s.entitymentions
-				if e.text and e.ner and (not finds[e.ner] or e.text.toLowerCase() not in finds[e.ner])
-					ret.ners.push(e.ner) if e.ner not in ret.ners
-					finds[e.ner] ?= []
-					finds[e.ner].push e.text.toLowerCase()
-					if e.ner is 'PERSON'
-						ret.person.push {value: e.text}
-					else if e.ner is 'ORGANIZATION'
-						ret.organisation.push {value: e.text}
-					else if e.ner in ['CITY','COUNTRY','LOCATION','STATE_OR_PROVINCE'] and e.text.substring(0,1).toUpperCase() is e.text.substring(0,1) # location is a guess, what else might it put out as locations?
-						ret.location.push {value: e.text, type: e.ner.toLowerCase()}
-					else
-						if e.ner not in ['DATE','TIME','NUMBER','ORDINAL','PERCENT','TITLE','SET','URL']
-							ret.other.push {value: e.text, type: e.ner.toLowerCase()}
-						# other interesting ones seen so far include 
-						# cause-of-death, ordinal, number, date, duration, email, misc, set, percent (for both a number with the word or the symbol), title
-		ret.res = res if options.full
-		return ret
-	catch
-		return ret
-
-
-
-API.tdm.wikidata = (text,opts={}) ->
-	if text.indexOf('http') is 0 and text.indexOf(' ') is -1
-		try text = API.tdm.fulltext(text).fulltext
-
-	ts = API.tdm.stopwords()
-	for a in ['1','2','3','4','5','6','7','8','9','0']
-		pos = ts.indexOf a
-		ts.splice(pos, 1) if pos isnt -1
-	ts = _.union ts, ['author','authors','copyright','introduction','conclusion','contact','common','open','commons','direction','areas','vol','ml']
-	counter = 0
-
-	textl = text.toLowerCase()
-	words = text.split ' '
-	ret = words: words.length, searched: 0, found: 0, terms: [], locations: [], ids: [], qrs: []
-	rtj = ''
-	searched = []
-	while counter < words.length
-		console.log counter
-		t = words[counter]
-		counter += 1
-		if t.length and t.indexOf('http') is -1 and t.indexOf('@') is -1
-			td = t.replace(/\//,' ').replace(/[^a-zA-Z0-9\-\.%]/g,'').replace(/\.$/g,'').trim()
-			tdl = td.toLowerCase()
-			iscaps = if td.toUpperCase() is td then true else false
-			isnumber = API.tdm.isnumber td
-			hasnumber = API.tdm.hasnumber td
-			issw = not hasnumber and tdl in ts
-			capstart = if not iscaps and not isnumber and not hasnumber and not issw and td isnt tdl and td.substring(0,1).toUpperCase() is td.substring(0,1) then true else false
-			if isnumber or hasnumber or iscaps
-				wrd = []
-			else
-				wrd = API.tdm.word td
-				wrd = API.tdm.word(API.tdm.isword(td)) if not wrd.length
-			tp = if wrd.length then wrd[0].lexName else ''
-			isadv = if tp.startsWith('adv') then true else false
-			stative = if tp is 'verb.stative' then true else false
-			adj = if tp is 'adj.all' then true else false
-			islocation = if (tp is 'noun.location' or tdl is 'shanghai') and not issw and capstart then true else false
-			if islocation and td not in ret.locations and tdl not in searched
-				searched.push tdl
-				inwd = wikidata_record.find 'label.exact': td
-				if inwd
-					ret.locations.push td
-			maybeid = if td.length > 2 and not isnumber and not islocation and not issw and not stative and td.slice(-1) isnt '%' and td.replace(/[^0-9A-Z\.\-%]/g,'').length isnt 0 and td.substring(0,1).toUpperCase() is td.substring(0,1) and td.substring(1,2).toUpperCase() is td.substring(1,2) then true else false
-			if maybeid # check it with a query? on snak values?
-				if td not in ret.ids and tdl not in searched
-					searched.push tdl
-					idwd = wikidata_record.find 'label.exact': td
-					if idwd
-						ret.ids.push td
-						if td.endsWith('s') and td.replace(/s$/,'').toUpperCase() is td.replace(/s$/,'')
-							dupin = ret.ids.indexOf td
-							ret.ids.splice(dupin,1) if dupin isnt -1 and dupin isnt ret.ids.length-1
-						else if iscaps
-							dups = ret.ids.indexOf td + 's'
-							ret.ids.splice(dups,1) if dups isnt -1 and dups isnt ret.ids.length-1
-
-			if not isnumber and not issw and not islocation and not maybeid and not adj and not isadv and not stative and td not in ret.terms and td.length > 2 and tdl not in searched
-				searched.push tdl
-				srch = {should: [{prefix: {'label.exact': td}},{prefix: {'sitelinks.enwiki.title.exact': td}}], must: [{term: {'snaks.key':'mesh'}}], must_not: [{term: {'snaks.qid.exact':'Q13442814'}}, {term: {'snaks.qid.exact':'Q30612'}}, {term: {'snaks.qid.exact':'Q4167410'}}]} 
-				if capstart
-					srch.should.push {prefix: {'label.exact': tdl}}
-					srch.should.push {prefix: {'sitelinks.enwiki.title.exact': tdl}}
-				wd = wikidata_record.search srch, {fields:['label','sitelinks.enwiki.title'],size:20}
-				#ret.qrs.push wd
-				closest = false
-				for w in wd?.hits?.hits ? []
-					if w.fields?.label?
-						wt = w.fields.label[0]
-						wtl = wt.toLowerCase()
-						if (closest is false or wt.length > closest.length) and textl.indexOf(wtl) isnt -1 and rtj.indexOf(wtl) is -1
-							closest = wt
-					if w.fields?['sitelinks.enwiki.title']?
-						lt = w.fields['sitelinks.enwiki.title'][0]
-						ltl = lt.toLowerCase()
-						if (closest is false or lt.length > closest.length) and textl.indexOf(ltl) isnt -1 and rtj.indexOf(ltl) is -1
-							closest = lt
-				if closest
-					ret.terms.push closest
-					rtj += (if rtj.length then ' ' else '') + closest.toLowerCase()
-					counter += closest.split(' ').length-1
-	ret.searched = searched.length
-	ret.found = ret.terms.length + ret.ids.length + ret.locations.length
-	#ret.searched = searched
-	delete ret.qrs
-	return ret
-
-
-
-API.tdm.miner = (text, opts={}) ->
-	if text.indexOf('http') is 0 and text.indexOf(' ') is -1
-		try text = API.tdm.fulltext(text).fulltext
-	opts.splits ?= {}
-	opts.splits.abstract ?= true
-	opts.splits.intro ?= true
-	opts.splits.conclusion ?= true
-
-	if opts.splits.abstract and text.indexOf('Abstract') isnt -1
-		parts = text.split('Abstract')
-		text = parts[1] if parts.length is 2
-	if opts.splits.intro and text.indexOf('Introduction') isnt -1
-		parts = text.split('Introduction')
-		text = parts[1] if parts.length is 2
-	if opts.splits.conclusion and text.indexOf('Conclusion') isnt -1
-		pts = text.split('Conclusion')
-		if pts.length is 2
-			pts[1] = pts[1].split('Appendix')[0].split('Abbreviations')[0].split('Contributions')[0].split('Supplementary')[0].split('Figures')[0].split('Acknowledgements')[0].split('Ethics approval')[0].split('Funding')[0]
-			text = pts[0] + 'Conclusion' + pts[1]
-			
-	ret = count: 0, phrases: [''], ids: [], locations: []
-	ts = API.tdm.stopwords()
-	for a in ['1','2','3','4','5','6','7','8','9','0']
-		pos = ts.indexOf a
-		if pos isnt -1
-			ts.splice pos, 1
-	ts = _.union ts, ['author','authors','copyright','introduction','conclusion','contact','common','open','commons','direction','areas','vol','ml']
-	counter = 0
-
-	words = text.split ' '
-	wl = words.length-1
-	for tc of words
-		t = words[tc]
-		if t.length and t.indexOf('http') is -1 and t.indexOf('@') is -1
-			td = t.replace(/\//,' ').replace(/[^a-zA-Z0-9\-\.%]/g,'').replace(/\. /g,' ').replace(/\.$/g,'').trim()
-			tdl = td.toLowerCase()
-			iscaps = if td.toUpperCase() is td then true else false
-			isnumber = API.tdm.isnumber td
-			hasnumber = API.tdm.hasnumber td
-			issw = not hasnumber and tdl in ts
-			if isnumber or hasnumber or iscaps
-				wrd = []
-			else
-				wrd = API.tdm.word td
-				wrd = API.tdm.word(API.tdm.isword(td)) if not wrd.length
-			tp = if wrd.length then wrd[0].lexName else ''
-			isadv = if tp.startsWith('adv') then true else false
-			islocation = if (tp is 'noun.location' or tdl is 'shanghai') and not issw and td.substring(0,1).toUpperCase() is td.substring(0,1) then true else false
-			ret.locations.push(td) if islocation and td not in ret.locations
-			maybeid = if td.length > 2 and not isnumber and not islocation and not issw and td.slice(-1) isnt '%' and td.replace(/[^0-9A-Z\.\-%]/g,'').length isnt 0 and td.substring(0,1).toUpperCase() is td.substring(0,1) and td.substring(1,2).toUpperCase() is td.substring(1,2) then true else false
-			if maybeid
-				ret.ids.push(td) if td not in ret.ids
-				if td.endsWith('s') and td.replace(/s$/,'').toUpperCase() is td.replace(/s$/,'')
-					dupin = ret.ids.indexOf td
-					ret.ids.splice(dupin,1) if dupin isnt -1 and dupin isnt ret.ids.length-1
-				else if iscaps
-					dups = ret.ids.indexOf td + 's'
-					ret.ids.splice(dups,1) if dups isnt -1 and dups isnt ret.ids.length-1
-			next = if tc < wl then words[tc+1] else ''
-			bracketed = if t.indexOf('(') is 0 and t.indexOf(',') is -1 and next not in ts then true else false
-			end = ret.phrases[counter].split(' ').pop()
-			start = if td.length > 2 and not isnumber and not maybeid and not hasnumber and not issw and td.substring(0,1).toUpperCase() is td.substring(0,1) and end.substring(0,1).toUpperCase() isnt end.substring(0,1) and end isnt 'of' and not end.endsWith(',') and td.toUpperCase() isnt td then true else false
-			if ret.phrases[counter].length and (bracketed or start)
-				ret.phrases.push ''
-				counter += 1
-			if td.length and (hasnumber or (not issw and not isadv)) or (((isadv and td isnt 'in') or (td in ['is','thus','a','the','around','are','might','be']) and ret.phrases[counter].split(' ').length > 2) or td is 'of' and ret.phrases[counter].length)
-				ret.phrases[counter] += (if ret.phrases[counter].length then ' ' else '') + td + (if t.endsWith(',') then ',' else '')
-			if ret.phrases[counter].length and (t.endsWith('.') or (issw and td not in ['of','as','is','around','might','be','a'] and (td not in ['or','and'] or not end.endsWith(','))))
-				ret.phrases.push ''
-				counter += 1
-        
-			if counter > 2 and last = ret.phrases[counter-1]
-				if last.endsWith(',')
-					ret.phrases[counter-1] = ret.phrases[counter-1].replace(/,$/,'')
-					last = last.replace(/,$/,'')
-				lasts = last.split ' '
-				ll = lasts[lasts.length-1]
-				if ll in ts or lasts.length < 4 or (last.indexOf(',') isnt -1 and lasts.length > 20) or (last.indexOf(',') is -1 and lasts.length > 9)
-					keep = []
-					if lasts.length < 4
-						for l in lasts
-							l = l.replace(',','')
-							if l not in ret.ids and l not in ret.locations and l not in ret.phrases and not API.tdm.isnumber l
-								llw = API.tdm.word l
-								llw = API.tdm.word(API.tdm.isword(l)) if not llw.length
-								llt = if llw.length then llw[0].lexName else ''
-								if llt in ['noun.substance','noun.artifact'] or llt is '' and text.split(l).length is 2
-									keep.push l
-					kj = keep.join ' '
-					#li = ret.phrases.indexOf last 
-					if not keep.length #or (li isnt -1 and li < ret.phrases.length-2)
-						ret.phrases[counter-1] = ''
-						ret.phrases.pop()
-						counter -= 1
-					else
-						ret.phrases[counter-1] = kj
-
-			'''if counter > 2 and lst = ret.phrases[counter-1]
-				lpi = ret.phrases.indexOf lst
-				if lpi isnt -1 and lpi < ret.phrases.length-2
-					ret.phrases.pop()
-					counter -= 1'''
-
-			rpl = ret.phrases.length-1
-			if counter > 2 and ret.phrases[rpl] is ''
-				if API.tdm.is('adverb', ret.phrases[rpl-1].split(' ').pop()) #or API.tdm.is('adverb', ret.phrases[rpl-1].split(' ')[0].replace(',',''))
-					ret.phrases.splice rpl-1, 1
-					counter -= 1
-				else
-					for p of ret.phrases
-						if parseInt(p) < rpl-1 and ret.phrases[rpl-1].indexOf(ret.phrases[p]) isnt -1
-							ret.phrases.splice rpl-1, 1
-							counter -= 1
-							break
-
-	ret.count = counter
-	return ret
-
-
-
 API.tdm.extract = (opts) ->
 	# opts expects url,content,matchers (a list, or singular "match" string),start,end,convert,format,lowercase,ascii
 	opts.content = API.http.puppeteer(opts.url, true) if opts.url and not opts.content
@@ -723,6 +588,281 @@ API.tdm.extract = (opts) ->
 				res.matches.push {matched:match,result:m}
 
 	return res
+
+API.tdm.entities = (q, options={}) ->
+	ret = {ners: [], person: [], organisation: [], location: [], other: []}
+	try
+		checksum = API.job.sign q, options
+		exists = API.http.cache checksum, 'tdm_entities_corenlp'
+		res = if exists? then exists else API.use.corenlp.entities q, options
+		API.http.cache(checksum, 'tdm_entities_corenlp', res) if not exists? and res?.sentences?
+		finds = {}
+		for s in res.sentences
+			for e in s.entitymentions
+				if e.text and e.ner and (not finds[e.ner] or e.text.toLowerCase() not in finds[e.ner])
+					ret.ners.push(e.ner) if e.ner not in ret.ners
+					finds[e.ner] ?= []
+					finds[e.ner].push e.text.toLowerCase()
+					if e.ner is 'PERSON'
+						ret.person.push {value: e.text}
+					else if e.ner is 'ORGANIZATION'
+						ret.organisation.push {value: e.text}
+					else if e.ner in ['CITY','COUNTRY','LOCATION','STATE_OR_PROVINCE'] and e.text.substring(0,1).toUpperCase() is e.text.substring(0,1) # location is a guess, what else might it put out as locations?
+						ret.location.push {value: e.text, type: e.ner.toLowerCase()}
+					else
+						if e.ner not in ['DATE','TIME','NUMBER','ORDINAL','PERCENT','TITLE','SET','URL']
+							ret.other.push {value: e.text, type: e.ner.toLowerCase()}
+						# other interesting ones seen so far include 
+						# cause-of-death, ordinal, number, date, duration, email, misc, set, percent (for both a number with the word or the symbol), title
+		ret.res = res if options.full
+		return ret
+	catch
+		return ret
+
+
+
+API.tdm.miner = (text,opts={}) ->
+	opts.verbose ?= false
+	opts.phrases ?= false
+	opts.queries ?= false
+	opts.entities ?= true
+	opts.keys ?= false
+	opts.cluster ?= true
+	#opts.limit = 1000 # set a limit to restrict how many are returned
+	opts.from ?= 0 # split some of the beginning off, mostly useful for testing
+	opts.limit ?= 1000 if opts.verbose and opts.queries # with these both on the result set would get very large
+	opts.must ?= [] #[{term: {'snaks.key':'mesh'}}]
+	opts.must_not ?= [
+		{term: {'snaks.qid.exact':'Q13442814'}}, # scholarly article (it is not useful to have these passed back when mining scholarly articles, unless was scraping for refs
+		{term: {'snaks.qid.exact':'Q30612'}}, # clinical trial
+		{term: {'snaks.qid.exact':'Q482994'}}, # album
+		{term: {'snaks.qid.exact':'Q2188189'}}, # musical work
+		{term: {'snaks.qid.exact':'Q3305213'}}, # painting
+		{term: {'snaks.qid.exact':'Q4167410'}}, # wikimedia disambiguation page
+		{term: {'snaks.property.exact':'P161'}}, # cast member (lots of rubbish about films, comics, games etc not of interest
+		{term: {'snaks.property.exact':'P434'}}, # MusicBrainz artist ID
+		{term: {'snaks.property.exact':'P435'}}, # MusicBrainz work ID
+		{term: {'snaks.property.exact':'P436'}}, # MusicBrainz release group ID
+		{term: {'snaks.property.exact':'P5842'}}, # Apple Podcasts podcast ID
+		{term: {'snaks.property.exact':'P5797'}}, # Twitch channel ID
+		{term: {'snaks.property.exact':'P4983'}}, # TMDb TV series ID
+		{term: {'snaks.property.exact':'P4073'}}, # Fandom wiki ID
+		{term: {'snaks.property.exact':'P3168'}}, # Sporthorse data ID
+		{term: {'snaks.property.exact':'P449'}}, # original broadcaster
+		{term: {'snaks.property.exact':'P449'}} # original broadcaster
+		#{term: {'snaks.property.exact':'P4835'}}, # TheTVDB.com ID
+		#{term: {'snaks.property.exact':'P6839'}}, # TV Tropes identifier
+	]
+
+	sopts = {fields:['label','sitelinks.enwiki.title'],size:20}
+	sopts.must = opts.must if opts.must? and opts.must.length
+	sopts.must_not = opts.must_not if opts.must_not? and opts.must_not.length
+	fopts = {size: 1}
+	fopts.must = opts.must if opts.must? and opts.must.length
+	fopts.must_not = opts.must_not if opts.must_not? and opts.must_not.length
+
+	if text.indexOf('http') is 0 and text.indexOf(' ') is -1
+		try text = API.tdm.fulltext(text).fulltext
+
+	extragenerics = ['adv','verb.stative','noun.act','noun.location','noun.time','noun.person','noun.state','verb.possession','adj.all','verb.perception']
+
+	ts = API.tdm.stopwords()
+	for a in ['1','2','3','4','5','6','7','8','9','0']
+		pos = ts.indexOf a
+		ts.splice(pos, 1) if pos isnt -1
+	ts = _.union ts, [
+		'author','authors','copyright','introduction','conclusion','contact','common','open','commons','direction','areas','vol','ml',
+		'asterisk','asterisks','ethics','committee','cite','cited','cites','citation','citations','min','minute','minutes','data',
+		'licence','license','licenced','licensed','major'
+	]
+	counter = 0
+
+	words = text.split ' '
+	if opts.from
+		words = words.splice opts.from
+		text = words.join ' '
+	if typeof opts.limit is 'number'
+		words = words.splice 0, opts.limit
+		text = words.join ' '
+	wl = words.length
+
+	clustered = {}
+	_crun = (idx, ip, text) ->
+		cm = (if ip.indexOf('http') isnt 0 then 'http://' else '') + ip + (if ip.indexOf(':') is -1 then (if API.settings.dev then ':3002' else ':3333') else '') + '/api/tdm/miner'
+		copts = _.clone opts
+		copts.content = text
+		copts.delegated = true
+		delete copts.cluster
+		clustered[idx] = HTTP.call('POST', cm, {data: copts, timeout: 600000}).data
+	_cls =  (idx, ip, text) -> Meteor.setTimeout (() -> _crun idx, ip, text), 1
+	if opts.cluster and not opts.delegated and API.settings.cluster?.ip?
+		thisip = API.status.ip()
+		across = API.settings.cluster.ip.length
+		across += 1 if thisip not in API.settings.cluster.ip
+		for i of API.settings.cluster.ip
+			ip = API.settings.cluster.ip[i]
+			if ip isnt thisip
+				clustered[i] = false
+				_cls i, ip, words.splice(words.length-Math.floor(words.length/across)).join(' ')
+				across -= 1
+		text = words.join ' '
+		wl = words.length
+
+	textl = text.toLowerCase()
+	textlc = textl.replace(/[^a-zA-Z0-9 ]/g,'').replace(/  +/g,' ')
+	ret = words: wl, searched: 0, skipped: 0, found: 0, entities: 0, terms: [], locations: [], ids: [], phrases: [], entity: [], qrs: [], types: []
+	_addwd = (wdr) ->
+		snakalysed = if wdr.snakalysed then wdr.snakalysed else API.use.wikidata.snakalyse wdr
+		for ms of snakalysed.meta
+			wdr[ms] = snakalysed.meta[ms]
+		wdr.keys = snakalysed.keys if opts.keys
+		delete wdr.snaks
+		delete wdr.lastrevid
+		delete wdr.sitelinks
+		delete wdr.type
+		delete wdr.id
+		delete wdr.createdAt
+		delete wdr.created_date
+		delete wdr.updatedAt
+		delete wdr.updated_date
+		delete wdr.snakalysed
+		ret.entity.push wdr
+	rtj = ''
+	generics = {}
+	searched = []
+	skipped = []
+	phrase = ''
+	lastmatch = false
+	while counter < wl
+		console.log counter
+		t = words[counter]
+		counter += 1
+		if t.length and t.indexOf('http') is -1 and t.indexOf('@') is -1 and not t.startsWith '-'
+			td = t.replace(/\//,' ').replace(/[^a-zA-Z0-9\-\.%]/g,'').replace(/\.$/g,'').trim()
+			tdl = td.toLowerCase()
+			iscaps = if td.toUpperCase() is td then true else false
+			isnumber = API.tdm.isnumber td
+			hasnumber = API.tdm.hasnumber td
+			issw = not hasnumber and tdl in ts
+			capstart = if not iscaps and not isnumber and not hasnumber and not issw and td isnt tdl and td.substring(0,1).toUpperCase() is td.substring(0,1) then true else false
+			next = if counter < wl then words[counter+1] else ''
+			bracketed = if t.indexOf('(') is 0 and t.indexOf(',') is -1 and next not in ts then true else false
+			parts = phrase.split ' '
+			end = if counter > 2 then words[counter-2] else ''
+			start = if end.endsWith(';') or end.endsWith('.') then false else if td.length > 2 and not isnumber and not maybeid and not hasnumber and not issw and td.substring(0,1).toUpperCase() is td.substring(0,1) and end.substring(0,1).toUpperCase() isnt end.substring(0,1) and end isnt 'of' and not end.endsWith(',') and td.toUpperCase() isnt td then true else false
+			isgeneric = if td in generics then generics[td] else if issw then true else if not isnumber and not hasnumber and not iscaps then API.tdm.generic(td) else false
+			generics[td] = isgeneric if not generics[td]?
+			islocation = if (isgeneric is 'noun.location' or tdl is 'shanghai') and not issw and capstart then true else false
+			if islocation and td not in ret.locations
+				ret.locations.push td
+				if td not in searched and opts.entities
+					searched.push td
+					locwd = API.use.wikidata.find 'sitelinks.enwiki.title.exact': td, true, true, true, fopts
+					_addwd(locwd) if locwd?
+			maybeid = if td.length > 2 and not isnumber and not islocation and not isgeneric and td.slice(-1) isnt '%' and td.replace(/[^0-9A-Z\.\-%]/g,'').length isnt 0 and td.substring(0,1).toUpperCase() is td.substring(0,1) and td.substring(1,2).toUpperCase() is td.substring(1,2) then true else false
+			if maybeid # check it with a query? on snak values?
+				if td not in ret.ids and tdl not in searched
+					searched.push tdl
+					idwd = API.use.wikidata.find 'label.exact': td, true, true, true, fopts
+					if idwd # could save all possible IDs even if no match in wikidata... gets lots more junk though. With searches misses some, but is much cleaner
+						_addwd(idwd) if opts.entities
+						ret.ids.push td
+						if td.endsWith('s') and td.replace(/s$/,'').toUpperCase() is td.replace(/s$/,'')
+							dupin = ret.ids.indexOf td
+							ret.ids.splice(dupin,1) if dupin isnt -1 and dupin isnt ret.ids.length-1
+						else if iscaps
+							dups = ret.ids.indexOf td + 's'
+							ret.ids.splice(dups,1) if dups isnt -1 and dups isnt ret.ids.length-1
+		
+			pl = phrase.toLowerCase()
+			ptl = pl.replace(/[^a-zA-Z0-9 ]/g,'').replace(/  +/g,' ')
+			if phrase.length > 2 and not API.tdm.isnumber(phrase) and ptl not in searched and rtj.indexOf(ptl) is -1 and (parts.length isnt 1 or not API.tdm.generic phrase)
+				if parts.length > 3 and searched.length and (ptl.indexOf(searched[searched.length-1]) is 0 or (searched.length > 1 and ptl.indexOf(searched[searched.length-2]) is 0) or (searched.length > 2 and ptl.indexOf(searched[searched.length-3]) is 0) or (searched.length > 3 and ptl.indexOf(searched[searched.length-4]) is 0))
+					skipped.push(ptl) if opts.verbose
+				else
+					searched.push ptl
+					pcl = phrase.replace(/[^0-9a-zA-Z\-\.\, ]/g,'').replace(/,$/,'').replace(/\.$/,'')
+					qr = 'label:"' + pcl + '" OR sitelinks.enwiki.title:"' + pcl + '"'
+					wd = API.use.wikidata.search qr, undefined, undefined, undefined, sopts
+					ret.qrs.push(wd) if opts.verbose and opts.queries
+					for w in wd?.hits?.hits ? []
+						wt = if w.fields?['sitelinks.enwiki.title']? and w.fields['sitelinks.enwiki.title'].length and (not w.fields?.label? or not w.fields.label.length or w.fields.label[0].length < w.fields?['sitelinks.enwiki.title'][0].length) then w.fields['sitelinks.enwiki.title'][0] else if w.fields?.label? and w.fields.label.length then w.fields.label[0] else ''
+						if pl.indexOf(wt.toLowerCase().split(' ')[0]) isnt -1
+							wtl = wt.toLowerCase().replace(/[^a-z0-9 ]/g,'').replace(/  +/g,' ')
+							if wt.length and wtl.indexOf(ptl.split(' ')[0].toLowerCase()) is 0 and textlc.indexOf(wtl) isnt -1 and (wt.toUpperCase() isnt wt or text.indexOf(wt) isnt -1) and rtj.indexOf(wtl) is -1
+								if ret.terms.length and wtl.indexOf(ret.terms[ret.terms.length-1].toLowerCase()) is 0
+									ret.terms.pop()
+								else if opts.entities and lastmatch
+									lastrec = API.use.wikidata.get lastmatch, true, true, true
+									lastmatch = false
+									_addwd(lastrec) if lastrec?
+								if wt.indexOf(' ') isnt -1 or not API.tdm.generic wt, extragenerics
+									ret.terms.push wt
+									lastmatch = w._id
+									lastlabel = wt
+									ret.types.push({val: wt, type: API.tdm.type wt}) if wt.indexOf(' ') is -1 and opts.verbose
+									rtj += (if rtj.length then ' ' else '') + wtl
+								if phrase.length and wt.split(' ').length isnt parts.length
+									counter += wt.split(' ').length-1 if wtl.indexOf(phrase.toLowerCase()) is 0
+									phrase = ''
+								break # could break here...
+				if (opts.phrases or opts.verbose) and phrase.length and parts.length > 1 and (issw or start or bracketed) and rtj.indexOf(ptl) is -1
+					pcp = phrase.replace(/\.$/,'').replace(/,$/,'')
+					keeper = []
+					if pcp not in ret.phrases
+						for part in parts
+							part = part.replace(/,/g,'')
+							if part.length > 2 and part not in ret.ids and part not in ret.locations and part not in ret.phrases and rtj.indexOf(part) is -1 and not API.tdm.isnumber part
+								gen = API.tdm.generic part, extragenerics
+								if not gen or text.split(part).length is 2
+									keeper.push part
+					ret.phrases.push(pcp) if keeper.length
+			if issw or start or bracketed
+				phrase = ''
+			if (phrase.length isnt 0 or not isgeneric) and td.length
+				phrase += (if phrase.length then ' ' else '') + td + (if t.endsWith(',') then ',' else '')
+				
+	ret.searched = searched.length
+
+	if not _.isEmpty clustered
+		done = false
+		while not done
+			alldone = true
+			for k of clustered
+				alldone = false if clustered[k] is false
+			done = alldone
+			future = new Future()
+			Meteor.setTimeout (() -> future.return()), 500
+			future.wait()
+		for c in _.keys(clustered).sort().reverse()
+			for rk in _.keys ret
+				if typeof ret[rk] is 'number' and typeof clustered[c][rk] is 'number'
+					ret[rk] += clustered[c][rk]
+				else if _.isArray(ret[rk]) and _.isArray clustered[c][rk]
+					if rk is 'entity'
+						unqs = _.pluck ret[rk], 'label'
+						for er in clustered[c][rk]
+							if er.label not in unqs
+								unqs.push er.label
+								ret[rk].push er
+					else
+						ret[rk] = _.union ret[rk], clustered[c][rk]
+
+	ret.found = ret.terms.length + ret.ids.length + ret.locations.length
+	ret.entities = ret.entity.length
+
+	if opts.verbose
+		ret.searched = searched
+		ret.skipped = skipped
+		ret.generics = generics
+		ret.text = text
+	else
+		delete ret.phrases if not opts.phrases
+		delete ret.types
+		delete ret.skipped
+		delete ret.qrs
+	return ret
+
 
 
 # a pdf that can be got directly: https://www.cdc.gov/mmwr/volumes/69/wr/pdfs/mm6912e3-H.

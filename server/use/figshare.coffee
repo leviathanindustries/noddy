@@ -6,10 +6,10 @@
 API.use ?= {}
 API.use.figshare = {}
 
-API.add 'use/figshare/search', get: () -> return API.use.figshare.search this.queryParams, this.queryParams.format?
+API.add 'use/figshare/search', get: () -> return API.use.figshare.search this.queryParams, this.queryParams.format
 
 API.add 'use/figshare/doi/:doipre/:doipost',
-  get: () -> return API.use.figshare.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format?
+  get: () -> return API.use.figshare.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format
 
 
 API.use.figshare.doi = (doi,format) ->
@@ -31,7 +31,7 @@ API.use.figshare.search = (params,format) ->
   if params?.q?
     params.search_for = params.q
     delete params.q
-  if params.format?
+  if params.format
     delete params.format
     format ?= true
   params.order ?= 'published_date' # order default depends on resource. For articles, can be published_date, modified_date

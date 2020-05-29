@@ -5,12 +5,12 @@
 API.use ?= {}
 API.use.openaire = {}
 
-API.add 'use/openaire/search', get: () -> return API.use.openaire.search this.queryParams, this.queryParams.format?
+API.add 'use/openaire/search', get: () -> return API.use.openaire.search this.queryParams, this.queryParams.format
 
-API.add 'use/openaire/title/:qry', get: () -> return API.use.openaire.title this.urlParams.qry, this.queryParams.format?
+API.add 'use/openaire/title/:qry', get: () -> return API.use.openaire.title this.urlParams.qry, this.queryParams.format
 
-API.add 'use/openaire/doi/:doipre/:doipost', get: () -> return API.use.openaire.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format?
-API.add 'use/openaire/doi/:doipre/:doipost/:doimore', get: () -> return API.use.openaire.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format?
+API.add 'use/openaire/doi/:doipre/:doipost', get: () -> return API.use.openaire.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format
+API.add 'use/openaire/doi/:doipre/:doipost/:doimore', get: () -> return API.use.openaire.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format
 
 
 

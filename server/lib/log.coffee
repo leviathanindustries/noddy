@@ -33,40 +33,42 @@ _log_flush = () ->
 # although the log endpoint is close to what a mounted collection endpoint intends to be, 
 # and although collection mounting allows customising actions and auth, the log is sufficiently 
 # different, and is core to functionality, that it is expressly defined here instead of being a mount
+_log_query = (params,day='',user) ->
+  day = '/' + _log_today if day is 'today'
+  day = '/' +moment(Date.now(), "x").subtract(1,'days').format("YYYYMMDD") if day is 'yesterday'
+  day = '/' + day if day.length and day.indexOf('/') isnt 0
+  q = API.collection._translate params
+  q.sort = {'createdAt': {order: 'desc'}} if typeof q is 'object' and not q.sort?
+  res = API.es.call 'POST', API.settings.es.index + '_log' + day + '/_search', q
+  res ?= {}
+  if res?.hits?.hits? and not user? and not API.settings.dev # which users are allowed to see full logs, if any? and what can others see?
+    for h of res.hits.hits
+      clean = {}
+      fl = if res.hits.hits[h]._source? then '_source' else 'fields'
+      for k of res.hits.hits[h][fl]
+         if k in ['endpoint','function','level','createdAt','created_date','_id','_ip']
+           clean[k] = res.hits.hits[h][fl][k]
+      res.hits.hits[h][fl] = clean
+  # what terms and aggs can certain users see? if any?
+  res.q = q if API.settings.dev
+  return res
+  
 API.add 'log',
   get:
-    authRequired: if API.settings.dev then undefined else 'root'
-    action: () ->
-      q = API.collection._translate this.queryParams
-      res = API.es.call 'POST', API.settings.es.index + '_log/_search', q
-      res.q = q if API.settings.dev
-      return res
-
-API.add 'log/days',
-  get: () ->
-    days = []
-    mapping = API.es.call 'GET', API.settings.es.index + '_log/_mapping'
-    for m of mapping
-      if mapping[m].mappings?
-        for t of mapping[m].mappings
-          days.push t
-    return days
-
+    authOptional: true
+    action: () -> return _log_query this.queryParams, undefined, this.user
+  post:
+    authOptional: true
+    action: () -> return _log_query this.request.body, undefined, this.user
 API.add 'log/:yyyymmdd',
   get:
-    authRequired: if API.settings.dev then undefined else 'root'
-    action: () -> 
-      q = API.collection._translate this.queryParams
-      res = API.es.call 'POST', API.settings.es.index + '_log/' + (if this.urlParams.yyyymmdd is 'today' then _log_today else this.urlParams.yyyymmdd) + '/_search', q
-      res.q = q if API.settings.dev
-      return res
+    authOptional: true
+    action: () -> return _log_query this.queryParams, this.urlParams.yyyymmdd, this.user
   post:
-    authRequired: if API.settings.dev then undefined else 'root'
-    action: () -> 
-      q = API.collection._translate this.request.body
-      res = API.es.call 'POST', API.settings.es.index + '_log/' + (if this.urlParams.yyyymmdd is 'today' then _log_today else this.urlParams.yyyymmdd) + '/_search', q
-      res.q = q if API.settings.dev
-      return res
+    authOptional: true
+    action: () -> return _log_query this.request.body, this.urlParams.yyyymmdd, this.user
+
+API.add 'log/days', get: () -> return API.log.days()
 
 API.add 'log/stack',
   get:
@@ -74,6 +76,15 @@ API.add 'log/stack',
     action: () ->
       if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
         return API.log.stack this.queryParams
+      else
+        return {status: 'error', info: 'Log stack is not in use'}
+
+API.add 'log/stack/local',
+  get:
+    authRequired: if API.settings.dev then undefined else 'root'
+    action: () ->
+      if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
+        return API.log.local this.queryParams
       else
         return {status: 'error', info: 'Log stack is not in use'}
 
@@ -116,6 +127,15 @@ API.add 'log/:yyyymmdd/clear',
         API.es.call 'DELETE', API.settings.es.index + '_log'
         _log_today = moment(Date.now(), "x").format "YYYYMMDD"
         _log_index = new API.collection index: API.settings.es.index + '_log', type: _log_today
+      else if this.urlParams.yyyymmdd.indexOf('-') isnt -1
+        p = this.urlParams.yyyymmdd.split '-'
+        s = moment p[0]
+        while p[1] isnt sf = s.format "YYYYMMDD"
+          console.log sf
+          API.es.call 'DELETE', API.settings.es.index + '_log/' + s.format "YYYYMMDD"
+          s.add 1,'days'
+        console.log p[1]
+        API.es.call 'DELETE', API.settings.es.index + '_log/' + p[1]
       else
         API.es.call 'DELETE', API.settings.es.index + '_log/' + this.urlParams.yyyymmdd
       return true
@@ -137,15 +157,26 @@ API.add 'log/:yyyymmdd/:key/terms', get: () -> return API.es.terms API.settings.
 
 
 API.log = (opts, fn, lvl='debug') ->
+  # TODO use a combo of this and the structure system to find a function name
+  # e.g. if structure system stores a checksum of the function, then this could find the function name from that
+  # so that the log object function value can be added if not provided, to know which function called for this log
   try
     opts = { msg: opts } if typeof opts is 'string'
     opts.function ?= fn
+    if not opts.function and typeof API.log.caller is 'function'
+      try
+        cs = API.log.caller.toString().toLowerCase()
+        cslog = cs.split('api.log')[1].split(')')[0].split('+')[0].split('#')[0]
+        csargs = cs.split('(')[1].split(')')[0]
+        ffn = API.structure.logarg2fn (cslog + csargs).replace(/[^a-z0-9]/g,'')
+        opts.function = ffn if typeof ffn is 'string' and ffn.startsWith('API.')
+    if opts.function? and not opts.group?
+      try opts.group = if opts.function.indexOf('service') isnt -1 then opts.function.split('service.')[1].split('.')[0] else if opts.function.indexOf('use') isnt -1 then opts.function.split('use.')[1].split('.')[0] else opts.function.replace('API.','').split('.')[0]
     opts.level ?= opts.lvl
     delete opts.lvl
     opts.level ?= lvl
     opts.createdAt = Date.now()
     opts.created_date = moment(opts.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
-    # TODO try to set some opts vars for which server the error is running on...
 
     loglevels = ['all', 'trace', 'debug', 'info', 'warn', 'error', 'fatal', 'off']
     loglevel = API.settings.log?.level ? 'all';
@@ -179,11 +210,12 @@ API.log = (opts, fn, lvl='debug') ->
             catch
               delete opts[o]
 
+      try opts._ip = API.status.ip() #this would not be possible right at start up
+
       if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
         API.settings.log.bulk ?= 5000
         API.settings.log.timeout ?= 1800000
         opts._id = Random.id()
-        try opts._ip = API.status.ip() #this would not be possible right at start up
         _log_stack.unshift opts
         if _log_stack.length >= API.settings.log.bulk or Date.now() - _log_last > API.settings.log.timeout or opts.flush?
           _log_flush()
@@ -196,6 +228,15 @@ API.log = (opts, fn, lvl='debug') ->
 
   catch err
     console.log 'API LOG ERROR\n', opts, '\n', fn, '\n', lvl, '\n', err
+
+API.log.days = () ->
+  days = []
+  mapping = API.es.call 'GET', API.settings.es.index + '_log/_mapping'
+  for m of mapping
+    if mapping[m].mappings?
+      for t of mapping[m].mappings
+        days.push t
+  return days
 
 API.logstack = (key,val) ->
   if not key? and not val?
@@ -215,49 +256,56 @@ API.logstack = (key,val) ->
           logs.push ln
     return logs
 
+API.log.local = () ->
+  ld = API.log.days()
+  return
+    cluster: 1 + (if API.settings.cluster?.ip? then API.settings.cluster.ip.length else 0)
+    oldest: ld[0]
+    latest: ld.pop()
+    length: _log_stack.length
+    last: moment(_log_last, "x").format("YYYY-MM-DD HHmm.ss")
+    bulk: API.settings.log.bulk
+    timeout: API.settings.log.timeout
+    current: _lsp
+    a: _ls.a
+    b: _ls.b
+  
 API.log.stack = (params={}) ->
-  local = if params.local and params.local isnt 'false' then true else false
-  delete params.local
-  if local or not API.settings.cluster?.ip?
-    return
-      length: _log_stack.length
-      last: moment(_log_last, "x").format("YYYY-MM-DD HHmm.ss")
-      bulk: API.settings.log.bulk
-      timeout: API.settings.log.timeout
-      current: _lsp
-      a: _ls.a
-      b: _ls.b
-  else
-    res = _.clone _log_stack
-    for ip in API.settings.cluster?.ip ? []
-      try
-        lu = if ip.indexOf('://') is -1 then 'http://' + ip else ip 
-        if lu.indexOf('log/stack') is -1
-          if lu.indexOf(':3') is -1
-            lu += ':' + if API.settings.dev then '3002' else '3333'
-          lu += '/api/log/stack'
-        if lu.indexOf('?') is -1
-          lu += '?local=true'
-        rml = HTTP.call('GET', lu).data
-        res = res.concat rml[rml.current]
-    res = res.sort (a,b) -> return if a.createdAt > b.createdAt then -1 else 1
-    params.from ?= 0
-    if params.q?
-      rq = []
-      k = false
-      v = params.q
-      if params.q.indexOf(':') isnt -1
-        parts = params.q.split(':')
-        k = parts[0]
-        v = parts[1]
-      v = v.toLowerCase().replace(/"/g,'')
-      for r in res # could improve this to handle AND OR NOT etc, or complex query objects, but this should do for now
-        break if params.size and rq.length >= (params.size + params.from)
+  res = _.clone _log_stack
+  for ip in API.settings.cluster?.ip ? []
+    try
+      lu = if ip.indexOf('://') is -1 then 'http://' + ip else ip 
+      if lu.indexOf('log/stack') is -1
+        if lu.indexOf(':3') is -1
+          lu += ':' + if API.settings.dev then '3002' else '3333'
+        lu += '/api/log/stack/local'
+      rml = HTTP.call('GET', lu).data
+      res = res.concat rml[rml.current]
+  res = res.sort (a,b) -> return if a.createdAt > b.createdAt then -1 else 1
+  params.from ?= 0
+  if params.q?
+    rq = []
+    k = false
+    v = params.q
+    if params.q.indexOf(':') isnt -1
+      parts = params.q.split(':')
+      k = parts[0]
+      v = parts[1]
+    vn = false
+    if v.indexOf('NOT ') isnt -1
+      vn = true
+      v = v.replace(' NOT ','').replace('NOT ','')
+    v = v.toLowerCase().replace(/"/g,'')
+    for r in res # could improve this to handle AND OR NOT etc, or complex query objects, but this should do for now
+      break if params.size and rq.length >= (params.size + params.from)
+      if vn
+        rq.push(r) if (k isnt false and r[k]? and r[k].toLowerCase().indexOf(v) is -1) or (k is false and JSON.stringify(r).toLowerCase().indexOf(v) is -1)
+      else
         rq.push(r) if (k isnt false and r[k]? and r[k].toLowerCase().indexOf(v) isnt -1) or JSON.stringify(r).toLowerCase().indexOf(v) isnt -1
-      res = rq
-    res = res.slice(params.from) if params.from and res.length > params.from
-    res = res.slice(0,params.size) if params.size and res.length > params.size
-    return res
+    res = rq
+  res = res.slice(params.from) if params.from and res.length > params.from
+  res = res.slice(0,params.size) if params.size and res.length > params.size
+  return res
     
 
 API.notify = (opts) ->

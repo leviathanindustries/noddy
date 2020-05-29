@@ -9,10 +9,8 @@ API.add 'use/chemicaltagger',
 
 API.use.chemicaltagger = (content, opts={}) ->
   opts.simplify ?= true
-  opts.simplify = false if opts.simplify is 'false'
   opts.types ?= ['NounPhrase','ActionPhrase']
   opts.types = opts.types.split(',') if typeof opts.types is 'string'
-  opts.cache = false if opts.cache is 'false'
   if opts.cache isnt false
     checksum = API.job.sign content, opts
     exists = API.http.cache checksum, 'chemicaltagger'

@@ -24,13 +24,13 @@ API.add 'http/resolve', get: () -> return API.http.resolve this.queryParams.url,
 
 API.add 'http/puppeteer',
   get: () ->
-    refresh = if this.queryParams.refresh is 'true' then 0 else if this.queryParams.refresh? then (try(parseInt(this.queryParams.refresh))) else undefined
+    refresh = if this.queryParams.refresh is true then true else if this.queryParams.refresh? then (try(parseInt(this.queryParams.refresh))) else undefined
     url = this.queryParams.url
     url += if url.indexOf('?') isnt -1 then '&' else '?'
     for qp of this.queryParams
-      if qp isnt 'url' and qp isnt 'refresh' and qp isnt 'proxy' and this.queryParams[qp]
+      if qp not in ['url','refresh','proxy','headers','idle','local'] and this.queryParams[qp]
         url += qp + '=' + this.queryParams[qp] + '&'
-    res = API.http.puppeteer url, refresh, this.queryParams.proxy
+    res = API.http.puppeteer url, refresh, this.queryParams.proxy, this.queryParams.headers, this.queryParams.idle, this.queryParams.local
     if typeof res is 'number'
       return res
     else
@@ -167,7 +167,7 @@ API.http.resolve = (url,refresh=false) ->
     try
       try
         resolved = API.use.crossref.resolve(url) if url.indexOf('10') is 0 or url.indexOf('doi.org/') isnt -1
-      resolve = (url, callback) ->
+      resolve = Asnyc.wrap (url, callback) ->
         if typeof url isnt 'string' or url.indexOf('http') isnt 0
           return callback null, url
         else
@@ -180,8 +180,7 @@ API.http.resolve = (url,refresh=false) ->
               callback null, url
             else
               callback null, (if not res? or (res.statusCode? and res.statusCode > 399) then false else res.request.uri.href)
-      aresolve = Meteor.wrapAsync resolve
-      resolved = aresolve (if resolved then resolved else url)
+      resolved = resolve (if resolved then resolved else url)
       API.http.cache(url, 'http_resolve', resolved) if resolved?
       return resolved ? url
     catch
@@ -208,7 +207,7 @@ API.http.decode = (content) ->
 
 API.http.post = (url, file, vars) ->
   # this has only been tested where file is a buffer
-  _post = (url, file, vars, callback) ->
+  _post = Async.wrap (url, file, vars, callback) ->
     conf = {url: url, formData: form}
     r = request.post url, (err, res, body) -> callback null, (if res? then res else err)
     if file? or (vars? and (typeof vars is 'string' or not _.isEmpty vars))
@@ -235,8 +234,7 @@ API.http.post = (url, file, vars) ->
           else if vars? and typeof vars is 'object' and (vars.name? or vars.filename?)
             opts.filename = vars.filename ? vars.name
           form.append 'file', fl, (if not _.isEmpty(opts) then opts else undefined)
-  _apost = Meteor.wrapAsync _post
-  res = _apost url, file, vars
+  res = _post url, file, vars
   return res
 
 API.http.get = (url,opts={}) ->
@@ -244,8 +242,11 @@ API.http.get = (url,opts={}) ->
   opts.rejectUnauthorized ?= false
   opts.timeout ?= 120000
   opts.jar ?= true
-  opts.headers ?= {}
-  opts.headers['User-Agent'] ?= 'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36'
+  if opts.headers is false
+    delete opts.headers
+  else
+    opts.headers ?= {}
+    opts.headers['User-Agent'] ?= 'Mozilla/5.0 (Windows NT 6.1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2228.0 Safari/537.36'
   _get = (url, callback) ->
     request[opts.action] url, {rejectUnauthorized: opts.rejectUnauthorized, timeout:opts.timeout, jar:true, headers: opts.headers}, (err, res, body) ->
       if err and JSON.stringify(err).indexOf('TIMEDOUT') isnt -1
@@ -320,7 +321,7 @@ API.http.getFiles = (urls,definite) ->
 # here is an odd one that seems to stick forever:
 # https://kclpure.kcl.ac.uk/portal/en/publications/superior-temporal-activation-as-a-function-of-linguistic-knowledge-insights-from-deaf-native-signers-who-speechread(4a9db251-4c8e-4759-b0eb-396360dc897e).html
 # phantom does not work any more, just leaving the code here in case useful for reference later
-_phantom = (url,delay=1000,refresh=86400000,callback) ->
+'''_phantom = (url,delay=1000,refresh=86400000,callback) ->
   if typeof refresh is 'function'
     callback = refresh
     refresh = 86400000
@@ -394,8 +395,7 @@ _phantom = (url,delay=1000,refresh=86400000,callback) ->
       _info = {}
       return callback(null,'')
     )
-
-#API.http.phantom = Meteor.wrapAsync(_phantom)
+API.http.phantom = Meteor.wrapAsync(_phantom)'''
 
 
 # switch phantom completely for puppeteer using chrome instead
@@ -438,30 +438,21 @@ _phantom = (url,delay=1000,refresh=86400000,callback) ->
 # tried with counters and also with counting the pages the browser thinks are open - not reliable enough, so go back to opening then closing every time
 #_puppetEndpoint = false
 #_puppetPages = 0
-_puppeteer = (url,refresh=86400000,proxy,callback) ->
-  if typeof url is 'function'
-    callback = url # passed a blank url
-    return callback(null,'')
-  if typeof refresh is 'function'
-    callback = refresh
-    refresh = 86400000
-  if typeof proxy is 'function'
-    callback = proxy
-    proxy = undefined
-  return callback(null,'') if not url? or typeof url isnt 'string'
+API.http.puppeteer = (url, refresh=86400000, proxy=false, headers={}, idle=false, local=false) ->
+  return '' if not url? or typeof url isnt 'string'
   url = 'http://' + url if url.indexOf('http') is -1
   if url.indexOf('.pdf') isnt -1  or url.indexOf('.doc') isnt -1
     # go straight to PDFs - TODO what other page types are worth going straight to? or anything that does not say it will be html?
     # do a content type query on the url first?
     try
-      return callback null, HTTP.call('GET',url,{timeout:20000,npmRequestOptions:{encoding:null}}).content
+      return HTTP.call('GET',url,{timeout:20000,npmRequestOptions:{encoding:null}}).content
     catch
-      return callback null, ''
-  if refresh isnt true and refresh isnt 0 and refresh isnt 'true'
-    cached = API.http.cache url, 'puppeteer', undefined, refresh
-    return callback(null,cached) if cached?
+      return ''
+  if refresh isnt true and refresh isnt 0
+    cached = API.http.cache url+(if idle then JSON.stringify(idle) else ''), 'puppeteer', undefined, refresh
+    return cached if cached?
   try
-    if typeof API.settings?.puppeteer is 'string' and API.settings.puppeteer.indexOf(API.status.ip()) is -1
+    if not local and typeof API.settings?.puppeteer is 'string' and API.settings.puppeteer.indexOf(API.status.ip()) is -1
       pu = API.settings.puppeteer
       pu = 'http://' + pu if pu.indexOf('://') is -1
       if pu.split('://')[1].split('/').length < 3
@@ -469,35 +460,52 @@ _puppeteer = (url,refresh=86400000,proxy,callback) ->
           pu += ':' + if API.settings.dev then '3002' else '3333'
         pu += '/api/http/puppeteer' 
       pu += '?refresh=' + refresh + '&'
-      pu += 'proxy=' + encodeURIComponent(proxy) + '&' if proxy?
+      pu += 'proxy=' + encodeURIComponent(proxy) + '&' if proxy
+      if headers
+        ph = if typeof headers is 'object' then JSON.stringify(headers) else headers
+        pu += 'headers=' + encodeURIComponent(ph) + '&' 
+      pu += 'idle=' + idle + '&' if idle
       pu += '&url=' + encodeURIComponent url
-      return callback null, HTTP.call('GET', pu).content
-  API.log 'starting puppeteer retrieval of ' + url
-  args = ['--no-sandbox', '--disable-setuid-sandbox']
-  args.push('--proxy-server='+proxy) if proxy
-  pid = false
-  try
-    browser = await puppeteer.launch({args:args, ignoreHTTPSErrors:true, dumpio:false, timeout:12000, executablePath: '/usr/bin/google-chrome'})
-    pid = browser.process().pid
-    page = await browser.newPage()
-    await page.goto(url, {timeout:12000})
-    content = await page.evaluate(() => new XMLSerializer().serializeToString(document.doctype) + '\n' + document.documentElement.outerHTML)
-    await page.close()
-    await browser.close()
-    # no matter what i try this causes an error. Just going to have to let it do so. The content still gets returned before the error fires.
-    # tried all sorts of catch blocks, then layout instead of await, different catches and finally etc
+      return HTTP.call('GET', pu).content
+
+  _ppt = Async.wrap (url, refresh=86400000, proxy=false, headers={}, idle=false, local=false, callback) ->
+    API.log 'starting puppeteer retrieval of ' + url
+    args = ['--no-sandbox', '--disable-setuid-sandbox']
+    args.push('--proxy-server='+proxy) if proxy
+    pid = false
     try
-      API.http.cache(url, 'puppeteer', content) if typeof content is 'string' and content.length > 200
-    return callback null, content
-  catch err
-    process.kill(pid) if pid
-    return callback null, ''
-  finally
-    process.kill(pid) if pid
-    return callback null, ''
+      if typeof headers isnt 'string'
+        try
+          headers = JSON.parse headers
+        catch
+          headers = {}
+      browser = await puppeteer.launch({args:args, ignoreHTTPSErrors:true, dumpio:false, timeout:12000, executablePath: '/usr/bin/google-chrome'})
+      pid = browser.process().pid
+      page = await browser.newPage()
+      page.setExtraHTTPHeaders(headers) if typeof headers is 'object' and not _.isEmpty headers
+      popts = {timeout:30000} # default is 30s anyway, but just in case want to adjust later
+      # may be worth always waiting for idle, and having the idle option default to true and only override with false when necessary
+      popts.waitUntil = if typeof idle is 'string' then idle else if idle then ['load','domcontentloaded','networkidle0','networkidle2'] else 'domcontentloaded'
+      opened = await page.goto(url, popts)
+      content = await page.evaluate(() => new XMLSerializer().serializeToString(document.doctype) + '\n' + document.documentElement.outerHTML)
+      await page.close()
+      await browser.close()
+      # no matter what i try this causes an error. Just going to have to let it do so. The content still gets returned before the error fires.
+      # tried all sorts of catch blocks, then layout instead of await, different catches and finally etc
+      try
+        API.http.cache(url, 'puppeteer', content) if typeof content is 'string' and content.length > 200
+      return callback null, content
+    catch err
+      process.kill(pid) if pid
+      return callback null, ''
+    finally
+      return callback null, ''
 
-API.http.puppeteer = Meteor.wrapAsync(_puppeteer)
-
+  try
+    rs = _ppt url, refresh, proxy, headers, idle, local
+    return rs
+  catch
+    return ''
 
 
 ################################################################################

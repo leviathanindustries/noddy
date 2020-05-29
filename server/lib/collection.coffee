@@ -385,9 +385,10 @@ API.collection.prototype.max = (key, q, dev=API.settings.dev) ->
 API.collection.prototype.range = (key, q, dev=API.settings.dev) ->
   return API.es.range this._index, this._type, key, API.collection._translate(q), dev
 
-API.collection.prototype.terms = (key, q, size=100, counts=false, dev=API.settings.dev) ->
+API.collection.prototype.terms = (key, q, size=100, counts=false, order, dev=API.settings.dev) ->
   key = key.replace('.exact','')+'.exact' if true # TODO should check the mapping to see if .exact is relevant for key, and have a way for user to decide
-  return API.es.terms this._index, this._type, key, API.collection._translate(q), size, counts, dev
+  # order: (default) count is highest count first, reverse_count is lowest first. term is ordered alphabetical by term, reverse_term is reverse alpha
+  return API.es.terms this._index, this._type, key, API.collection._translate(q), size, counts, order, dev
 
 API.collection.prototype.keys = (dev=API.settings.dev) ->
   return API.es.keys this._index, this._type, dev
@@ -490,12 +491,12 @@ API.collection.prototype.mount = (opts={}) ->
       authRequired: if opts.auth?.terms?.get then true else opts.secure
       roleRequired: if typeof opts.auth?.terms?.get is 'string' then opts.auth.terms.get else opts.role
       action: () ->
-        return if typeof opts.action?.terms?.get is 'function' then opts.action.terms.get() else _this.terms this.urlParams.key, this.queryParams.q, this.queryParams.size, this.queryParams.counts is 'true'
+        return if typeof opts.action?.terms?.get is 'function' then opts.action.terms.get() else _this.terms this.urlParams.key, this.queryParams.q, this.queryParams.size, this.queryParams.counts is true
     post:
       authRequired: if opts.auth?.terms?.get then true else opts.secure
       roleRequired: if typeof opts.auth?.terms?.get is 'string' then opts.auth.terms.get else opts.role
       action: () ->
-        return if typeof opts.action?.terms?.post is 'function' then opts.action.terms.post() else _this.terms this.urlParams.key, this.bodyParams.q, this.bodyParams.size, this.bodyParams.counts is 'true'
+        return if typeof opts.action?.terms?.post is 'function' then opts.action.terms.post() else _this.terms this.urlParams.key, this.bodyParams.q, this.bodyParams.size, this.bodyParams.counts is true
   API.add opts.route + '/:id',
     get:
       authRequired: if opts.auth?.item?.get then true else opts.secure
@@ -689,6 +690,8 @@ API.collection._translate = (q, opts) ->
       excludes = opts[exc]
       if excludes?
         excludes = excludes.split(',') if typeof excludes is 'string'
+        for i in includes ? []
+          excludes = _.without(excludes, i) if i in excludes
         qry._source.excludes = excludes
         delete opts[exc]
     if opts.and?
@@ -712,6 +715,21 @@ API.collection._translate = (q, opts) ->
     if opts.restrict?
       qry.query.filtered.filter.bool.must.push(rs) for rs in opts.restrict
       delete opts.restrict
+    if opts.not? or opts.must_not?
+      tgt = if opts.not? then 'not' else 'must_not'
+      if _.isArray opts[tgt]
+        qry.query.filtered.filter.bool.must_not = opts[tgt]
+      else
+        qry.query.filtered.filter.bool.must_not ?= []
+        qry.query.filtered.filter.bool.must_not.push(nr) for nr in opts[tgt]
+      delete opts[tgt]
+    if opts.should?
+      if _.isArray opts.should
+        qry.query.filtered.filter.bool.should = opts.should
+      else
+        qry.query.filtered.filter.bool.should ?= []
+        qry.query.filtered.filter.bool.should.push(sr) for sr in opts.should
+      delete opts.should
     if opts.all?
       qry.size = 1000000 # just a simple way to try to get "all" records - although passing size would be a better solution, and works anyway
       delete opts.all
@@ -742,6 +760,7 @@ API.collection._translate = (q, opts) ->
       for f of qry.query.filtered.filter.bool[fm]
         if qry.query.filtered.filter.bool[fm][f].query_string?.query? and qry.query.filtered.filter.bool[fm][f].query_string.query.indexOf('/') isnt -1
           qry.query.filtered.filter.bool[fm][f].query_string.query = qry.query.filtered.filter.bool[fm][f].query_string.query.replace(/\//g,'\\/')
+  delete qry._source if qry._source? and qry.fields?
   return qry
 
 API.collection.dot = (obj, key, value, del) ->

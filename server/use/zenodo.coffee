@@ -24,15 +24,15 @@ API.use.zenodo.deposition = {}
 API.use.zenodo.records = {}
 
 API.add 'use/zenodo',
-  get: () -> return API.use.zenodo.records.search this.queryParams.q, not this.queryParams.dev?, this.queryParams.format?
+  get: () -> return API.use.zenodo.records.search this.queryParams.q, not this.queryParams.dev?, this.queryParams.format
 
 API.add 'use/zenodo/:zid',
-  get: () -> return API.use.zenodo.records.record this.urlParams.zid, not this.queryParams.dev?, this.queryParams.format?
+  get: () -> return API.use.zenodo.records.record this.urlParams.zid, not this.queryParams.dev?, this.queryParams.format
 
 API.add 'use/zenodo/:doipre/:doipost',
-  get: () -> return API.use.zenodo.records.doi this.urlParams.doipre + '/' + this.urlParams.doipost, not this.queryParams.dev?, this.queryParams.format?
+  get: () -> return API.use.zenodo.records.doi this.urlParams.doipre + '/' + this.urlParams.doipost, not this.queryParams.dev?, this.queryParams.format
 API.add 'use/zenodo/:doipre/:doipost/:doimore',
-  get: () -> return API.use.zenodo.records.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, not this.queryParams.dev?, this.queryParams.format?
+  get: () -> return API.use.zenodo.records.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, not this.queryParams.dev?, this.queryParams.format
 
 # oabutton also wants to be able to search zenodo for papers (unless SHARE covers it)
 # https://github.com/OAButton/backend/issues/110

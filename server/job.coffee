@@ -220,7 +220,7 @@ API.add 'job/stop',
 
 
 
-API.job.sign = (fn='', args, checksum=true) ->
+API.job.sign = (fn='', args, checksum=true, hex=false) ->
   if typeof fn isnt 'string' and args is undefined
     args = fn
     fn = ''
@@ -229,16 +229,17 @@ API.job.sign = (fn='', args, checksum=true) ->
     fn += args
   else
     try
-      if _.isArray args
-        for a in args.sort()
-          fn += JSON.stringify a
-      else
-        for a in _.keys(args).sort()
-          fn += a + '_' + JSON.stringify(args[a]) if a not in ['plugin','apikey','_']
+      if not _.isEmpty args
+        if _.isArray args
+          for a in args.sort()
+            fn += JSON.stringify a
+        else
+          for a in _.keys(args).sort()
+            fn += a + '_' + JSON.stringify(args[a]) if a not in ['plugin','apikey','_']
     catch
       fn += JSON.stringify args
   sig = encodeURIComponent(fn) # just used to use this, but got some where args were too long
-  return if checksum then crypto.createHash('md5').update(sig, 'utf8').digest('base64') else sig #m TODO change this to use 'hex' instead, but need to change anything that has used it already
+  return if checksum then crypto.createHash('md5').update(sig, 'utf8').digest(if hex then 'hex' else 'base64') else sig #m TODO change this to use 'hex' instead, but need to change anything that has used it already
 
 API.job.allowed = (job,uacc) ->
   job = job_job.get(job) if typeof job is 'string'
@@ -503,7 +504,7 @@ API.job.process = (proc) ->
   proc = job_process.get(proc) if typeof proc isnt 'object'
   return false if typeof proc isnt 'object'
   proc.args = JSON.stringify proc.args if proc.args? and typeof proc.args is 'object' # in case a process is passed directly with non-string args
-  try proc._appid = process.env.APP_ID
+  try proc._ip = API.status.ip()
   if proc._id? # should always be the case but check anyway
     return false if job_processing.get(proc._id)? # puts extra load on ES but may catch unnecessary duplicates
     job_process.remove proc._id
@@ -596,9 +597,9 @@ API.job.next = () ->
   if job_limit.get('PAUSE')?
     return false
   if (API.settings.job?.concurrency ?= 1000000000) <= job_processing.count()
-    API.log {msg:'Not running more jobs, max concurrency reached', _appid: process.env.APP_ID, function:'API.job.next'}
+    API.log {msg:'Not running more jobs, max concurrency reached', _ip: API.status.ip(), function:'API.job.next'}
   else if (API.settings.job?.memory ? 1200000000) <= process.memoryUsage().rss
-    API.log {msg:'Not running more jobs, job max memory reached', _appid: process.env.APP_ID, function:'API.job.next'}
+    API.log {msg:'Not running more jobs, job max memory reached', _ip: API.status.ip(), function:'API.job.next'}
   else
     console.log('Checking for jobs to run') if API.settings.dev or API.settings.job?.verbose?
     API.log {msg:'Checking for jobs to run', ignores: {groups:API.job._ignoregroups,ids:API.job._ignoreids}, function:'API.job.next', level:'all'}
@@ -652,7 +653,7 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   future = new Future() # randomise start time so that cluster machines do not all start jobs at exactly the same time
   Meteor.setTimeout (() -> future.return()), Math.floor(Math.random()*interval+1)
   future.wait()
-  API.log {msg: 'Starting job runner with interval ' + interval, _appid: process.env.APP_ID, function: 'API.job.start', level: 'debug'}
+  API.log {msg: 'Starting job runner with interval ' + interval, _ip: API.status.ip(), function: 'API.job.start', level: 'debug'}
   olds = job_limit.get 'START_RELOAD'
   if not olds? or olds.createdAt < Date.now() - 300000
     job_limit.insert _id: 'START_RELOAD'
@@ -665,7 +666,9 @@ API.job.start = (interval=API.settings.job?.interval ? 1000) ->
   #job_process.insert _id: 'TEST', repeat: true, function: 'API.test', priority: 8000, group: 'TEST', limit: 86400000 # daily system test
   API.job._iid ?= Meteor.setInterval API.job.next, interval
 
-API.job.start() if not API.job._iid? and API.settings.job?.startup
+if not API.job._iid? and API.settings.job?.startup
+  console.log 'Starting job runner in 20 seconds...'
+  Meteor.setTimeout API.job.start, 20000 # once everything is set up, start the job runner
 
 API.job._checked_started = false
 API.job._started = () ->

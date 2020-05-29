@@ -13,31 +13,37 @@ API.use ?= {}
 API.use.crossref = {works:{},journals:{}}
 
 API.add 'use/crossref/works/doi/:doipre/:doipost',
-  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format?
+  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format
 # there are DOIs that can have slashes within their second part and are valid. Possibly could have more than one slash
 # and there does not seem to be a way to pass wildcards to the urlparams to match multiple / routes
 # so this will do for now...
 API.add 'use/crossref/works/doi/:doipre/:doipost/:doimore',
-  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format?
+  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format
 
 API.add 'use/crossref/works',
-  get: () -> return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format?
+  get: () -> 
+    if this.queryParams.title
+      return API.use.crossref.works.title this.queryParams.title, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format
+    else if this.queryParams.doi
+      return API.use.crossref.works.doi this.queryParams.doi, this.queryParams.format
+    else
+      return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format
 API.add 'use/crossref/works/search',
-  get: () -> return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format
 
 API.add 'use/crossref/works/published',
-  get: () -> return API.use.crossref.works.published (this.queryParams.q ? this.queryParams.query), undefined, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.published (this.queryParams.q ? this.queryParams.query), undefined, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
 API.add 'use/crossref/works/published/:startdate',
-  get: () -> return API.use.crossref.works.published (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.published (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
 API.add 'use/crossref/works/published/:startdate/:enddate',
-  get: () -> return API.use.crossref.works.published (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, this.urlParams.enddate, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.published (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, this.urlParams.enddate, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
 
 API.add 'use/crossref/works/indexed',
-  get: () -> return API.use.crossref.works.indexed (this.queryParams.q ? this.queryParams.query), undefined, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.indexed (this.queryParams.q ? this.queryParams.query), undefined, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
 API.add 'use/crossref/works/indexed/:startdate',
-  get: () -> return API.use.crossref.works.indexed (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.indexed (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
 API.add 'use/crossref/works/indexed/:startdate/:enddate',
-  get: () -> return API.use.crossref.works.indexed (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, this.urlParams.enddate, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format?
+  get: () -> return API.use.crossref.works.indexed (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, this.urlParams.enddate, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
 
 API.add 'use/crossref/types',
   get: () -> return API.use.crossref.types()
@@ -57,7 +63,7 @@ API.add 'use/crossref/journals/:issn/works/dois',
   get: () -> return API.use.crossref.journals.dois this.urlParams.issn
 
 API.add 'use/crossref/reverse',
-  get: () -> return API.use.crossref.reverse [this.queryParams.q ? this.queryParams.query ? this.queryParams.title], this.queryParams.score
+  get: () -> return API.use.crossref.reverse [this.queryParams.q ? this.queryParams.query ? this.queryParams.title], this.queryParams.score, this.queryParams.format
   post: () -> return API.use.crossref.reverse this.request.body
 
 API.add 'use/crossref/resolve/:doipre/:doipost', get: () -> return API.use.crossref.resolve this.urlParams.doipre + '/' + this.urlParams.doipost
@@ -75,7 +81,7 @@ API.use.crossref.types = () ->
     else
       return undefined
 
-API.use.crossref.reverse = (citations,score=80,format=false) ->
+API.use.crossref.reverse = (citations,score=85,format=false) ->
   citations = [citations] if typeof citations is 'string'
   url = 'https://api.crossref.org/reverse'
   API.log 'Using crossref for ' + url + ' with citation ' + JSON.stringify citations
@@ -88,14 +94,17 @@ API.use.crossref.reverse = (citations,score=80,format=false) ->
           ignore = ["a","an","and","are","as","at","but","be","by","do","for","if","in","is","it","or","so","the","to"]
           titleparts = res.data.message.title[0].toLowerCase().replace(/(<([^>]+)>)/g,'').replace(/[^a-z0-9]/g,' ').split(' ')
           titles = []
-          titles.push(f) if ignore.indexOf(f.split("'")[0]) is -1 and f.length > 0 for f in titleparts
+          for f in titleparts
+            titles.push(f) if ignore.indexOf(f.split("'")[0]) is -1 and f.length > 0
           citeparts = citations.join(' ').toLowerCase().replace(/(<([^>]+)>)/g,'').replace(/[^a-z0-9]/g,' ').replace(/  /g,' ').split(' ')
           cites = []
-          cites.push(c) if ignore.indexOf(c.split("'")[0]) is -1 and c.length > 1 for c in citeparts
+          for c in citeparts
+            cites.push(c) if ignore.indexOf(c.split("'")[0]) is -1 and c.length > 1
           bonus = (score - sc)/titles.length + 1
           found = []
-          found.push(w) if w in cites for w in titles
-          sc += bonus * found.length if titles.length is found.length and found.join() is found.sort().join()
+          for w in titles
+            found.push(w) if w in cites
+          sc += bonus * found.length if titles.length is found.length and found.join() is titles.join()
         if sc >= score
           if format
             return API.use.crossref.works.format res.data.message
@@ -207,17 +216,57 @@ API.use.crossref.works.doi = (doi,format) ->
     catch
       return undefined
 
+API.use.crossref.works.title = (title,format=true) ->
+  if cached = API.http.cache title, 'crossref_works_title'
+    return if format then API.use.crossref.works.format(cached) else cached
+  else
+    res = API.use.crossref.works.search {'query.bibliographic': title.replace(/\w+?\:/g,'').replace(/ /g,'+')}, undefined, 200, undefined, undefined, undefined, false
+    match = false
+    if res?.data? and res.data.length
+      for rec in res.data
+        if rec.title? and rec.title.length
+          rt = if typeof rec.title is 'string' then rec.title else rec.title[0]
+          title = title.toLowerCase().replace(/['".,\/\^&\*;:!\?#\$%{}=\-_`~()]/g,' ').replace(/\s{2,}/g,' ').trim()
+          rt = rt.toLowerCase().replace(/['".,\/\^&\*;:!\?#\$%{}=\-_`~()]/g,' ').replace(/\s{2,}/g,' ').trim()
+          if title is rt
+            match = rec
+            break
+    if match isnt false
+      #API.http.cache title, 'crossref_works_title', match
+      return if format then API.use.crossref.works.format(match) else match
+    else
+      return undefined
+
 API.use.crossref.works.search = (qrystr,from,size,filter,sort,order='desc',format) ->
   # max size is 1000
   url = 'https://api.crossref.org/works?'
   url += 'sort=' + sort + '&order=' + order + '&' if sort?
-  if qrystr and qrystr isnt 'all'
-    qry = qrystr.replace(/\w+?\:/g,'').replace(/ AND /g,'+').replace(/ OR /g,' ').replace(/ NOT /g,'-').replace(/ /g,'+')
-    url += 'query=' + qry
-  url += '&offset=' + from if from?
-  url += '&rows=' + size if size?
-  url += '&filter=' + filter if filter? and filter isnt ''
-  url = url.replace('?&','?') # tidy any params coming immediately after the start of search query param signifier, as it makes crossref error out
+  # more specific queries can be made using:
+  #query.container-title	Query container-title aka. publication name
+  #query.author	Query author given and family names
+  #query.editor	Query editor given and family names
+  #query.chair	Query chair given and family names
+  #query.translator	Query translator given and family names
+  #query.contributor	Query author, editor, chair and translator given and family names
+  #query.bibliographic	Query bibliographic information, useful for citation look up. Includes titles, authors, ISSNs and publication years
+  #query.affiliation  Query contributor affiliations
+  # note there is not a "title" one - just use bibliographic. bibliographic is titles, authors, ISSNs, and publication years
+  # ALSO NOTE: crossref LOOKS like it uses logica + and - operators, but it doesn't. their examples use + instaed of space, but either seems to make no difference
+  # + or - or space, all just result in OR queries, with increasing large result sets
+  if typeof qrystr is 'object'
+    for k of qrystr
+      if k not in ['from','size','filter','sort','order','format']
+        ky = if k is 'title' then 'query.bibliographic' else if k is 'journal' then 'query.container-title' else if k in ['author','editor','chair','translator','contributor','affiliation','bibliographic'] then 'query.' + k else k
+        url += ky + '=' + encodeURIComponent(qrystr[k]) + '&' 
+  else if qrystr and qrystr isnt 'all'
+    qry = qrystr.replace(/\w+?\:/g,'') #.replace(/ AND /g,'+').replace(/ NOT /g,'-')
+    #qry = if qry.indexOf(' OR ') isnt -1 then qry.replace(/ OR /g,' ') else qry.replace(/ /g,'+')
+    qry = qry.replace(/ /g,'+')
+    url += 'query=' + encodeURIComponent(qry) + '&'
+  url += 'offset=' + from + '&' if from?
+  url += 'rows=' + size + '&' if size?
+  url += 'filter=' + encodeURIComponent(filter) + '&'if filter? and filter isnt ''
+  url = url.replace('?&','?').replace(/&$/,'') # tidy any params coming immediately after the start of search query param signifier, as it makes crossref error out
   API.log 'Using crossref for ' + url
   res = HTTP.call 'GET', url, {headers: header}
   if res.statusCode is 200

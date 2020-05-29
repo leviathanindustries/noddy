@@ -132,7 +132,7 @@ class share.Route
 
 
   addToApi: do ->
-    availableMethods = ['get', 'post', 'put', 'patch', 'delete', 'options']
+    availableMethods = ['head', 'get', 'post', 'put', 'patch', 'delete', 'options']
 
     return ->
       self = this
@@ -144,6 +144,7 @@ class share.Route
 
       # Override the default OPTIONS endpoint with our own
       @endpoints = _.extend options: @api._config.defaultOptionsEndpoint, @endpoints
+      @endpoints = _.extend head: @api._config.defaultHeadEndpoint, @endpoints
 
       # Configure each endpoint on this route
       @_resolveEndpoints()
@@ -163,10 +164,25 @@ class share.Route
         self.endpoints[method] = self.endpoints[self.endpoints[method]] if typeof self.endpoints[method] is 'string'
         endpoint = self.endpoints[method]
         @JsonRoutes.add method, fullPath, (req, res) ->
+          try
+            rq = _.clone req.query
+            try
+              for q of rq
+                try
+                  if rq[q] is 'true'
+                    rq[q] = true
+                  else if rq[q] is 'false'
+                    rq[q] = false
+                  else if typeof rq[q] is 'string' and rq[q].replace(/[0-9]/g,'').length is 0 and (rq[q].length > 1 or not rq[q].startsWith('0'))
+                    try
+                      pn = parseInt rq[q]
+                      rq[q] = pn if not isNaN pn
+          catch
+            rq = req.query
 
           endpointContext =
             urlParams: req.params
-            queryParams: req.query
+            queryParams: rq
             bodyParams: req.body
             request: req
             response: res
@@ -176,7 +192,7 @@ class share.Route
           # Run the requested endpoint
           responseData = null
           try
-            responseData = self._callEndpoint endpointContext, endpoint
+            responseData = self._callEndpoint endpointContext, endpoint, fullPath
             if (responseData is null or responseData is undefined)
               responseData = 404
           catch error
@@ -228,7 +244,7 @@ class share.Route
   ###
   _configureEndpoints: ->
     _.each @endpoints, (endpoint, method) ->
-      if method not in ['options','desc'] and typeof endpoint isnt 'string'
+      if method not in ['head','options','desc'] and typeof endpoint isnt 'string'
         # Configure acceptable roles
         if not @options?.roleRequired
           @options.roleRequired = []
@@ -255,21 +271,31 @@ class share.Route
 
     @returns The endpoint response or a 401 if authentication fails
   ###
-  _callEndpoint: (endpointContext, endpoint) ->
+  _callEndpoint: (endpointContext, endpoint, path) ->
     blacklisted = API.blacklist(endpointContext.request)
     
     # Call the endpoint if authentication doesn't fail
-    if API.settings.log.connections and endpointContext.request.method isnt 'OPTIONS' and blacklisted is false
+    if API.settings.log.connections and endpointContext.request.method not in ['HEAD','OPTIONS'] and blacklisted is false
       tu = endpointContext.request.url.split('?')[0].split('#')[0]
-      if tu.replace('/api','').indexOf('/log') isnt 0 and (tu.indexOf('_log') is -1 and tu.indexOf('/es') is -1) and tu.indexOf('/reload/') is -1
-        API.log
-          url: endpointContext.request.url,
-          method: endpointContext.request.method,
-          originalUrl: endpointContext.request.originalUrl,
-          headers: endpointContext.request.headers,
-          query: endpointContext.request.query
+      tu = tu.replace('/api','') if tu.indexOf('/api') is 0
+      pt = if path.indexOf('/') is 0 then path.replace('/','') else path
+      pt = if pt.indexOf('api') is 0 then pt.replace('api','') else pt
+      rs = 
+        path: pt
+        endpoint: tu
+        url: endpointContext.request.url
+        method: endpointContext.request.method,
+        originalUrl: endpointContext.request.originalUrl
+        headers: endpointContext.request.headers
+        query: endpointContext.request.query
+        files: if endpointContext.request.files? then endpointContext.request.files.length else 0
+        body: if endpointContext.request.body? then endpointContext.request.body.length else 0
+      if tu.length > 1 and tu.indexOf('/log') isnt 0 and tu.indexOf('/status') isnt 0 and tu.indexOf('_log') is -1 and tu.indexOf('/es') isnt 0
+        API.log rs
+      else if API.settings.dev
+        console.log 'dev notification of request received on ' + rs.endpoint + ' matching path ' + pt
       else if API.settings.log?.level is 'all'
-        console.log 'Not creating log for query on a log URL, but logging to console because log level is all'
+        console.log 'Not creating log for query on a log/status/es URL, but logging to console because log level is all'
         console.log endpointContext.request.url, endpointContext.request.method, endpointContext.request.query, endpointContext.request.originalUrl
 
     if endpointContext.request.url.indexOf('/blacklist/reload') is -1 and blacklisted isnt false
@@ -365,8 +391,7 @@ class share.Route
     headers = @_lowerCaseKeys headers
     headers = _.extend defaultHeaders, headers
 
-    try headers['x-cid'] = process.env.CID if process?.env?.CID?
-    try headers['x-appid'] = process.env.APP_ID if process?.env?.APP_ID
+    try headers['x-ip'] = API.status.ip()
 
     # Prepare JSON body for response when Content-Type indicates JSON type
     if headers['content-type'].match(/json|javascript/) isnt null
@@ -431,7 +456,7 @@ class @Restivus
 
     if @_config.enableCors
       corsHeaders =
-        'Access-Control-Allow-Methods': 'GET, PUT, POST, DELETE, OPTIONS'
+        'Access-Control-Allow-Methods': 'HEAD, GET, PUT, POST, DELETE, OPTIONS'
         'Access-Control-Allow-Origin': '*'
         #'Access-Control-Allow-Headers': 'X-apikey, X-id, Origin, X-Requested-With, Content-Type, Content-Disposition, Accept'
         'Access-Control-Allow-Headers': 'X-apikey, X-id, Origin, X-Requested-With, Content-Type, Content-Disposition, Accept, DNT, Keep-Alive, User-Agent, If-Modified-Since, Cache-Control'
@@ -443,6 +468,12 @@ class @Restivus
         @_config.defaultOptionsEndpoint = ->
           @response.writeHead 200, corsHeaders
           @response.end()
+
+    if not @_config.defaultHeadEndpoint
+      hdrs = @_config.defaultHeaders
+      @_config.defaultHeadEndpoint = ->
+        @response.writeHead 200, hdrs
+        @response.end()
 
     # Normalize the API path
     if @_config.apiPath[0] is '/'
@@ -494,4 +525,5 @@ class @Restivus
     route.addToApi()
 
     return this
+
 

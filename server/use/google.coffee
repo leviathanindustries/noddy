@@ -147,11 +147,15 @@ API.use.google.knowledge.find = (qry) ->
 
 API.use.google.knowledge.wikidata = (mid,wurl) ->
 	# don't cache this, wikidata is cached
+	res = {}
 	if mid and not wurl
 		k = API.use.google.knowledge.retrieve mid
 		wurl = k.detailedDescription?.url
 	if wurl
-		return API.use.wikidata.find undefined,wurl
+			w = API.use.wikipedia.lookup {title:wurl.split('wiki/').pop()}
+			res.qid = w.data?.pageprops?.wikibase_item
+			res.data = API.use.wikidata.get(res.qid) if res.qid?
+	return res
 
 
 
