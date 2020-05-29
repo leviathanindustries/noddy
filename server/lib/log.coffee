@@ -33,35 +33,42 @@ _log_flush = () ->
 # although the log endpoint is close to what a mounted collection endpoint intends to be, 
 # and although collection mounting allows customising actions and auth, the log is sufficiently 
 # different, and is core to functionality, that it is expressly defined here instead of being a mount
+_log_query = (params,day='',user) ->
+  day = '/' + _log_today if day is 'today'
+  day = '/' +moment(Date.now(), "x").subtract(1,'days').format("YYYYMMDD") if day is 'yesterday'
+  day = '/' + day if day.length and day.indexOf('/') isnt 0
+  q = API.collection._translate params
+  q.sort = {'createdAt': {order: 'desc'}} if typeof q is 'object' and not q.sort?
+  res = API.es.call 'POST', API.settings.es.index + '_log' + day + '/_search', q
+  res ?= {}
+  if res?.hits?.hits? and not user? and not API.settings.dev # which users are allowed to see full logs, if any? and what can others see?
+    for h of res.hits.hits
+      clean = {}
+      fl = if res.hits.hits[h]._source? then '_source' else 'fields'
+      for k of res.hits.hits[h][fl]
+         if k in ['endpoint','function','level','createdAt','created_date','_id','_ip']
+           clean[k] = res.hits.hits[h][fl][k]
+      res.hits.hits[h][fl] = clean
+  # what terms and aggs can certain users see? if any?
+  res.q = q if API.settings.dev
+  return res
+  
 API.add 'log',
   get:
-    authRequired: if API.settings.dev then undefined else 'root'
-    action: () ->
-      q = API.collection._translate this.queryParams
-      res = API.es.call 'POST', API.settings.es.index + '_log/_search', q
-      res ?= {}
-      res.q = q if API.settings.dev
-      return res
-
-API.add 'log/days', get: () -> return API.log.days()
-
+    authOptional: true
+    action: () -> return _log_query this.queryParams, undefined, this.user
+  post:
+    authOptional: true
+    action: () -> return _log_query this.request.body, undefined, this.user
 API.add 'log/:yyyymmdd',
   get:
-    authRequired: if API.settings.dev then undefined else 'root'
-    action: () -> 
-      q = API.collection._translate this.queryParams
-      res = API.es.call 'POST', API.settings.es.index + '_log/' + (if this.urlParams.yyyymmdd is 'today' then _log_today else this.urlParams.yyyymmdd) + '/_search', q
-      res ?= {}
-      res.q = q if API.settings.dev
-      return res
+    authOptional: true
+    action: () -> return _log_query this.queryParams, this.urlParams.yyyymmdd, this.user
   post:
-    authRequired: if API.settings.dev then undefined else 'root'
-    action: () -> 
-      q = API.collection._translate this.request.body
-      res = API.es.call 'POST', API.settings.es.index + '_log/' + (if this.urlParams.yyyymmdd is 'today' then _log_today else this.urlParams.yyyymmdd) + '/_search', q
-      res ?= {}
-      res.q = q if API.settings.dev
-      return res
+    authOptional: true
+    action: () -> return _log_query this.request.body, this.urlParams.yyyymmdd, this.user
+
+API.add 'log/days', get: () -> return API.log.days()
 
 API.add 'log/stack',
   get:
@@ -150,15 +157,26 @@ API.add 'log/:yyyymmdd/:key/terms', get: () -> return API.es.terms API.settings.
 
 
 API.log = (opts, fn, lvl='debug') ->
+  # TODO use a combo of this and the structure system to find a function name
+  # e.g. if structure system stores a checksum of the function, then this could find the function name from that
+  # so that the log object function value can be added if not provided, to know which function called for this log
   try
     opts = { msg: opts } if typeof opts is 'string'
     opts.function ?= fn
+    if not opts.function and typeof API.log.caller is 'function'
+      try
+        cs = API.log.caller.toString().toLowerCase()
+        cslog = cs.split('api.log')[1].split(')')[0].split('+')[0].split('#')[0]
+        csargs = cs.split('(')[1].split(')')[0]
+        ffn = API.structure.logarg2fn (cslog + csargs).replace(/[^a-z0-9]/g,'')
+        opts.function = ffn if typeof ffn is 'string' and ffn.startsWith('API.')
+    if opts.function? and not opts.group?
+      try opts.group = if opts.function.indexOf('service') isnt -1 then opts.function.split('service.')[1].split('.')[0] else if opts.function.indexOf('use') isnt -1 then opts.function.split('use.')[1].split('.')[0] else opts.function.replace('API.','').split('.')[0]
     opts.level ?= opts.lvl
     delete opts.lvl
     opts.level ?= lvl
     opts.createdAt = Date.now()
     opts.created_date = moment(opts.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
-    # TODO try to set some opts vars for which server the error is running on...
 
     loglevels = ['all', 'trace', 'debug', 'info', 'warn', 'error', 'fatal', 'off']
     loglevel = API.settings.log?.level ? 'all';
@@ -192,11 +210,12 @@ API.log = (opts, fn, lvl='debug') ->
             catch
               delete opts[o]
 
+      try opts._ip = API.status.ip() #this would not be possible right at start up
+
       if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
         API.settings.log.bulk ?= 5000
         API.settings.log.timeout ?= 1800000
         opts._id = Random.id()
-        try opts._ip = API.status.ip() #this would not be possible right at start up
         _log_stack.unshift opts
         if _log_stack.length >= API.settings.log.bulk or Date.now() - _log_last > API.settings.log.timeout or opts.flush?
           _log_flush()

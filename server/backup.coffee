@@ -64,7 +64,7 @@ API.backup.snapshot = (indices=API.backup.register(), title=moment(Date.now(), "
   # maybe it depends if the title and indexes are the same?
   indices = indices.join(',') if typeof indices isnt 'string'
   if indices.length
-    API.log msg: 'Starting backup snapshot', function: 'API.log.snapshot', notify: true
+    API.log msg: 'Starting backup snapshot', function: 'API.backup.snapshot', notify: true
     #API.es.call 'PUT', '/_snapshot/' + (API.settings.name ? 'noddy') + '_' + (API.settings.backup.name ? 'backup') + '/' + title, {indices: indices, ignore_unavailable: unavailable, include_global_state: global}
     # this should start off some monitor that keeps checking the snapshot status to find out when it is done
     # once it is done, create a log saying it is done

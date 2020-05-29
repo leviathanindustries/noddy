@@ -7,6 +7,7 @@ import stopword from 'stopword'
 import languagedetect from 'languagedetect'
 import Future from 'fibers/future'
 import pdfjs from 'pdfjs-dist'
+import diff from 'diff'
 
 # TODO check out nodenatural and add it in here where useful
 # https://github.com/NaturalNode/natural#tf-idf
@@ -16,6 +17,10 @@ import pdfjs from 'pdfjs-dist'
 # https://github.com/moos/wordpos
 
 API.tdm = {}
+
+API.add 'tdm/clean', get: () -> return API.tdm.clean this.queryParams.q
+
+API.add 'tdm/diff', get: () -> return API.tdm.diff this.queryParams.a, this.queryParams.b, this.queryParams
 
 API.add 'tdm/fulltext', 
   get: () -> 
@@ -123,6 +128,87 @@ API.add 'tdm/extract',
 
 
 
+API.tdm._bad_chars = [
+	{bad: '‘', good: "'"},
+	{bad: '’', good: "'"},
+	{bad: '´', good: "'"},
+	{bad: '“', good: '"'},
+	{bad: '”', good: '"'},
+	{bad: '–', good: '-'},
+	{bad: '-', good: '-'}
+]
+API.tdm.clean = (text) ->
+	# get rid of MS formatting, stuff like that
+	_cln = (t) ->
+		nt = false
+		if typeof t isnt 'string'
+			nt = true
+			t = JSON.stringify t
+		for c in API.tdm._bad_chars
+			re = new RegExp(c.bad,"g")
+			t = t.replace(re,c.good)
+		return if nt then JSON.parse(t) else t
+	if typeof text is 'object'
+		for k of text
+			try text[k] = _cln text[k]
+		return text
+	else
+		try
+			return _cln text
+		catch
+			return text
+
+API.tdm.diff = (a, b, opts={}) ->
+	# can be Chars for comparison char by char. Or Words to compare words ignoring whitespace. Or WordsWithSpace to care about whitespace
+	# Or Lines to compare lines. Or Sentences for sentences. Or Patch will do structuredPatch (there are other action options but just use these)
+	# may need some pre-processing to handle html without being too fragile to changes humans cannot see
+	# or just strip all the content out of the html, unless passed a var saying that it matter?
+	# but then how to match back to the correct object? just by content map?
+	# https://github.com/kpdecker/jsdiff
+	if typeof a is 'string' and a.startsWith('http')
+		a = if opts.puppeteer then API.http.puppeteer(a) else HTTP.call('GET', a).content
+	if typeof b is 'string' and b.startsWith('http')
+		b = if opts.puppeteer then API.http.puppeteer(b) else HTTP.call('GET', b).content
+	delete opts.puppeteer
+	action = opts.action ? 'Words'
+	action = if action.toLowerCase() is 'wordswithspace' then 'WordsWithSpace' else action.substring(0,1).toUpperCase() + action.substring(1).toLowerCase()
+	delete opts.action
+	#if action in ['Chars','Words']
+	#	opts.ignoreCase ?= true
+	if action is 'Lines'
+		opts.newlineIsToken ?= true
+		opts.ignoreWhitespace ?= true
+	else
+		a = a.replace(/\\n/g,' ').replace(/\s{2,}/g,' ')
+		b = b.replace(/\\n/g,' ').replace(/\s{2,}/g,' ')
+	if typeof a is 'string' and (a.indexOf('{') is 0 or a.indexOf('[') is 0) and (a.endsWith('}') or a.endsWith(']'))
+		try a = JSON.parse a
+	if typeof b is 'string' and (b.indexOf('{') is 0 or b.indexOf('[') is 0) and (b.endsWith('}') or b.endsWith(']'))
+		try b = JSON.parse b
+	if typeof a is 'object' and typeof b isnt 'object'
+		a = JSON.stringify a
+	if typeof b is 'object' and typeof a isnt 'object'
+		b = JSON.stringify b
+	if typeof a is 'object' and typeof b is 'object'
+		if _.isArray(a) and _.isArray(b)
+			# what does this do with arrays of objects? better just to stick with diffJson? or recurse?
+			return diff.diffArrays a, b
+		else
+			# if as above passed arrays to this, does it handle them? or only objects
+			return diff.diffJson a, b
+	else if action is 'Chars'
+		return diff.diffChars a, b, opts
+	else if action is 'Words'
+		return diff.diffWords a, b, opts
+	else if action is 'WordsWithSpace'
+		return diff.diffWordsWithSpace a, b, opts
+	else if action is 'Lines'
+		return diff.diffLines a, b, opts
+	else if action is 'Sentences'
+		return diff.diffSentences a, b, opts
+	else if action is 'Patch'
+		return diff.structuredPatch 'a', 'b', a, b
+	
 # https://www.npmjs.com/package/languagedetect
 API.tdm.language = (content) ->
 	try content = content.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()0123456789]/g," ")
@@ -395,7 +481,6 @@ API.tdm.isword = (word,tp,shortnames) ->
 
 _lookups = {}
 API.tdm.type = (word,verbose) ->
-	verbose = false if verbose is 'false'
 	if _lookups[word]? and not verbose
 		return _lookups[word]
 	else

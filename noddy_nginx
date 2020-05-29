@@ -171,8 +171,15 @@ server {
 server {
     listen          443 ssl spdy;
     server_name     api.lvatn.com;
+
     ssl_certificate /etc/letsencrypt/live/api.lvatn.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/api.lvatn.com/privkey.pem;
+    ssl on;
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+    ssl_ciphers "HIGH:!aNULL:!MD5 or HIGH:!aNULL:!MD5:!3DES";
+    ssl_prefer_server_ciphers on;
+    ssl_stapling on;
+    #add_header Strict-Transport-Security "max-age=31536000;";
 
     location / {
         # DO NOT add the usual origin * header to the api and dev api routes, it is already set by the software in a default way, and setting it twice results in errors
@@ -198,10 +205,17 @@ server {
 }
 
 server {
-    listen          443 ssl;
+    listen          443 ssl spdy;
     server_name     dev.lvatn.com;
+
     ssl_certificate /etc/letsencrypt/live/dev.lvatn.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/dev.lvatn.com/privkey.pem;
+    ssl on;
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+    ssl_ciphers "HIGH:!aNULL:!MD5 or HIGH:!aNULL:!MD5:!3DES";
+    ssl_prefer_server_ciphers on;
+    ssl_stapling on;
+    #add_header Strict-Transport-Security "max-age=31536000;";
 
     location / {
         add_header Strict-Transport-Security "max-age=31536000;";
@@ -221,8 +235,15 @@ server {
 server {
     listen          443 ssl spdy;
     server_name     local.lvatn.com;
+
     ssl_certificate /etc/letsencrypt/live/local.lvatn.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/local.lvatn.com/privkey.pem;
+    ssl on;
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+    ssl_ciphers "HIGH:!aNULL:!MD5 or HIGH:!aNULL:!MD5:!3DES";
+    ssl_prefer_server_ciphers on;
+    ssl_stapling on;
+    #add_header Strict-Transport-Security "max-age=31536000;";
 
     location / {
         add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
@@ -243,8 +264,15 @@ server {
 server {
     listen          443 ssl spdy;
     server_name     cluster.lvatn.com;
+
     ssl_certificate /etc/letsencrypt/live/cluster.lvatn.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/cluster.lvatn.com/privkey.pem;
+    ssl on;
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+    ssl_ciphers "HIGH:!aNULL:!MD5 or HIGH:!aNULL:!MD5:!3DES";
+    ssl_prefer_server_ciphers on;
+    ssl_stapling on;
+    #add_header Strict-Transport-Security "max-age=31536000;";
 
     location / {
         add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
@@ -260,16 +288,23 @@ server {
 }
 
 server {
-        server_name static.lvatn.com;
-        listen 80;
-        listen 443 ssl;
-        ssl_certificate /etc/letsencrypt/live/static.lvatn.com/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/static.lvatn.com/privkey.pem;
-        root /home/cloo/static;
-        location / {
-            expires           0;
-            add_header        Cache-Control private;
-            add_header Access-Control-Allow-Origin *;
-            autoindex on;
-        }
+    server_name static.lvatn.com;
+    listen 80;
+    listen 443 ssl;
+
+    ssl_certificate /etc/letsencrypt/live/static.lvatn.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/static.lvatn.com/privkey.pem;
+    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+    ssl_ciphers "HIGH:!aNULL:!MD5 or HIGH:!aNULL:!MD5:!3DES";
+    ssl_prefer_server_ciphers on;
+    ssl_stapling on;
+    #add_header Strict-Transport-Security "max-age=31536000;";
+
+    root /home/cloo/static;
+    location / {
+        expires           0;
+        add_header        Cache-Control private;
+        add_header Access-Control-Allow-Origin *;
+        autoindex on;
+    }
 }

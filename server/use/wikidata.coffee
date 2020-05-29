@@ -16,7 +16,7 @@ import crypto from 'crypto'
 # https://www.wikidata.org/w/api.php?action=wbsearchentities&search=doctoral%20advisor&language=en&type=property&format=json
 # gets property ID for string, just need to reverse. (Already have a dump accessible below, but for keeping up to date...)
 
-wikidata_record = new API.collection {index:"wikidata",type:"record"}
+@wikidata_record = new API.collection {index:"wikidata",type:"record"}
 
 API.use ?= {}
 API.use.wikidata = {}
@@ -172,7 +172,6 @@ API.use.wikidata.properties = (refresh=604800000) ->
       return props
 
 API.use.wikidata.property = (prop,simple=true) ->
-  simple = false if simple is 'false'
   res = API.use.wikidata.properties()[prop]
   if res?
     return if simple then res.label else res
@@ -181,7 +180,6 @@ API.use.wikidata.property = (prop,simple=true) ->
 
 API.use.wikidata.property.find = (q,simple=false) ->
   return undefined if not q?
-  simple = false if simple is 'false'
   props = API.use.wikidata.properties()
   q = q.toLowerCase()
   qf = q.split(' ')[0]

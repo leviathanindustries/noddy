@@ -390,12 +390,13 @@ API.es.count = (index, type, key, query, dev=API.settings.dev, url=API.settings.
   else
     return API.es.call('POST', '/' + index + (if type then '/' + type else '') + '/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url)?.hits?.total
 
-API.es.terms = (index, type, key, qry, size=1000, counts=true, dev=API.settings.dev, url=API.settings.es.url) ->
+API.es.terms = (index, type, key, qry, size=1000, counts=true, order="count", dev=API.settings.dev, url=API.settings.es.url) ->
   url = url[Math.floor(Math.random()*url.length)] if Array.isArray url
   query = if typeof qry is 'object' then qry else { query: {"filtered":{"filter":{"exists":{"field":key}}}}, size: 0, facets: {} }
   query.filtered.query = { query_string: { query: qry } } if typeof qry is 'string'
   query.facets ?= {}
-  query.facets[key] = { terms: { field: key, size: size } } # TODO need some way to decide if should check on .exact? - collection assumes it so far
+  # order: (default) count is highest count first, reverse_count is lowest first. term is ordered alphabetical by term, reverse_term is reverse alpha
+  query.facets[key] = { terms: { field: key, size: size, order: order } } # TODO need some way to decide if should check on .exact? - collection assumes it so far
   try
     ret = API.es.call 'POST', '/' + index + (if type then '/' + type else '') + '/_search', query, undefined, undefined, undefined, undefined, undefined, dev, url
     return if not ret?.facets? then [] else (if counts then ret.facets[key].terms else _.pluck(ret.facets[key].terms,'term'))

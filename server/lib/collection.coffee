@@ -385,9 +385,10 @@ API.collection.prototype.max = (key, q, dev=API.settings.dev) ->
 API.collection.prototype.range = (key, q, dev=API.settings.dev) ->
   return API.es.range this._index, this._type, key, API.collection._translate(q), dev
 
-API.collection.prototype.terms = (key, q, size=100, counts=false, dev=API.settings.dev) ->
+API.collection.prototype.terms = (key, q, size=100, counts=false, order, dev=API.settings.dev) ->
   key = key.replace('.exact','')+'.exact' if true # TODO should check the mapping to see if .exact is relevant for key, and have a way for user to decide
-  return API.es.terms this._index, this._type, key, API.collection._translate(q), size, counts, dev
+  # order: (default) count is highest count first, reverse_count is lowest first. term is ordered alphabetical by term, reverse_term is reverse alpha
+  return API.es.terms this._index, this._type, key, API.collection._translate(q), size, counts, order, dev
 
 API.collection.prototype.keys = (dev=API.settings.dev) ->
   return API.es.keys this._index, this._type, dev

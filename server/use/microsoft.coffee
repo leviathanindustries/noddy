@@ -13,6 +13,13 @@ API.use.microsoft = {}
 API.use.microsoft.academic = {}
 API.use.microsoft.bing = {}
 
+# MS academic graph is a bit annoyingly hard to use, but the raw data is more useful. Getting the raw data 
+# is a hassle too though they only distribute it via azure. However the open academic graph has dumps about a year 
+# out of date, which may be sufficient enough to get the coverage we want (which isn't actually article-level, we 
+# get that from crossref etc, instead we want affiliations etc). So, work on getting all the open graph dumps and 
+# build a local index to query instead
+# https://www.openacademic.ai/oag/
+
 # https://docs.microsoft.com/en-gb/azure/cognitive-services/academic-knowledge/queryexpressionsyntax
 # https://docs.microsoft.com/en-gb/azure/cognitive-services/academic-knowledge/paperentityattributes
 # https://westus.dev.cognitive.microsoft.com/docs/services/56332331778daf02acc0a50b/operations/5951f78363b4fb31286b8ef4/console

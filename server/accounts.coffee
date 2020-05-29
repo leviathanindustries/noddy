@@ -269,6 +269,12 @@ API.accounts.login = (params, user, request) ->
   if params?.password? and (params.username? or params.email?)
     user = API.accounts.retrieve({password:params.password})
     user = undefined if (params.email? and user.email isnt params.email and user.emails[0].address isnt params.email) or (user.username isnt params.username)
+  if params.apikey? and params.email?
+    user = API.accounts.retrieve({apikey:params.apikey})
+    try
+      user = undefined if user? and (user.email ? user.emails[0].address) isnt params.email
+    catch
+      user = undefined
   if not user
     if params.resume and params.timestamp
       token = Tokens.find resume: API.accounts.hash(params.resume), timestamp: params.timestamp, action: 'resume'

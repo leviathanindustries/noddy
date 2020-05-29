@@ -52,7 +52,7 @@ API.use.noun.icons = (term) ->
   return res
 
 _noun_authd = false
-_nounget = (url,callback) ->
+_anounget = Async.wrap (url,callback) ->
   if _noun_authd is false
     _noun_authd = new oauth.OAuth(
       'http://api.thenounproject.com',
@@ -73,7 +73,6 @@ _nounget = (url,callback) ->
       else
         callback null, JSON.parse(data)
   )
-_anounget = Meteor.wrapAsync _nounget
 
 API.use.noun.search = (params) ->
   return {} if JSON.stringify(params) is '{}'
