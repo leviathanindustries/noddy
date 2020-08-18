@@ -1,5 +1,5 @@
 
-#import request from 'request'
+import request from 'request'
 import { Converter } from 'csvtojson'
 import json2csv from 'json2csv'
 import textract from 'textract' # note this requires installs on the server for most conversions
@@ -176,20 +176,12 @@ API.convert.csv2json = Async.wrap (content,opts,callback) ->
   if typeof opts isnt 'object'
     callback = opts
     opts = {}
-  converter
-  if content.indexOf('http') is 0
-    converter = new Converter({constructResult:false})
-    recs = []
-    converter.on "record_parsed", (row) -> recs.push(row)
-    #request.get(content).pipe(converter);
-    HTTP.call('GET',content).pipe(converter)
-    return recs # this probably needs to be on end of data stream
-  else
-    converter = new Converter({})
-    converter.fromString content, (err,result) -> 
-      return callback(null,result)
+  content = HTTP.call('GET', content).content if content.indexOf('http') is 0
+  converter = new Converter({})
+  converter.fromString content, (err,result) -> 
+    return callback(null,result)
 
-API.convert.table2json = (content,opts) ->
+API.convert.table2json = (content,opts={}) ->
   content = HTTP.call('GET', content).content if content.indexOf('http') is 0
   content = content.split(opts.start)[1] if opts.start
   if content.indexOf('<table') isnt -1
@@ -201,7 +193,7 @@ API.convert.table2json = (content,opts) ->
     content = content.split('</table')[0] + '</table>'
   else if content.indexOf('</TABLE') isnt -1
     content = content.split('</TABLE')[1] + '</TABLE>'
-  content = content.replace(/\\n/gi,'')
+  content = content.replace(/\r?\n|\r/g,'')
   ths = content.match(/<th.*?<\/th/gi)
   headers = []
   results = []
@@ -209,11 +201,10 @@ API.convert.table2json = (content,opts) ->
     str = h.replace(/<th.*?>/i,'').replace(/<\/th.*?/i,'').replace(/<.*?>/gi,'').replace(/&nbsp;/gi,'')
     str = 'UNKNOWN' if str.replace(/ /g,'').length is 0
     headers.push str
-  rows = content.match(/<tr.*?<\/tr/gi)
-  for r in rows
+  for r in content.split('<tr')
     if r.toLowerCase().indexOf('<th') is -1
       result = {}
-      row = rowsr.replace(/<tr.*?>/i,'').replace(/<\/tr.*?/i,'')
+      row = r.replace(/.*?>/i,'').replace(/<\/tr.*?/i,'')
       vals = row.match(/<td.*?<\/td/gi)
       for d of vals
         keycounter = parseInt d

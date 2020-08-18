@@ -256,7 +256,10 @@ API.collection.prototype.search = (q, opts, versioned, dev=API.settings.dev) ->
 
 API.collection.prototype.find = (q, opts, versioned, dev=API.settings.dev) ->
   try versioned = opts.versioned
-  versioned = true if opts is 'versioned'
+  if opts is 'versioned'
+    versioned = true
+    opts = undefined
+  opts ?= true
   got = this.get q, versioned, dev
   if got?
     return got
@@ -374,6 +377,15 @@ API.collection.prototype.fetch = (q, opts={}, dev=API.settings.dev) ->
   return results
 
 API.collection.prototype.count = (key, q, dev=API.settings.dev) ->
+  if not q?
+    kq = typeof key is 'object'
+    if not kq and typeof key is 'string'
+      kq = key.indexOf('*') isnt -1
+      if not kq
+        mp = JSON.stringify this.mapping()
+        kq = mp.indexOf(key.replace('.exact','')) is -1
+    if kq
+      return API.es.count this._index, this._type, undefined, API.collection._translate(key), dev
   return API.es.count this._index, this._type, key, API.collection._translate(q), dev
 
 API.collection.prototype.min = (key, q, dev=API.settings.dev) ->
@@ -388,7 +400,13 @@ API.collection.prototype.range = (key, q, dev=API.settings.dev) ->
 API.collection.prototype.terms = (key, q, size=100, counts=false, order, dev=API.settings.dev) ->
   key = key.replace('.exact','')+'.exact' if true # TODO should check the mapping to see if .exact is relevant for key, and have a way for user to decide
   # order: (default) count is highest count first, reverse_count is lowest first. term is ordered alphabetical by term, reverse_term is reverse alpha
-  return API.es.terms this._index, this._type, key, API.collection._translate(q), size, counts, order, dev
+  if typeof q is 'string' and q.indexOf(':') is -1 and q.indexOf('"') is -1 and q.indexOf(' ') is -1 and q.indexOf(' OR ') is -1 and q.indexOf(' AND ') is -1
+    # make the query into a prefix term search on the field
+    qr = API.collection._translate {q:key.replace('.exact','')+':'+q, prefix:true}
+    order ?= 'term'
+  else
+    qr = API.collection._translate q
+  return API.es.terms this._index, this._type, key, qr, size, counts, order, dev
 
 API.collection.prototype.keys = (dev=API.settings.dev) ->
   return API.es.keys this._index, this._type, dev
@@ -549,6 +567,9 @@ API.collection.prototype.mount = (opts={}) ->
     If "restrict" is provided, should point to list of ES queries to add to the and part of the query filter
     Any other keys in the options object should be directly attributable to an ES query object
     TODO can add more conveniences for passing options in here, such as simplified terms, etc.
+
+    Default query looks like:
+    {query: {filtered: {query: {match_all: {}}, filter: {bool: {must: []}}}}, size: 10}
 ###
 API.collection._translate = (q, opts) ->
   console.log('Translating query',q,opts) if API.settings.log?.level is 'all'

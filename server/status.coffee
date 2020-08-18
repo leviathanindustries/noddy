@@ -6,6 +6,12 @@ import rsync from 'rsync'
 import Future from 'fibers/future'
 import fs from 'fs'
 
+
+
+status_present = new API.collection 'status_present'
+
+
+
 API.add 'status', get: () -> return API.status this.queryParams.email, this.queryParams.accounts, this.queryParams.service, this.queryParams.use, this.queryParams.job, this.queryParams.index, this.queryParams.detailed
 
 API.add 'status/stats',
@@ -35,7 +41,9 @@ API.add 'status/bounce',
   get:
     roleRequired: if API.settings.dev then undefined else 'admin.bounce'
     action: () -> return API.status.bounce()
-    
+
+API.add 'status/present', get: () -> return API.status.present this.queryParams.who
+
 
 
 API.status = (email=false, accounts=false, service=false, use=false, job=false, index=true, detailed=false) ->
@@ -155,6 +163,7 @@ API.status.sync = (ips,src,dest) ->
           .shell('ssh')
           .flags('azL')
           .set('exclude','.meteor/local')
+          #.set('delete-after')
           .source(src)
           .destination(ip + ':' + dest)
         rs.execute((error, code, cmd) -> 
@@ -233,3 +242,11 @@ if API.settings.cluster?.ip? and API.status.ip() not in API.settings.cluster.ip
     else
       console.log 'TRIGGERING AUTOMATIC SYNC TO CLUSTER MACHINES DUE TO MAIN APP RELOAD ON FILE CHANGE WHILE RUNNING'
     API.status.sync()
+
+
+
+API.status.present = (who) ->
+  if typeof who is 'string' and not already = status_present.find 'who.exact:"' + who + '" AND createdAt:>' + (Date.now() - 60000)
+    status_present.insert who: who
+  return history: (r._source for r in status_present.search('*', {newest: true, size:100}).hits.hits), who: status_present.terms 'who'
+# TODO add a loop to check from main machine if nobody has been present for five mins, send an alert

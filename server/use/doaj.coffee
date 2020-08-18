@@ -2,6 +2,7 @@
 
 # use the doaj
 # https://doaj.org/api/v1/docs
+# DOAJ API only allows results up to 1000, regardless of page size or rate limit. Annoying...
 
 API.use ?= {}
 API.use.doaj = {journals: {}, articles: {}}
@@ -22,7 +23,7 @@ API.add 'use/doaj/articles/doi/:doipre/:doipost/:doiextra',
   get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doiextra, this.queryParams.format
 
 API.add 'use/doaj/journals/search/:qry',
-  get: () -> return API.use.doaj.journals.search this.urlParams.qry
+  get: () -> return API.use.doaj.journals.search this.urlParams.qry, this.queryParams
 
 API.add 'use/doaj/journals/issn/:issn',
   get: () -> return API.use.doaj.journals.issn this.urlParams.issn
@@ -68,8 +69,10 @@ API.use.doaj.es = (which='journal,article', params, body, format=true) ->
     return {status: 'error', error: err, query: body, url: url}
 
 API.use.doaj.journals.issn = (issn) ->
-  r = API.use.doaj.journals.search 'issn:' + issn
-  return if r.data?.length then r.data[0] else undefined
+  issn = issn.split(',') if typeof issn is 'string'
+  issn[i] = 'issn:'+issn[i] for i of issn
+  r = API.use.doaj.journals.search issn.join(' OR ')
+  return if r.results?.length then r.results[0] else undefined
 
 # title search possible with title:MY JOURNAL TITLE
 # DOAJ API rate limit is 6r/s
@@ -77,10 +80,17 @@ API.use.doaj.journals.issn = (issn) ->
 # adjusted to 400ms
 API.use.doaj.journals.search = (qry,params) ->
   url = 'https://doaj.org/api/v1/search/journals/' + qry + '?'
+  if params?.size?
+    params.pageSize = params.size
+    delete params.size
+  if params?.from?
+    params.page = Math.ceil params.from/(params.pageSize ? 10)
+    delete params.from
   url += op + '=' + params[op] + '&' for op of params
   API.log 'Using doaj for ' + url
   res = API.job.limit 400, 'HTTP.call', ['GET',url], "DOAJ"
   #res = HTTP.call 'GET', url
+  #res.data.data = res.data.results if res?.data?.results?
   return if res.statusCode is 200 then res.data else {status: 'error', data: res.data}
 
 API.use.doaj.articles.doi = (doi, format) ->

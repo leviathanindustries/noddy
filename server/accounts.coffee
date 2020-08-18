@@ -104,7 +104,7 @@ API.add 'accounts/:id',
   delete:
     authRequired: true
     action: () ->
-      return if API.settings.accounts?.xsrf and not API.accounts.xsrf(this.userId, this.queryParams.xsrf) then 401 else API.accounts.remove this.urlParams.id, this.user, this.queryParams.service
+      return if API.settings.accounts?.xsrf and not API.accounts.xsrf(this.userId, this.queryParams.xsrf) then 401 else API.accounts.remove this.urlParams.id, this.queryParams.service, this.user
 
 API.add 'accounts/:id/password',
   post:
