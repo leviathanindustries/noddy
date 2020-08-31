@@ -182,7 +182,7 @@ API.convert.csv2json = Async.wrap (content,opts,callback) ->
     return callback(null,result)
 
 API.convert.table2json = (content,opts={}) ->
-  content = HTTP.call('GET', content).content if content.indexOf('http') is 0
+  content = API.http.puppeteer(content) if content.indexOf('http') is 0
   content = content.split(opts.start)[1] if opts.start
   if content.indexOf('<table') isnt -1
     content = '<table' + content.split('<table')[1]
@@ -198,7 +198,7 @@ API.convert.table2json = (content,opts={}) ->
   headers = []
   results = []
   for h in ths
-    str = h.replace(/<th.*?>/i,'').replace(/<\/th.*?/i,'').replace(/<.*?>/gi,'').replace(/&nbsp;/gi,'')
+    str = API.http.decode h.replace(/<th.*?>/i,'').replace(/<\/th.*?/i,'').replace(/<.*?>/gi,'').replace(/\s\s+/g,' ').trim()
     str = 'UNKNOWN' if str.replace(/ /g,'').length is 0
     headers.push str
   for r in content.split('<tr')
@@ -206,17 +206,18 @@ API.convert.table2json = (content,opts={}) ->
       result = {}
       row = r.replace(/.*?>/i,'').replace(/<\/tr.*?/i,'')
       vals = row.match(/<td.*?<\/td/gi)
+      keycounter = 0
       for d of vals
-        keycounter = parseInt d
-        if vals[d].toLowerCase().indexOf('colspan') isnt -1
-          try
-            count = parseInt(vals[d].toLowerCase().split('colspan')[1].split('>')[0].replace(/[^0-9]/,''))
-            keycounter += (count-1)
         val = vals[d].replace(/<.*?>/gi,'').replace('</td','')
         if headers.length > keycounter
-          result[headers[keycounter]] = val
+          result[headers[keycounter]] = API.http.decode val
+        keycounter += 1
+        if vals[d].toLowerCase().indexOf('colspan') isnt -1
+          try
+            keycounter += parseInt(vals[d].toLowerCase().split('colspan')[1].split('>')[0].replace(/[^0-9]/,''))-1
       delete result.UNKNOWN if result.UNKNOWN?
-      results.push result
+      if not _.isEmpty result
+        results.push result
   return results
 
 API.convert.table2csv = (content,opts) ->

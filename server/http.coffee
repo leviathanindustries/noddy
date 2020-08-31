@@ -469,7 +469,6 @@ API.http.puppeteer = (url, refresh=86400000, proxy=false, headers={}, idle=false
       return HTTP.call('GET', pu).content
 
   _ppt = Async.wrap (url, refresh=86400000, proxy=false, headers={}, idle=false, local=false, callback) ->
-    API.log 'starting puppeteer retrieval of ' + url
     args = ['--no-sandbox', '--disable-setuid-sandbox']
     args.push('--proxy-server='+proxy) if proxy
     pid = false
@@ -501,6 +500,7 @@ API.http.puppeteer = (url, refresh=86400000, proxy=false, headers={}, idle=false
     finally
       return callback null, ''
 
+  API.log 'starting puppeteer retrieval of ' + url
   try
     rs = _ppt url, refresh, proxy, headers, idle, local
     return rs

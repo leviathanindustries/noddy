@@ -182,7 +182,7 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial, dev
         API.collection.dot(rec,k,obj[k]) if k isnt '_id'
       rec.updatedAt = Date.now()
       rec.updated_date = moment(rec.updatedAt, "x").format "YYYY-MM-DD HHmm.ss"
-    API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, refresh: refresh, versioned: versioned, partial: partial, level: 'debug' }) if this._route.indexOf('_log') is -1
+    API.log({ msg: 'Updating ' + this._route + '/' + rec._id, qry: q, refresh: refresh, versioned: versioned, partial: partial, level: 'all' }) if this._route.indexOf('_log') is -1
     rs = API.es.call 'POST', this._route + '/' + rec._id, (if partial then obj else rec), refresh, versioned, undefined, undefined, partial, dev
     if rs is 409
       # TODO think about whether using versioned updates is useful all the time or not. For now, it will only be used if version is set by whatever 
