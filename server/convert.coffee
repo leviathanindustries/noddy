@@ -1,5 +1,5 @@
 
-#import request from 'request'
+import request from 'request'
 import { Converter } from 'csvtojson'
 import json2csv from 'json2csv'
 import textract from 'textract' # note this requires installs on the server for most conversions
@@ -176,21 +176,13 @@ API.convert.csv2json = Async.wrap (content,opts,callback) ->
   if typeof opts isnt 'object'
     callback = opts
     opts = {}
-  converter
-  if content.indexOf('http') is 0
-    converter = new Converter({constructResult:false})
-    recs = []
-    converter.on "record_parsed", (row) -> recs.push(row)
-    #request.get(content).pipe(converter);
-    HTTP.call('GET',content).pipe(converter)
-    return recs # this probably needs to be on end of data stream
-  else
-    converter = new Converter({})
-    converter.fromString content, (err,result) -> 
-      return callback(null,result)
-
-API.convert.table2json = (content,opts) ->
   content = HTTP.call('GET', content).content if content.indexOf('http') is 0
+  converter = new Converter({})
+  converter.fromString content, (err,result) -> 
+    return callback(null,result)
+
+API.convert.table2json = (content,opts={}) ->
+  content = API.http.puppeteer(content) if content.indexOf('http') is 0
   content = content.split(opts.start)[1] if opts.start
   if content.indexOf('<table') isnt -1
     content = '<table' + content.split('<table')[1]
@@ -201,31 +193,31 @@ API.convert.table2json = (content,opts) ->
     content = content.split('</table')[0] + '</table>'
   else if content.indexOf('</TABLE') isnt -1
     content = content.split('</TABLE')[1] + '</TABLE>'
-  content = content.replace(/\\n/gi,'')
+  content = content.replace(/\r?\n|\r/g,'')
   ths = content.match(/<th.*?<\/th/gi)
   headers = []
   results = []
   for h in ths
-    str = h.replace(/<th.*?>/i,'').replace(/<\/th.*?/i,'').replace(/<.*?>/gi,'').replace(/&nbsp;/gi,'')
+    str = API.http.decode h.replace(/<th.*?>/i,'').replace(/<\/th.*?/i,'').replace(/<.*?>/gi,'').replace(/\s\s+/g,' ').trim()
     str = 'UNKNOWN' if str.replace(/ /g,'').length is 0
     headers.push str
-  rows = content.match(/<tr.*?<\/tr/gi)
-  for r in rows
+  for r in content.split('<tr')
     if r.toLowerCase().indexOf('<th') is -1
       result = {}
-      row = rowsr.replace(/<tr.*?>/i,'').replace(/<\/tr.*?/i,'')
+      row = r.replace(/.*?>/i,'').replace(/<\/tr.*?/i,'')
       vals = row.match(/<td.*?<\/td/gi)
+      keycounter = 0
       for d of vals
-        keycounter = parseInt d
-        if vals[d].toLowerCase().indexOf('colspan') isnt -1
-          try
-            count = parseInt(vals[d].toLowerCase().split('colspan')[1].split('>')[0].replace(/[^0-9]/,''))
-            keycounter += (count-1)
         val = vals[d].replace(/<.*?>/gi,'').replace('</td','')
         if headers.length > keycounter
-          result[headers[keycounter]] = val
+          result[headers[keycounter]] = API.http.decode val
+        keycounter += 1
+        if vals[d].toLowerCase().indexOf('colspan') isnt -1
+          try
+            keycounter += parseInt(vals[d].toLowerCase().split('colspan')[1].split('>')[0].replace(/[^0-9]/,''))-1
       delete result.UNKNOWN if result.UNKNOWN?
-      results.push result
+      if not _.isEmpty result
+        results.push result
   return results
 
 API.convert.table2csv = (content,opts) ->

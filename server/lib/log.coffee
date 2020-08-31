@@ -30,43 +30,21 @@ _log_flush = () ->
   ), 5
 
 
-# although the log endpoint is close to what a mounted collection endpoint intends to be, 
-# and although collection mounting allows customising actions and auth, the log is sufficiently 
-# different, and is core to functionality, that it is expressly defined here instead of being a mount
-_log_query = (params,day='',user) ->
-  day = '/' + _log_today if day is 'today'
-  day = '/' +moment(Date.now(), "x").subtract(1,'days').format("YYYYMMDD") if day is 'yesterday'
-  day = '/' + day if day.length and day.indexOf('/') isnt 0
-  q = API.collection._translate params
-  q.sort = {'createdAt': {order: 'desc'}} if typeof q is 'object' and not q.sort?
-  res = API.es.call 'POST', API.settings.es.index + '_log' + day + '/_search', q
-  res ?= {}
-  if res?.hits?.hits? and not user? and not API.settings.dev # which users are allowed to see full logs, if any? and what can others see?
-    for h of res.hits.hits
-      clean = {}
-      fl = if res.hits.hits[h]._source? then '_source' else 'fields'
-      for k of res.hits.hits[h][fl]
-         if k in ['endpoint','function','level','createdAt','created_date','_id','_ip']
-           clean[k] = res.hits.hits[h][fl][k]
-      res.hits.hits[h][fl] = clean
-  # what terms and aggs can certain users see? if any?
-  res.q = q if API.settings.dev
-  return res
   
 API.add 'log',
   get:
     authOptional: true
-    action: () -> return _log_query this.queryParams, undefined, this.user
+    action: () -> return API.log.query this.queryParams, undefined, this.user
   post:
     authOptional: true
-    action: () -> return _log_query this.request.body, undefined, this.user
+    action: () -> return API.log.query this.request.body, undefined, this.user
 API.add 'log/:yyyymmdd',
   get:
     authOptional: true
-    action: () -> return _log_query this.queryParams, this.urlParams.yyyymmdd, this.user
+    action: () -> return API.log.query this.queryParams, this.urlParams.yyyymmdd, this.user
   post:
     authOptional: true
-    action: () -> return _log_query this.request.body, this.urlParams.yyyymmdd, this.user
+    action: () -> return API.log.query this.request.body, this.urlParams.yyyymmdd, this.user
 
 API.add 'log/days', get: () -> return API.log.days()
 
@@ -75,7 +53,7 @@ API.add 'log/stack',
     authRequired: if API.settings.dev then undefined else 'root'
     action: () ->
       if API.settings.log?.bulk isnt 0 and API.settings.log?.bulk isnt false
-        return API.log.stack this.queryParams
+        return API.log.stack this.queryParams, this.queryParams.since, this.queryParams.before, this.queryParams.within
       else
         return {status: 'error', info: 'Log stack is not in use'}
 
@@ -172,14 +150,25 @@ API.log = (opts, fn, lvl='debug') ->
         opts.function = ffn if typeof ffn is 'string' and ffn.startsWith('API.')
     if opts.function? and not opts.group?
       try opts.group = if opts.function.indexOf('service') isnt -1 then opts.function.split('service.')[1].split('.')[0] else if opts.function.indexOf('use') isnt -1 then opts.function.split('use.')[1].split('.')[0] else opts.function.replace('API.','').split('.')[0]
+    else if opts.path? and not opts.group?
+      try opts.group = if opts.path.indexOf('service/') isnt -1 then opts.path.split('service/')[1].split('/')[0] else if opts.path.indexOf('use/') isnt -1 then opts.path.split('use/')[1].split('/')[0] else opts.path.replace('/','').split('/')[0]
+    opts.group = opts.group.split('.')[0] if typeof opts.group is 'string' and opts.group.indexOf('.') isnt -1
     opts.level ?= opts.lvl
     delete opts.lvl
     opts.level ?= lvl
     opts.createdAt = Date.now()
     opts.created_date = moment(opts.createdAt, "x").format "YYYY-MM-DD HHmm.ss"
+    
+    if opts.level is 'error' or JSON.stringify(opts).toLowerCase().indexOf('error') isnt -1
+      if opts.group?
+        opts.group = [opts.group] if typeof opts.group is 'string'
+        opts.group.push 'error'
+      else
+        opts.group = 'error'
+    opts.group ?= 'system'
 
     loglevels = ['all', 'trace', 'debug', 'info', 'warn', 'error', 'fatal', 'off']
-    loglevel = API.settings.log?.level ? 'all';
+    loglevel = API.settings.log?.level ? 'all'
     if loglevels.indexOf(loglevel) <= loglevels.indexOf opts.level
       if opts.notify and API.settings.log?.notify
         try
@@ -201,7 +190,7 @@ API.log = (opts, fn, lvl='debug') ->
       for o of opts
         if not opts[o]?
           delete opts[o]
-        else if typeof opts[o] isnt 'string'
+        else if typeof opts[o] isnt 'string' and not _.isArray opts[o]
           try
             opts[o] = JSON.stringify opts[o]
           catch
@@ -228,6 +217,29 @@ API.log = (opts, fn, lvl='debug') ->
 
   catch err
     console.log 'API LOG ERROR\n', opts, '\n', fn, '\n', lvl, '\n', err
+
+# although the log endpoint is close to what a mounted collection endpoint intends to be, 
+# and although collection mounting allows customising actions and auth, the log is sufficiently 
+# different, and is core to functionality, that it is expressly defined here instead of being a mount
+API.log.query = (params,day='',user) ->
+  day = '/' + _log_today if day is 'today'
+  day = '/' +moment(Date.now(), "x").subtract(1,'days').format("YYYYMMDD") if day is 'yesterday'
+  day = '/' + day if day.length and day.indexOf('/') isnt 0
+  q = API.collection._translate params
+  q.sort = {'createdAt': {order: 'desc'}} if typeof q is 'object' and q.size isnt 0 and not q.sort?
+  res = API.es.call 'POST', API.settings.es.index + '_log' + day + '/_search', q
+  res ?= {}
+  if res?.hits?.hits? and not user? and not API.settings.dev # which users are allowed to see full logs, if any? and what can others see?
+    for h of res.hits.hits
+      clean = {}
+      fl = if res.hits.hits[h]._source? then '_source' else 'fields'
+      for k of res.hits.hits[h][fl]
+         if k in ['endpoint','function','level','createdAt','created_date','_id','_ip']
+           clean[k] = res.hits.hits[h][fl][k]
+      res.hits.hits[h][fl] = clean
+  # what terms and aggs can certain users see? if any?
+  res.q = q if API.settings.dev
+  return res
 
 API.log.days = () ->
   days = []
@@ -270,7 +282,8 @@ API.log.local = () ->
     a: _ls.a
     b: _ls.b
   
-API.log.stack = (params={}) ->
+API.log.stack = (params={}, since, before, within) ->
+  params = {q: params} if typeof params is 'string'
   res = _.clone _log_stack
   for ip in API.settings.cluster?.ip ? []
     try
@@ -289,7 +302,7 @@ API.log.stack = (params={}) ->
     v = params.q
     if params.q.indexOf(':') isnt -1
       parts = params.q.split(':')
-      k = parts[0]
+      k = parts[0].replace('.exact','')
       v = parts[1]
     vn = false
     if v.indexOf('NOT ') isnt -1
@@ -298,10 +311,11 @@ API.log.stack = (params={}) ->
     v = v.toLowerCase().replace(/"/g,'')
     for r in res # could improve this to handle AND OR NOT etc, or complex query objects, but this should do for now
       break if params.size and rq.length >= (params.size + params.from)
-      if vn
-        rq.push(r) if (k isnt false and r[k]? and r[k].toLowerCase().indexOf(v) is -1) or (k is false and JSON.stringify(r).toLowerCase().indexOf(v) is -1)
-      else
-        rq.push(r) if (k isnt false and r[k]? and r[k].toLowerCase().indexOf(v) isnt -1) or JSON.stringify(r).toLowerCase().indexOf(v) isnt -1
+      if (not within? or r.createdAt.toString().startsWith(within)) and (not since? or r.createdAt > since) and (not before? or r.createdAt < before)
+        if vn
+          rq.push(r) if (k isnt false and r[k]? and r[k].toLowerCase().indexOf(v) is -1) or (k is false and JSON.stringify(r).toLowerCase().indexOf(v) is -1)
+        else
+          rq.push(r) if (k isnt false and r[k]? and r[k].toLowerCase().indexOf(v) isnt -1) or JSON.stringify(r).toLowerCase().indexOf(v) isnt -1
     res = rq
   res = res.slice(params.from) if params.from and res.length > params.from
   res = res.slice(0,params.size) if params.size and res.length > params.size

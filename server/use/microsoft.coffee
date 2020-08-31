@@ -1,7 +1,12 @@
 
 # use microsoft
+@msgraph_journal = new API.collection index: "msgraph", type: "journal"
 
 API.add 'use/microsoft', get: () -> return {info: 'returns microsoft things a bit nicer'}
+
+API.add 'use/microsoft/graph/journal', () -> return msgraph_journal.search this
+API.add 'use/microsoft/graph/journal/:jid', get: () -> return msgraph_journal.get this.urlParams.jid
+API.add 'use/microsoft/graph/import', post: () -> return API.use.microsoft.graph.import this.queryParams.what, this.request.body
 
 API.add 'use/microsoft/academic/evaluate', get: () -> return API.use.microsoft.academic.evaluate this.queryParams
 
@@ -12,13 +17,21 @@ API.use ?= {}
 API.use.microsoft = {}
 API.use.microsoft.academic = {}
 API.use.microsoft.bing = {}
+API.use.microsoft.graph = {}
 
 # MS academic graph is a bit annoyingly hard to use, but the raw data is more useful. Getting the raw data 
 # is a hassle too though they only distribute it via azure. However the open academic graph has dumps about a year 
 # out of date, which may be sufficient enough to get the coverage we want (which isn't actually article-level, we 
 # get that from crossref etc, instead we want affiliations etc). So, work on getting all the open graph dumps and 
-# build a local index to query instead
-# https://www.openacademic.ai/oag/
+# build a local index to query instead - https://www.openacademic.ai/oag/
+API.use.microsoft.graph.import = (what='journal', recs) ->
+  if _.isArray(recs) and recs.length
+    if what is 'journal'
+      return msgraph_journal.insert recs
+  else
+    return undefined
+
+
 
 # https://docs.microsoft.com/en-gb/azure/cognitive-services/academic-knowledge/queryexpressionsyntax
 # https://docs.microsoft.com/en-gb/azure/cognitive-services/academic-knowledge/paperentityattributes

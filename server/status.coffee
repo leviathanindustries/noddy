@@ -5,6 +5,13 @@ import os from 'os'
 import rsync from 'rsync'
 import Future from 'fibers/future'
 import fs from 'fs'
+import moment from 'moment'
+
+
+
+status_present = new API.collection 'status_present'
+
+
 
 API.add 'status', get: () -> return API.status this.queryParams.email, this.queryParams.accounts, this.queryParams.service, this.queryParams.use, this.queryParams.job, this.queryParams.index, this.queryParams.detailed
 
@@ -35,7 +42,11 @@ API.add 'status/bounce',
   get:
     roleRequired: if API.settings.dev then undefined else 'admin.bounce'
     action: () -> return API.status.bounce()
-    
+
+API.add 'status/present', get: () -> return API.status.present this.queryParams.who
+
+API.add 'status/load', get: () -> return API.status.load this.queryParams.values, this.queryParams.group, this.queryParams.q, this.queryParams.functions, this.queryParams.notify
+
 
 
 API.status = (email=false, accounts=false, service=false, use=false, job=false, index=true, detailed=false) ->
@@ -155,6 +166,7 @@ API.status.sync = (ips,src,dest) ->
           .shell('ssh')
           .flags('azL')
           .set('exclude','.meteor/local')
+          #.set('delete-after')
           .source(src)
           .destination(ip + ':' + dest)
         rs.execute((error, code, cmd) -> 
@@ -233,3 +245,101 @@ if API.settings.cluster?.ip? and API.status.ip() not in API.settings.cluster.ip
     else
       console.log 'TRIGGERING AUTOMATIC SYNC TO CLUSTER MACHINES DUE TO MAIN APP RELOAD ON FILE CHANGE WHILE RUNNING'
     API.status.sync()
+
+
+
+API.status.present = (who) ->
+  if typeof who is 'string' and not already = status_present.find 'who.exact:"' + who + '" AND createdAt:>' + (Date.now() - 60000)
+    status_present.insert who: who
+  return history: (r._source for r in status_present.search('*', {newest: true, size:100}).hits.hits), who: status_present.terms 'who'
+# TODO add a loop to check from main machine if nobody has been present for five mins, send an alert
+
+
+API.status._lastwarn = false
+API.status._lastload = false
+API.status.load = (values=true, group=false, q='*', functions=false, notify=false) ->
+  q += '*' if q.indexOf('*') is -1
+  group = group.split(',') if typeof group is 'string'
+  day = Math.floor((Date.now()-moment().startOf('day').valueOf())/864000)/100
+  groups = {}
+  times = ['today','yesterday']
+  week = moment().subtract(7,'d').format('YYYYMMDD')
+  month = moment().subtract(1,'months').format('YYYYMMDD')
+  times.push week
+  times.push month
+  if API.status._lastload isnt false and API.status._lastload[week]?
+    groups = API.status._lastload
+    times = ['today']
+  tq = if group isnt false then 'group.exact:"'+group.join('" OR group.exact:"') + '"' else q
+  tq = '(' + tq + ') AND ' + q if group isnt false and q isnt '*'
+  if functions is false and group isnt false
+    functions = true if API.log.query({q: '(' + tq + ') AND path.exact:*', size: 0}).hits.total is 0
+  for t in times
+    for f in API.log.query({q: tq, size: 0, terms: [if group isnt false then 'path.exact' else if functions isnt false then 'function.exact' else 'group.exact']}, t, true).facets[if group isnt false then 'path.exact' else if functions isnt false then 'function.exact' else 'group.exact'].terms
+      if group isnt false
+        for fg in group
+          if f.term.indexOf((if functions is false then '' else '.') + fg) isnt -1
+            ft = f.term.split((if functions is false then '' else '.') + fg)[1]
+            break
+      else
+        ft = f.term.split('.')[0]
+      ft = ft.split(',')[0].replace(/"/g,'').replace('[','') if ft.indexOf('[') is 0 # skip some bad group names created in logs in error on dev
+      groups[ft] ?= group: ft, value: 0
+      if t is 'today'
+        groups[ft].value = API.log.query({q: 'group.exact:"' + ft + '" AND createdAt:>' + (Date.now()-300000) + (if q isnt '*' then ' AND ' + q else ''), size: 0}).hits.total
+        if values
+          bs = API.log.query({q: (if group isnt false then 'group.exact:"' + ft + '"' else if functions then 'function.exact:"'+f+'"' else 'path.exact:"'+f+'"') + (if q isnt '*' then ' AND ' + q else ''), size: 0, aggs: {history: {date_histogram: {field: 'createdAt', interval: '5m'}}}}, 'today', true).aggregations.history.buckets
+          for b of bs
+            groups[ft].values ?= []
+            if b isnt '0'
+              cd = 0
+              while cd < (bs[b].key - bs[parseInt(b)-1].key)/300000
+                groups[ft].values.push 0
+                cd += 1
+            groups[ft].values.push bs[b].doc_count
+      groups[ft][t] = f.count
+  for s in API.log.stack(if q isnt '*' then q else undefined)
+    for gs in (if group isnt false then (if s.path then [s.path] else if functions and s.function then [s.function] else []) else (if functions and s.function then [s.function] else if typeof s.group is 'string' then [s.group] else s.group ? []))
+      hg = if group is false then true else false
+      if hg is false
+        for egs in group
+          if gs.indexOf(egs) isnt -1
+            hg = egs
+            break
+      if parseInt(s.createdAt) > Date.now()-300000 and hg
+        gs = gs.split(hg)[1] if group isnt false
+        groups[gs] ?= group: gs, value: 1
+        groups[gs].value += 1
+        groups[gs].stack ?= 0
+        groups[gs].stack += 1
+  warn = []
+  for g of groups
+    groups[g].today ?= 0
+    groups[g].yesterday ?= 0
+    groups[g].weekago = groups[g][week] ? 0
+    groups[g].monthago = groups[g][month] ? 0
+    groups[g].avg = Math.floor (groups[g].yesterday + groups[g].weekago + groups[g].monthago)/3
+    groups[g].day = day
+    groups[g].interpolate = Math.ceil groups[g].avg * day #* (groups[g].avg/groups[g].today)
+    groups[g].percent = if groups[g].interpolate is 0 then 0 else Math.floor (groups[g].today / groups[g].interpolate)*100
+    if values
+      groups[g].values ?= []
+      while groups[g].values.length < (86400000/300000)*day
+        groups[g].values.unshift 0
+      if groups[g].percent > 250 or groups[g].percent < 30
+        groups[g].days = []
+        for d in API.log.query({q: (if group isnt false then 'path:"' + g else if functions then 'function.exact:"' + g else 'group.exact:"' + g) + '" AND createdAt:>' + moment().subtract(1,'months').valueOf() + (if q isnt '*' then ' AND ' + q else ''), size: 0, aggs: {history: {date_histogram: {field: 'createdAt', interval: 'day'}}}}, '', true).aggregations.history.buckets
+          groups[g].days.push d.doc_count
+        groups[g].dvg = Math.floor groups[g].days.reduce(((a, b) => a + b), 0) / 30
+        groups[g].warn = groups[g].interpolate >= groups[g].dvg or groups[g].interpolate < Math.min.apply Math, groups[g].days
+        warn.push(g) if groups[g].warn
+  API.status._lastload = groups
+  if warn.length and notify and (API.status._lastwarn is false or API.status._lastwarn < Date.now()-300000)
+    API.status._lastwarn = Date.now()
+    API.mail.send
+      from: 'alert@cottagelabs.com'
+      to: 'alert@cottagelabs.com'
+      subject: 'Status load levels outside normal ranges for ' + warns.join(',')
+      text: warn.join(',') + '\n\n' + JSON.stringify groups, '', 2
+  return groups
+

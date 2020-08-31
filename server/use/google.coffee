@@ -78,6 +78,8 @@ API.add 'use/google/knowledge/find',
 		action: () -> return API.use.google.knowledge.find this.queryParams.q
 
 API.add 'use/google/sheets/:sheetid', get: () -> return API.use.google.sheets.feed this.urlParams.sheetid, this.queryParams
+API.add 'use/google/sheets/api/:sheetid', get: () -> return API.use.google.sheets.api.get this.urlParams.sheetid, this.queryParams
+API.add 'use/google/sheets/api/:sheetid/values', get: () -> return API.use.google.sheets.api.values this.urlParams.sheetid, this.queryParams
 
 API.add 'use/google/clear',
 	get: () ->
@@ -275,3 +277,49 @@ API.use.google.sheets.feed = (sheetid,opts={}) ->
 	return values
 
 
+
+API.use.google.sheets.api = {}
+# https://developers.google.com/sheets/api/reference/rest
+API.use.google.sheets.api.get = (sheetid, opts={}) ->
+	opts = {stale:opts} if typeof opts is 'number'
+	opts.stale ?= 3600000
+	opts.key ?= API.settings.use.google.serverkey
+	try
+		sheetid = sheetid.split('/spreadsheets/d/')[1].split('/')[0] if sheetid.indexOf('/spreadsheets/d/') isnt -1
+		url = 'https://sheets.googleapis.com/v4/spreadsheets/' + sheetid
+		url += '/values/' + opts.start + ':' + opts.end if opts.start and opts.end
+		url += '?key=' + opts.key
+		API.log 'Getting google sheet via API ' + url
+		g = HTTP.call 'GET', url
+		return g.data ? g
+	catch err
+		return err
+
+API.use.google.sheets.api.values = (sheetid, opts={}) ->
+	opts.start ?= 'A1'
+	if not opts.end?
+		sheet = if typeof sheetid is 'object' then sheetid else API.use.google.sheets.api.get sheetid, opts
+		opts.sheet ?= 0 # could also be the ID or title of a sheet in the sheet... if so iterate them to find the matching one
+		rows = sheet.sheets[opts.sheet].properties.gridProperties.rowCount
+		cols = sheet.sheets[opts.sheet].properties.gridProperties.columnCount
+		opts.end = ''
+		ls = Math.floor cols/26
+		opts.end += (ls + 9).toString(36).toUpperCase() if ls isnt 0
+		opts.end += (cols + 9-ls).toString(36).toUpperCase()
+		opts.end += rows
+	values = []
+	try
+		keys = false
+		res = API.use.google.sheets.api.get sheetid, opts
+		opts.keys ?= 0 # always assume keys? where to tell which row to get them from? 0-indexed or 1-indexed or named?
+		keys = opts.keys if Array.isArray opts.keys
+		for s in res.values
+			if opts.keys? and keys is false
+				keys = s
+			else
+				obj = {}
+				for k of keys
+					try
+						obj[keys[k]] = s[k] if s[k] isnt ''
+				values.push(obj) if not _.isEmpty obj
+	return values

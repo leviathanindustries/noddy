@@ -173,7 +173,7 @@ class share.Route
                     rq[q] = true
                   else if rq[q] is 'false'
                     rq[q] = false
-                  else if typeof rq[q] is 'string' and rq[q].replace(/[0-9]/g,'').length is 0 and (rq[q].length > 1 or not rq[q].startsWith('0'))
+                  else if typeof rq[q] is 'string' and rq[q].replace(/[0-9]/g,'').length is 0 and not rq[q].startsWith('0')
                     try
                       pn = parseInt rq[q]
                       rq[q] = pn if not isNaN pn

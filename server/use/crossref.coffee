@@ -10,7 +10,7 @@ header = {
 }
 
 API.use ?= {}
-API.use.crossref = {works:{},journals:{}}
+API.use.crossref = {works:{},journals:{}, publishers: {}, funders: {}}
 
 API.add 'use/crossref/works/doi/:doipre/:doipost',
   get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format
@@ -23,13 +23,15 @@ API.add 'use/crossref/works/doi/:doipre/:doipost/:doimore',
 API.add 'use/crossref/works',
   get: () -> 
     if this.queryParams.title
-      return API.use.crossref.works.title this.queryParams.title, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format
+      return API.use.crossref.works.title this.queryParams.title, this.queryParams.format
+    else if this.queryParams.citation
+      return API.use.crossref.works.title this.queryParams.citation, this.queryParams.format
     else if this.queryParams.doi
       return API.use.crossref.works.doi this.queryParams.doi, this.queryParams.format
     else
-      return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format
+      return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query ? this.queryParams), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format, this.queryParams.funder, this.queryParams.publisher, (this.queryParams.issn ? this.queryParams.journal)
 API.add 'use/crossref/works/search',
-  get: () -> return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format
+  get: () -> return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query ? this.queryParams), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format, this.queryParams.funder, this.queryParams.publisher, (this.queryParams.issn ? this.queryParams.journal)
 
 API.add 'use/crossref/works/published',
   get: () -> return API.use.crossref.works.published (this.queryParams.q ? this.queryParams.query), undefined, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
@@ -60,7 +62,10 @@ API.add 'use/crossref/journals/:issn/works',
   get: () -> return API.use.crossref.journals.works this.urlParams.issn
 
 API.add 'use/crossref/journals/:issn/works/dois',
-  get: () -> return API.use.crossref.journals.dois this.urlParams.issn
+  get: () -> return API.use.crossref.journals.dois this.urlParams.issn, this.queryParams.from, this.queryParams.size, this.queryParams.count
+
+API.add 'use/crossref/publishers',
+  get: () -> return API.use.crossref.publishers.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter
 
 API.add 'use/crossref/reverse',
   get: () -> return API.use.crossref.reverse [this.queryParams.q ? this.queryParams.query ? this.queryParams.title], this.queryParams.score, this.queryParams.format
@@ -170,23 +175,30 @@ API.use.crossref.journals.works = (issn,from,size=100) ->
   catch
     return undefined
 
-API.use.crossref.journals.dois = (issn) ->
+API.use.crossref.journals.dois = (issn,from,size=1000,count) ->
   try
+    size = count if count? and count < size
     dois = []
-    works = API.use.crossref.journals.works issn, undefined, 10000
-    dois.push(w.DOI) for w in works.items
-    total = works['total-results']
-    counter = 0
-    while counter < total
-      counter += 10000
-      works = API.use.crossref.journals.works issn, counter, 10000
+    works = API.use.crossref.journals.works issn, from, size # 1000 is max acceptable size
+    if works?.items?
       dois.push(w.DOI) for w in works.items
+      total = works['total-results']
+      total = count if count? and count < total
+      if total > dois.length
+        counter = 0
+        while counter < total
+          counter += size
+          works = API.use.crossref.journals.works issn, counter, size
+          if works?.items?
+            dois.push(w.DOI) for w in works.items
+          else
+            counter = total
     return dois
   catch
     return undefined
 
 API.use.crossref.journals.search = (qrystr,from,size,filter) ->
-  url = 'https://api.crossref.org/journals?';
+  url = 'https://api.crossref.org/journals?'
   if qrystr and qrystr isnt 'all'
     qry = qrystr.replace(/\w+?\:/g,'').replace(/ AND /g,'+').replace(/ OR /g,' ').replace(/ NOT /g,'-').replace(/ /g,'+')
     url += 'query=' + qry
@@ -198,6 +210,30 @@ API.use.crossref.journals.search = (qrystr,from,size,filter) ->
   res = HTTP.call 'GET', url, {headers: header}
   return if res.statusCode is 200 then { total: res.data.message['total-results'], data: res.data.message.items, facets: res.data.message.facets} else { status: 'error', data: res}
 
+API.use.crossref.publishers.search = (qrystr, from, size, filter) ->
+  url = 'https://api.crossref.org/members?'
+  if qrystr and qrystr isnt 'all'
+    url += 'query=' + encodeURIComponent qrystr
+  url += '&offset=' + from if from?
+  url += '&rows=' + size if size?
+  url += '&filter=' + filter if filter?
+  url = url.replace('?&','?')
+  API.log 'Using crossref for ' + url
+  res = HTTP.call 'GET', url, {headers: header}
+  return if res.statusCode is 200 then { total: res.data.message['total-results'], data: res.data.message.items, facets: res.data.message.facets} else { status: 'error', data: res}
+
+API.use.crossref.funders.search = (qrystr, from, size, filter) ->
+  url = 'https://api.crossref.org/funders?'
+  if qrystr and qrystr isnt 'all'
+    qry = qrystr.replace(/ /g,'+')
+    url += 'query=' + qry
+  url += '&offset=' + from if from?
+  url += '&rows=' + size if size?
+  url += '&filter=' + filter if filter?
+  url = url.replace('?&','?')
+  API.log 'Using crossref for ' + url
+  res = HTTP.call 'GET', url, {headers: header}
+  return if res.statusCode is 200 then { total: res.data.message['total-results'], data: res.data.message.items, facets: res.data.message.facets} else { status: 'error', data: res}
 
 
 API.use.crossref.works.doi = (doi,format) ->
@@ -216,30 +252,65 @@ API.use.crossref.works.doi = (doi,format) ->
     catch
       return undefined
 
-API.use.crossref.works.title = (title,format=true) ->
-  if cached = API.http.cache title, 'crossref_works_title'
+API.use.crossref.works.title = (title, format=true) ->
+  metadata = {} # extra metadata can be passed in to help with citation matching
+  alt = false
+  if typeof title is 'object'
+    metadata = title
+    title = metadata.title ? metadata.citation # best to use title or citation first?
+    alt = metadata.title if metadata.title? and title isnt metadata.title
+  if false #cached = API.http.cache title, 'crossref_works_title'
     return if format then API.use.crossref.works.format(cached) else cached
   else
-    res = API.use.crossref.works.search {'query.bibliographic': title.replace(/\w+?\:/g,'').replace(/ /g,'+')}, undefined, 200, undefined, undefined, undefined, false
+    res = API.use.crossref.works.search {'query.bibliographic': title.replace(/ /g,'+')}, undefined, 100, undefined, undefined, undefined, false
     match = false
+    possibles = []
+    ltitle = title.toLowerCase().replace(/['".,\/\^&\*;:!\?#\$%{}=\-\+_`~()]/g,' ').replace(/\s{2,}/g,' ').trim()
+    alt = alt.toLowerCase().replace(/['".,\/\^&\*;:!\?#\$%{}=\-\+_`~()]/g,' ').replace(/\s{2,}/g,' ').trim() if alt
     if res?.data? and res.data.length
       for rec in res.data
         if rec.title? and rec.title.length
-          rt = if typeof rec.title is 'string' then rec.title else rec.title[0]
-          title = title.toLowerCase().replace(/['".,\/\^&\*;:!\?#\$%{}=\-_`~()]/g,' ').replace(/\s{2,}/g,' ').trim()
-          rt = rt.toLowerCase().replace(/['".,\/\^&\*;:!\?#\$%{}=\-_`~()]/g,' ').replace(/\s{2,}/g,' ').trim()
-          if title is rt
-            match = rec
-            break
+          rt = (if typeof rec.title is 'string' then rec.title else rec.title[0]).toLowerCase()
+          if rec.subtitle?
+            st = (if typeof rec.subtitle is 'string' then rec.subtitle else rec.subtitle[0]).toLowerCase()
+            if typeof st is 'string' and st.length and st not in rt
+              rt += ' ' + st 
+          rt = rt.replace(/['".,\/\^&\*;:!\?#\$%{}=\-\+_`~()]/g,' ').replace(/\s{2,}/g,' ').trim()
+          if (ltitle.indexOf(rt) isnt -1 or rt.indexOf(ltitle) isnt -1 or (alt and rt.indexOf(alt) isnt -1)) and ltitle.length/rt.length > 0.6 and ltitle.length/rt.length < 1.4
+            if _.isEmpty(metadata) and rec.type is 'journal-article'
+              match = rec
+              break
+            else
+              matches = true
+              fr = API.use.crossref.works.format rec
+              for k of metadata
+                if k not in ['citation','title'] and typeof metadata[k] in ['string','number']
+                  matches = not fr[k]? or typeof fr[k] not in ['string','number'] or fr[k].toLowerCase() is metadata[k].toLowerCase()
+              if matches
+                match = rec
+                break
+              else
+                possibles.push rec
+    if match is false and possibles.length
+      for p in possibles
+        if p.type is 'journal-article' # prefer journal article
+          match = p
+          break
     if match isnt false
       #API.http.cache title, 'crossref_works_title', match
       return if format then API.use.crossref.works.format(match) else match
+    else if metadata.title and metadata.citation?
+      return API.use.crossref.works.title metadata.citation
     else
       return undefined
 
-API.use.crossref.works.search = (qrystr,from,size,filter,sort,order='desc',format) ->
+API.use.crossref.works.search = (qrystr,from,size,filter,sort,order='desc',format,funder,publisher,journal) ->
   # max size is 1000
-  url = 'https://api.crossref.org/works?'
+  url = 'https://api.crossref.org'
+  url += '/funders/' + funder if funder # crossref funder ID
+  url += '/members/' + publisher if publisher # crossref publisher ID
+  url += '/journals/' + journal if journal # journal issn
+  url += '/works?'
   url += 'sort=' + sort + '&order=' + order + '&' if sort?
   # more specific queries can be made using:
   #query.container-title	Query container-title aka. publication name
@@ -255,8 +326,8 @@ API.use.crossref.works.search = (qrystr,from,size,filter,sort,order='desc',forma
   # + or - or space, all just result in OR queries, with increasing large result sets
   if typeof qrystr is 'object'
     for k of qrystr
-      if k not in ['from','size','filter','sort','order','format']
-        ky = if k is 'title' then 'query.bibliographic' else if k is 'journal' then 'query.container-title' else if k in ['author','editor','chair','translator','contributor','affiliation','bibliographic'] then 'query.' + k else k
+      if k not in ['from','size','filter','sort','order','format','funder','publisher','journal','issn'] or (k is 'funder' and not funder?) or (k is 'publisher' and not publisher?) or (k in ['issn','journal'] and not journal?)
+        ky = if k in ['title','citation','issn'] then 'query.bibliographic' else if k is 'journal' then 'query.container-title' else if k in ['author','editor','chair','translator','contributor','affiliation','bibliographic'] then 'query.' + k else k
         url += ky + '=' + encodeURIComponent(qrystr[k]) + '&' 
   else if qrystr and qrystr isnt 'all'
     qry = qrystr.replace(/\w+?\:/g,'') #.replace(/ AND /g,'+').replace(/ NOT /g,'-')
@@ -268,8 +339,8 @@ API.use.crossref.works.search = (qrystr,from,size,filter,sort,order='desc',forma
   url += 'filter=' + encodeURIComponent(filter) + '&'if filter? and filter isnt ''
   url = url.replace('?&','?').replace(/&$/,'') # tidy any params coming immediately after the start of search query param signifier, as it makes crossref error out
   API.log 'Using crossref for ' + url
-  res = HTTP.call 'GET', url, {headers: header}
-  if res.statusCode is 200
+  try res = HTTP.call 'GET', url, {headers: header}
+  if res?.statusCode is 200
     ri = res.data.message.items
     if format
       for r of ri
@@ -293,6 +364,9 @@ API.use.crossref.works.indexed = (qrystr,startdate,enddate,from,size,filter,orde
 
 API.use.crossref.works.format = (rec, metadata={}) ->
   try metadata.title = rec.title[0]
+  try
+    if rec.subtitle? and rec.subtitle.length and rec.subtitle[0].length
+      metadata.title += ': ' + rec.subtitle[0] 
   try metadata.doi = rec.DOI if rec.DOI?
   try metadata.doi = rec.doi if rec.doi? # just in case
   try metadata.crossref_type = rec.type

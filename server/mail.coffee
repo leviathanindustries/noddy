@@ -16,6 +16,21 @@ API.add 'mail/send',
       #API.mail.send()
       return {}
 
+API.add 'mail/feedback',
+  post: () ->
+    try
+      from = this.queryParams.from ? API.settings.mail?.feedback?[this.queryParams.token]?.from ? "sysadmin@cottagelabs.com"
+      to = API.settings.mail?.feedback?[this.queryParams.token]?.to
+      service = API.settings.mail?.feedback?[this.queryParams.token]?.service
+      subject = API.settings.mail?.feedback?[this.queryParams.token]?.subject ? "Feedback"
+    if to?
+      API.mail.send
+        service: service
+        from: from
+        to: to
+        subject: subject
+        text: this.queryParams.content
+    return {}
 API.add 'mail/feedback/:token',
   get: () ->
     try
@@ -184,19 +199,21 @@ API.mail.substitute = (content,vars,markdown) ->
         rg = new RegExp('{{'+ov+'}}','gi')
         content = content.replace rg, (if _.isArray(obj[o]) then obj[o].join(', ') else (if typeof obj[o] is 'string' then obj[o] else (if obj[o] is true then 'Yes' else (if obj[o] is false then 'No' else ''))))
   _rv vars
+  kg = new RegExp('{{.*?}}','gi')
   if content.indexOf('{{') isnt -1
     vs = ['subject','from','to','cc','bcc']
     for k in vs
       key = if content.toLowerCase().indexOf('{{'+k) isnt -1 then k else undefined
       if key
         keyu = if content.indexOf('{{'+key.toUpperCase()) isnt -1 then key.toUpperCase() else key
-        val = content.split('{{'+keyu)[1].split('}}')[0].trim()
+        val = content.split('{{'+keyu)[1]
+        val = val.replace(kg,'') if val.split('}}')[0].indexOf('{{') # get rid of any vals within the keyed content that were not available in vars to fill in
+        val = val.split('}}')[0].trim()
         ret[key] = val if val
-        kg = new RegExp('{{'+keyu+'.*?}}','gi')
-        content = content.replace(kg,'')
+        kkg = new RegExp('{{'+keyu+'.*?}}','gi')
+        content = content.replace(kkg,'')
   if content.indexOf('{{') isnt -1
-    kg = new RegExp('{{.*?}}','gi')
-    content = content.replace(kg,'')
+    content = content.replace(kg,'') # get rid of any vals that were not available in vars to fill in
   ret.content = content
   if markdown
     ret.html = marked(ret.content)
