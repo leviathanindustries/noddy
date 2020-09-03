@@ -166,6 +166,9 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial, dev
   # if no version number provided, versioning of the update will still be used for internal clash avoidance
   # and will not necessarily be versioned to the version the user last saw - just to the last version this update method retrieved immediately before the action.
   return undefined if obj?.script? and partial isnt true
+  if typeof q is 'object' and q._id? and obj is undefined
+    obj = q
+    q = obj._id
   q ?= obj._id
   return false if not q?
   res = this.get q, true, dev

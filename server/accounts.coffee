@@ -90,7 +90,13 @@ API.add 'accounts/logout/:id',
 API.add 'accounts/:id',
   get:
     authRequired: true
-    action: () -> return API.accounts.details this.urlParams.id, this.user
+    action: () -> 
+      if this.queryParams.update is true and this.userId? and API.accounts.auth 'root', this.user
+        delete this.queryParams.update
+        delete this.queryParams.apikey
+        if not _.isEmpty this.queryParams
+          return API.accounts.update this.urlParams.id, this.queryParams, this.user
+      return API.accounts.details this.urlParams.id, this.user
   post:
     authRequired: true
     action: () ->
