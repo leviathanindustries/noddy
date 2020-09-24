@@ -15,7 +15,7 @@ API.add 'ping.png',
     if not API.settings.ping?.nonce? or this.queryParams.n is API.settings.ping.nonce
       data = this.queryParams
       delete data.n
-      data.ip = this.request.headers['x-real-ip']
+      data.ip = this.request.headers['x-forwarded-for'] ? this.request.headers['cf-connecting-ip'] ? this.request.headers['x-real-ip']
       data.forwarded = this.request.headers['x-forwarded-for']
       try
         res = HTTP.call 'GET', 'http://ipinfo.io/' + data.ip + (if API.settings?.use?.ipinfo?.token? then '?token=' + API.settings.use.ipinfo.token else '')

@@ -44,7 +44,7 @@ upstream noddy {
 #REDIRECT PORT 80 TO PORT 443 FOR ANYTHING THAT SHOULD ONLY SERVE ON 443
 server {
     listen      80;
-    server_name api.cottagelabs.com dev.api.cottagelabs.com cluster.api.cottagelabs.com local.api.cottagelabs.com lvatn.com api.lvatn.com dev.lvatn.com cluster.lvatn.com local.lvatn.com;
+    server_name api.cottagelabs.com dev.api.cottagelabs.com cluster.api.cottagelabs.com api.lvatn.com dev.lvatn.com cluster.lvatn.com;
     return 301 https://$host$request_uri;
 }
 
@@ -53,6 +53,14 @@ server {
     server_name     api.cottagelabs.com;
     ssl_certificate /etc/letsencrypt/live/api.cottagelabs.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/api.cottagelabs.com/privkey.pem;
+
+    location ^~ /.well-known/acme-challenge/ {
+        default_type "text/plain";
+        root /var/www/letsencrypt;
+    }
+    location = /.well-known/acme-challenge/ {
+        return 404;
+    }
 
     location / {
         # DO NOT add the usual origin * header to the api and dev api routes, it is already set by the software in a default way, and setting it twice results in errors
@@ -77,34 +85,20 @@ server {
     }
 }
 
-# LIVE API CONNECTED DIRECTLY RATHER THAN THROUGH CLUSTER
-server {
-    listen          443 ssl spdy;
-    server_name     local.api.cottagelabs.com;
-    ssl_certificate /etc/letsencrypt/live/local.api.cottagelabs.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/local.api.cottagelabs.com/privkey.pem;
-
-    location / {
-        add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
-        add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Disposition';
-        proxy_pass http://noddy_local/api/;
-        proxy_redirect off;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Authorization "";
-        # proxy_buffering off;
-    }
-}
-
-
-
 # LIVE API USING ONLY THE CLUSTER
 server {
     listen          443 ssl spdy;
     server_name     cluster.api.cottagelabs.com;
     ssl_certificate /etc/letsencrypt/live/cluster.api.cottagelabs.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/cluster.api.cottagelabs.com/privkey.pem;
+
+    location ^~ /.well-known/acme-challenge/ {
+        default_type "text/plain";
+        root /var/www/letsencrypt;
+    }
+    location = /.well-known/acme-challenge/ {
+        return 404;
+    }
 
     location / {
         add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
@@ -133,6 +127,14 @@ server {
     ssl_certificate /etc/letsencrypt/live/dev.api.cottagelabs.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/dev.api.cottagelabs.com/privkey.pem;
 
+    location ^~ /.well-known/acme-challenge/ {
+        default_type "text/plain";
+        root /var/www/letsencrypt;
+    }
+    location = /.well-known/acme-challenge/ {
+        return 404;
+    }
+
     location / {
         add_header Strict-Transport-Security "max-age=31536000;";
         add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
@@ -151,18 +153,28 @@ server {
 
 
 server {
-        server_name static.cottagelabs.com;
-        listen 80;
-        listen 443 ssl;
-        ssl_certificate /etc/letsencrypt/live/static.cottagelabs.com/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/static.cottagelabs.com/privkey.pem;
-        root /home/cloo/static;
-        location / {
-            expires           0;
-            add_header        Cache-Control private;
-            add_header Access-Control-Allow-Origin *;
-            autoindex on;
-        }
+    server_name static.cottagelabs.com;
+    listen 80;
+    listen 443 ssl;
+    ssl_certificate /etc/letsencrypt/live/static.cottagelabs.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/static.cottagelabs.com/privkey.pem;
+
+    location ^~ /.well-known/acme-challenge/ {
+        default_type "text/plain";
+        root /var/www/letsencrypt;
+    }
+    location = /.well-known/acme-challenge/ {
+        return 404;
+    }
+
+    root /home/cloo/static;
+
+    location / {
+        expires           0;
+        add_header        Cache-Control private;
+        add_header Access-Control-Allow-Origin *;
+        autoindex on;
+    }
 }
 
 
@@ -180,6 +192,14 @@ server {
     ssl_prefer_server_ciphers on;
     ssl_stapling on;
     #add_header Strict-Transport-Security "max-age=31536000;";
+
+    location ^~ /.well-known/acme-challenge/ {
+        default_type "text/plain";
+        root /var/www/letsencrypt;
+    }
+    location = /.well-known/acme-challenge/ {
+        return 404;
+    }
 
     location / {
         # DO NOT add the usual origin * header to the api and dev api routes, it is already set by the software in a default way, and setting it twice results in errors
@@ -217,6 +237,14 @@ server {
     ssl_stapling on;
     #add_header Strict-Transport-Security "max-age=31536000;";
 
+    location ^~ /.well-known/acme-challenge/ {
+        default_type "text/plain";
+        root /var/www/letsencrypt;
+    }
+    location = /.well-known/acme-challenge/ {
+        return 404;
+    }
+
     location / {
         add_header Strict-Transport-Security "max-age=31536000;";
         add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
@@ -231,35 +259,6 @@ server {
     }
 }
 
-# LIVE API CONNECTED DIRECTLY RATHER THAN THROUGH CLUSTER
-server {
-    listen          443 ssl spdy;
-    server_name     local.lvatn.com;
-
-    ssl_certificate /etc/letsencrypt/live/local.lvatn.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/local.lvatn.com/privkey.pem;
-    ssl on;
-    ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
-    ssl_ciphers "HIGH:!aNULL:!MD5 or HIGH:!aNULL:!MD5:!3DES";
-    ssl_prefer_server_ciphers on;
-    ssl_stapling on;
-    #add_header Strict-Transport-Security "max-age=31536000;";
-
-    location / {
-        add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
-        add_header Access-Control-Allow-Headers 'X-apikey,X-id,DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Content-Disposition';
-        proxy_pass http://noddy_local/api/;
-        proxy_redirect off;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header Authorization "";
-        # proxy_buffering off;
-    }
-}
-
-
-
 # LIVE API USING ONLY THE CLUSTER
 server {
     listen          443 ssl spdy;
@@ -273,6 +272,14 @@ server {
     ssl_prefer_server_ciphers on;
     ssl_stapling on;
     #add_header Strict-Transport-Security "max-age=31536000;";
+
+    location ^~ /.well-known/acme-challenge/ {
+        default_type "text/plain";
+        root /var/www/letsencrypt;
+    }
+    location = /.well-known/acme-challenge/ {
+        return 404;
+    }
 
     location / {
         add_header Access-Control-Allow-Methods 'GET, PUT, POST, DELETE, OPTIONS';
@@ -299,8 +306,16 @@ server {
     ssl_prefer_server_ciphers on;
     ssl_stapling on;
     #add_header Strict-Transport-Security "max-age=31536000;";
-
     root /home/cloo/static;
+
+    location ^~ /.well-known/acme-challenge/ {
+        default_type "text/plain";
+        root /var/www/letsencrypt;
+    }
+    location = /.well-known/acme-challenge/ {
+        return 404;
+    }
+
     location / {
         expires           0;
         add_header        Cache-Control private;

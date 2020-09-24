@@ -255,9 +255,11 @@ API.status.present = (who) ->
 # TODO add a loop to check from main machine if nobody has been present for five mins, send an alert
 
 
-API.status._lastwarn = false
+API.status._lastwarn = {}
 API.status._lastload = false
+API.status._lastloadrun = Date.now()
 API.status.load = (values=true, group=false, q='*', functions=false, notify=false) ->
+  API.status._lastloadrun = Date.now()
   q += '*' if q.indexOf('*') is -1
   group = group.split(',') if typeof group is 'string'
   day = Math.floor((Date.now()-moment().startOf('day').valueOf())/864000)/100
@@ -309,6 +311,9 @@ API.status.load = (values=true, group=false, q='*', functions=false, notify=fals
       if parseInt(s.createdAt) > Date.now()-300000 and hg
         gs = gs.split(hg)[1] if group isnt false
         groups[gs] ?= group: gs, value: 1
+        groups[gs].today ?= 0
+        groups[gs].today += 1
+        groups[gs].value ?= 0
         groups[gs].value += 1
         groups[gs].stack ?= 0
         groups[gs].stack += 1
@@ -321,25 +326,48 @@ API.status.load = (values=true, group=false, q='*', functions=false, notify=fals
     groups[g].avg = Math.floor (groups[g].yesterday + groups[g].weekago + groups[g].monthago)/3
     groups[g].day = day
     groups[g].interpolate = Math.ceil groups[g].avg * day #* (groups[g].avg/groups[g].today)
-    groups[g].percent = if groups[g].interpolate is 0 then 0 else Math.floor (groups[g].today / groups[g].interpolate)*100
+    groups[g].percent = if groups[g].interpolate is 0 then 0 else Math.ceil (groups[g].today / groups[g].interpolate)*100
     if values
       groups[g].values ?= []
       while groups[g].values.length < (86400000/300000)*day
         groups[g].values.unshift 0
-      if groups[g].percent > 250 or groups[g].percent < 30
-        groups[g].days = []
-        for d in API.log.query({q: (if group isnt false then 'path:"' + g else if functions then 'function.exact:"' + g else 'group.exact:"' + g) + '" AND createdAt:>' + moment().subtract(1,'months').valueOf() + (if q isnt '*' then ' AND ' + q else ''), size: 0, aggs: {history: {date_histogram: {field: 'createdAt', interval: 'day'}}}}, '', true).aggregations.history.buckets
-          groups[g].days.push d.doc_count
-        groups[g].dvg = Math.floor groups[g].days.reduce(((a, b) => a + b), 0) / 30
-        groups[g].warn = groups[g].interpolate >= groups[g].dvg or groups[g].interpolate < Math.min.apply Math, groups[g].days
-        warn.push(g) if groups[g].warn
+      if groups[g].day > 0.15 and groups[g].today isnt groups[g].avg and (groups[g].percent > 250 or groups[g].percent < 30)
+        # compare to this time yesterday
+        groups[g].yn = API.log.query({q: (if group isnt false then 'path:"' + g else if functions then 'function.exact:"' + g else 'group.exact:"' + g) + '" AND createdAt:<' + moment().subtract(1,'day').valueOf() + (if q isnt '*' then ' AND ' + q else ''), size: 0}, 'yesterday', true).hits.total
+        if groups[g].yn > groups[g].today # if more by the same time yesterday than at current time today, continue to check if a warning is necessary 
+          groups[g].days = []
+          for d in API.log.query({q: (if group isnt false then 'path:"' + g else if functions then 'function.exact:"' + g else 'group.exact:"' + g) + '" AND createdAt:>' + moment().subtract(1,'months').valueOf() + (if q isnt '*' then ' AND ' + q else ''), size: 0, aggs: {history: {date_histogram: {field: 'createdAt', interval: 'day'}}}}, '', true).aggregations.history.buckets
+            groups[g].days.push d.doc_count
+          groups[g].dvg = Math.floor groups[g].days.reduce(((a, b) => a + b), 0) / groups[g].days.length
+          groups[g].warn = true if groups[g].interpolate >= groups[g].dvg or groups[g].interpolate < Math.min.apply Math, groups[g].days
+          warn.push(g) if groups[g].warn
   API.status._lastload = groups
-  if warn.length and notify and (API.status._lastwarn is false or API.status._lastwarn < Date.now()-300000)
-    API.status._lastwarn = Date.now()
-    API.mail.send
-      from: 'alert@cottagelabs.com'
-      to: 'alert@cottagelabs.com'
-      subject: 'Status load levels outside normal ranges for ' + warns.join(',')
-      text: warn.join(',') + '\n\n' + JSON.stringify groups, '', 2
+  if warn.length and notify
+    console.log API.status._lastwarn
+    txt = ''
+    warns = []
+    for w in warn
+      # don't send another warning if within 12 hours of the last one, because once something gets a 
+      # warning during a given day, it likely keeps getting a warning, which is not useful
+      if not API.status._lastwarn[w]? or API.status._lastwarn[w] < Date.now()-43200000
+        API.status._lastwarn[w] = Date.now()
+        warns.push w
+        txt += w + ', current ' + groups[w].value + ', today ' + groups[w].today + ', yesterday ' + groups[w].yesterday + ', average ' + groups[w].avg + ', ' + groups[w].percent + '%\n'
+    if warns.length
+      API.mail.send
+        from: 'alert@cottagelabs.com'
+        to: 'alert@cottagelabs.com'
+        subject: (if API.settings.dev then 'Dev' else 'Live') + ' load levels outside normal ranges for ' + warns.join(',')
+        text: txt + '\n\n' + JSON.stringify groups, '', 2
   return groups
 
+# run load check on the main machine every 15 mins if not recently done
+_loadcheck = () ->
+  if API.settings.cluster?.ip? and API.status.ip() not in API.settings.cluster.ip
+    API.log 'Setting up a load check to run at least every 15 mins if not triggered by request on ' + API.status.ip()
+    Meteor.setInterval (() ->
+      if API.status._lastloadrun < Date.now()-900000
+        API.log 'Running status load check at max 15 minute interval'
+        API.status.load undefined, undefined, undefined, undefined, true
+      ), 900000
+Meteor.setTimeout _loadcheck, 21000

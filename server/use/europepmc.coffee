@@ -18,13 +18,13 @@ API.use ?= {}
 API.use.europepmc = {}
 
 API.add 'use/europepmc/doi/:doipre/:doipost',
-  get: () -> return API.use.europepmc.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format
+  get: () -> return API.use.europepmc.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format, this.queryParams.refresh
 API.add 'use/europepmc/doi/:doipre/:doipost/:doimore',
-  get: () -> return API.use.europepmc.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format
+  get: () -> return API.use.europepmc.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format, this.queryParams.refresh
 
-API.add 'use/europepmc/pmid/:qry', get: () -> return API.use.europepmc.pmid this.urlParams.qry, this.queryParams.format
+API.add 'use/europepmc/pmid/:qry', get: () -> return API.use.europepmc.pmid this.urlParams.qry, this.queryParams.format, this.queryParams.refresh
 
-API.add 'use/europepmc/pmc/:qry', get: () -> return API.use.europepmc.pmc this.urlParams.qry, this.queryParams.format
+API.add 'use/europepmc/pmc/:qry', get: () -> return API.use.europepmc.pmc this.urlParams.qry, this.queryParams.format, this.queryParams.refresh
 
 API.add 'use/europepmc/pmc/:qry/xml',
   get: () ->
@@ -40,7 +40,7 @@ API.add 'use/europepmc/pmc/:qry/licence', get: () -> return API.use.europepmc.li
 
 API.add 'use/europepmc/pmc/:qry/aam', get: () -> return API.use.europepmc.authorManuscript this.urlParams.qry
 
-API.add 'use/europepmc/title/:qry', get: () -> return API.use.europepmc.title this.urlParams.qry, this.queryParams.format
+API.add 'use/europepmc/title/:qry', get: () -> return API.use.europepmc.title this.urlParams.qry, this.queryParams.format, this.queryParams.refresh
 
 API.add 'use/europepmc/search/:qry',
   get: () -> return API.use.europepmc.search this.urlParams.qry, this.queryParams.from, this.queryParams.size, this.queryParams.format
@@ -57,26 +57,25 @@ API.add 'use/europepmc/indexed/:startdate',
 API.add 'use/europepmc/indexed/:startdate/:enddate',
   get: () -> return API.use.europepmc.published this.urlParams.startdate, this.urlParams.enddate, this.queryParams.from, this.queryParams.size
 
-API.use.europepmc.doi = (doi,format) ->
-  return API.use.europepmc.get 'DOI:' + doi, format
+API.use.europepmc.doi = (doi,format,refresh) ->
+  return API.use.europepmc.get 'DOI:' + doi, format, refresh
 
-API.use.europepmc.pmid = (ident,format) ->
-  return API.use.europepmc.get 'EXT_ID:' + ident + ' AND SRC:MED', format
+API.use.europepmc.pmid = (ident,format,refresh) ->
+  return API.use.europepmc.get 'EXT_ID:' + ident + ' AND SRC:MED', format, refresh
 
-API.use.europepmc.pmc = (ident,format) ->
-  return API.use.europepmc.get 'PMCID:PMC' + ident.toLowerCase().replace('pmc',''), format
+API.use.europepmc.pmc = (ident,format,refresh) ->
+  return API.use.europepmc.get 'PMCID:PMC' + ident.toLowerCase().replace('pmc',''), format, refresh
 
-API.use.europepmc.title = (title,format) ->
+API.use.europepmc.title = (title,format,refresh) ->
   try title = title.toLowerCase().replace(/(<([^>]+)>)/g,'').replace(/[^a-z0-9 ]+/g, " ").replace(/\s\s+/g, ' ')
-  return API.use.europepmc.get 'title:"' + title + '"', format
+  return API.use.europepmc.get 'title:"' + title + '"', format, refresh
 
-API.use.europepmc.get = (qrystr,format) ->
-  #res = API.http.cache qrystr, 'epmc_get'
-  if true #not res?
+API.use.europepmc.get = (qrystr,format,refresh) ->
+  if refresh is true or not res = API.http.cache qrystr, 'epmc_get'
     res = API.use.europepmc.search qrystr, undefined, undefined, format
     res = if res.total then res.data[0] else undefined
-    #if res?.url?
-    #  API.http.cache qrystr, 'epmc_get', res
+    if res?.url?
+      API.http.cache qrystr, 'epmc_get', res
   return res
 
 API.use.europepmc.search = (qrystr,from,size,format=true) ->

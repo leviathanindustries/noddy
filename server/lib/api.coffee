@@ -8,7 +8,7 @@
   defaultHeaders: { 'Content-Type': 'application/json; charset=utf-8' },
   prettyJson: true,
   auth:
-    token: 'api.keys.hash'
+    #token: 'api.keys.hash' # not needed any more
     user: () ->
       console.log('API checking auth') if API.settings.log?.level is 'debug'
 
@@ -45,9 +45,9 @@
               console.log('Auth by cookie ' + xid + ' ' + xapikey + ' ' + (if u then u._id)) if API.settings.log?.level is 'debug'
 
       if not this.authOptional
-        dets = msg: 'Login attempt by ' + (if xid then xid else 'unknown') + ' to ' + this.request.url.split('apikey=')[0] + ' from ' + this.request.headers['x-forwarded-for'] + ' ' + this.request.headers['x-real-ip']
+        dets = msg: 'Login attempt by ' + (if xid then xid else 'unknown') + ' to ' + this.request.url.split('apikey=')[0] + ' from ' + this.request.headers['x-forwarded-for'] + ' ' + this.request.headers['cf-connecting-ip'] + ' ' + this.request.headers['x-real-ip']
         if xid and xapikey and API.settings.log.root and u?.roles?.__global_roles__? and 'root' in u.roles.__global_roles__
-          dets.notify = subject: 'API root login ' + this.request.headers['x-real-ip']
+          dets.notify = subject: 'API root login ' + this.request.headers['x-forwarded-for'] + ' ' + this.request.headers['cf-connecting-ip'] + ' ' + this.request.headers['x-real-ip']
           dets.msg = dets.msg.replace 'Login attempt ', 'ROOT login '
         else if xid and xapikey
           dets.msg = dets.msg.replace 'Login attempt ', 'Login '
@@ -63,6 +63,7 @@ API.settings = Meteor.settings
 API.add '/',
   get: () ->
     res =
+      time: Date.now()
       name: if API.settings.name then API.settings.name else 'API'
       version: if API.settings.version then API.settings.version else "0.0.1"
       dev: API.settings.dev
