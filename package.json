@@ -23,6 +23,7 @@
     "jimp": "^0.5.6",
     "json2csv": "^4.2.1",
     "languagedetect": "^1.2.0",
+    "mailin": "^3.0.4",
     "mammoth": "^1.4.9",
     "marked": "^0.7.0",
     "moment": "^2.20.1",

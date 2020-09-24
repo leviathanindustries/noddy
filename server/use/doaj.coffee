@@ -78,20 +78,28 @@ API.use.doaj.journals.issn = (issn) ->
 # DOAJ API rate limit is 6r/s
 # a 200ms limit would stay above that, and also the noddy limiter sets a min of 500ms anyway, and actually only runs one task per second if just one machine running
 # adjusted to 400ms
-API.use.doaj.journals.search = (qry,params) ->
-  url = 'https://doaj.org/api/v1/search/journals/' + qry + '?'
-  if params?.size?
-    params.pageSize = params.size
-    delete params.size
-  if params?.from?
-    params.page = Math.ceil params.from/(params.pageSize ? 10)
-    delete params.from
-  url += op + '=' + params[op] + '&' for op of params
-  API.log 'Using doaj for ' + url
-  res = API.job.limit 400, 'HTTP.call', ['GET',url], "DOAJ"
-  #res = HTTP.call 'GET', url
-  #res.data.data = res.data.results if res?.data?.results?
-  return if res.statusCode is 200 then res.data else {status: 'error', data: res.data}
+API.use.doaj.journals.search = (qry,params,refresh) ->
+  if refresh isnt true and cached = API.http.cache qry, 'doaj_journals', undefined, refresh
+    return cached
+  else
+    url = 'https://doaj.org/api/v1/search/journals/' + qry + '?'
+    if params?.size?
+      params.pageSize = params.size
+      delete params.size
+    if params?.from?
+      params.page = Math.ceil params.from/(params.pageSize ? 10)
+      delete params.from
+    url += op + '=' + params[op] + '&' for op of params
+    API.log 'Using doaj for ' + url
+    res = API.job.limit 400, 'HTTP.call', ['GET',url], "DOAJ"
+    #res = HTTP.call 'GET', url
+    #res.data.data = res.data.results if res?.data?.results?
+    return 
+    if res.statusCode is 200
+      API.http.cache qry, 'doaj_journals', res.data
+      return res.data
+    else
+      return {status: 'error', data: res.data}
 
 API.use.doaj.articles.doi = (doi, format) ->
   return API.use.doaj.articles.get 'doi:' + doi, format
@@ -109,25 +117,30 @@ API.use.doaj.articles.get = (qry,format=true) ->
     rec.redirect = op.redirect
   return if format and typeof rec is 'object' then API.use.doaj.articles.format(rec) else rec
 
-API.use.doaj.articles.search = (qry,params={},format=true) ->
-  url = 'https://doaj.org/api/v1/search/articles/' + qry + '?'
-  #params.sort ?= 'bibjson.year:desc'
-  url += op + '=' + params[op] + '&' for op of params
-  API.log 'Using doaj for ' + url
-  try
-    #res = HTTP.call 'GET', url
-    res = API.job.limit 400, 'HTTP.call', ['GET',url], "DOAJ"
-    if res.statusCode is 200
-      if format
-        for d of res.data.results
-          res.data.results[d] = API.use.doaj.articles.format res.data.results[d]
-      res.data.data = res.data.results
-      delete res.data.results
-      return res.data
-    else 
-      return {status: 'error', data: res.data}
-  catch err
-    return {status: 'error', data: 'DOAJ error', error: err}
+API.use.doaj.articles.search = (qry,params={},format=true,refresh) ->
+  if refresh isnt true and cached = API.http.cache qry, 'doaj_articles', undefined, refresh
+    return cached
+  else
+    url = 'https://doaj.org/api/v1/search/articles/' + qry + '?'
+    #params.sort ?= 'bibjson.year:desc'
+    url += op + '=' + params[op] + '&' for op of params
+    API.log 'Using doaj for ' + url
+    try
+      #res = HTTP.call 'GET', url
+      res = API.job.limit 400, 'HTTP.call', ['GET',url], "DOAJ"
+      if res.statusCode is 200
+        if format
+          for d of res.data.results
+            res.data.results[d] = API.use.doaj.articles.format res.data.results[d]
+        res.data.data = res.data.results
+        delete res.data.results
+        API.http.cache qry, 'doaj_articles', res.data
+        return res.data
+      else 
+        return {status: 'error', data: res.data}
+    catch err
+      return {status: 'error', data: 'DOAJ error', error: err}
+
 
 API.use.doaj.articles.redirect = (record) ->
   res = {}

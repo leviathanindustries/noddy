@@ -8,7 +8,7 @@ import moment from 'moment'
 @JsonRoutes = {}
 
 WebApp.connectHandlers.use connect.urlencoded({limit: '1024mb'})
-WebApp.connectHandlers.use connect.json({limit: '1024mb'})
+WebApp.connectHandlers.use connect.json({limit: '1024mb', type: ['application/json', 'text/plain', 'application/*+json']})
 WebApp.connectHandlers.use connect.query()
 
 JsonRoutes.Middleware = JsonRoutes.middleWare = connect()
@@ -54,7 +54,7 @@ JsonRoutes.add = (method, path, handler) ->
   )
 
 
-responseHeaders = 'Cache-Control': 'no-store', Pragma: 'no-cache'
+responseHeaders = {} #'Cache-Control': 'no-store', Pragma: 'no-cache'
 
 JsonRoutes.setResponseHeaders = (headers) ->
   responseHeaders = headers
@@ -179,7 +179,7 @@ class share.Route
                       rq[q] = pn if not isNaN pn
           catch
             rq = req.query
-
+            
           endpointContext =
             urlParams: req.params
             queryParams: rq
@@ -346,13 +346,6 @@ class share.Route
   _authenticate: (endpointContext,optional) ->
     # Get auth info
     auth = @api._config.auth.user.call(endpointContext)
-
-    # Get the user from the database
-    if auth?.userId and auth?.token and not auth?.user
-      userSelector = {}
-      userSelector._id = auth.userId
-      userSelector[@api._config.auth.token] = auth.token
-      auth.user = API.accounts.retrieve userSelector
 
     # Attach the user and their ID to the context if the authentication was successful
     if auth?.user

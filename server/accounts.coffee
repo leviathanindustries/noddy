@@ -22,6 +22,23 @@ API.add 'accounts',
     action: () ->
       return Users.search(if _isEmpty(this.bodyParams) then '*' else this.bodyParams)
 
+API.add 'accounts/tokens',
+  get:
+    roleRequired: 'root'
+    action: () ->
+      if API.settings.dev
+        delete this.queryParams.apikey if this.queryParams.apikey?
+        return if API.accounts.auth('root', this.user) then Tokens.search(if _.isEmpty(this.queryParams) then '*' else this.queryParams) else count: Tokens.count()
+      else
+        return undefined
+  post:
+    roleRequired: 'root'
+    action: () ->
+      if API.settings.dev
+        return if API.accounts.auth('root', this.user) then Tokens.search(if _isEmpty(this.bodyParams) then '*' else this.bodyParams) else count: Tokens.count()
+      else
+        return undefined
+
 API.add 'accounts/xsrf', post: authRequired: true, action: () -> return API.accounts.xsrf this.userId
 
 API.add 'accounts/cookie',
@@ -273,14 +290,11 @@ API.accounts.login = (params, user, request) ->
   user = API.accounts.retrieve(user) if typeof user is 'string'
   user = API.accounts.oauth(request.body.oauth,params.service,params.fingerprint) if request?.body?.oauth?
   if params?.password? and (params.username? or params.email?)
-    user = API.accounts.retrieve({password:params.password})
-    user = undefined if (params.email? and user.email isnt params.email and user.emails[0].address isnt params.email) or (user.username isnt params.username)
+    user = API.accounts.retrieve({password:params.password, username: username, email: email})
+    user = undefined if (params.email? and user.email isnt params.email and (not user.emails? or not user.emails.length or user.emails[0].address isnt params.email)) or (user.username isnt params.username)
   if params.apikey? and params.email?
     user = API.accounts.retrieve({apikey:params.apikey})
-    try
-      user = undefined if user? and (user.email ? user.emails[0].address) isnt params.email
-    catch
-      user = undefined
+    user = undefined if user? and (user.email ? user.emails[0].address) isnt params.email
   if not user
     if params.resume and params.timestamp
       token = Tokens.find resume: API.accounts.hash(params.resume), timestamp: params.timestamp, action: 'resume'
@@ -313,7 +327,8 @@ API.accounts.login = (params, user, request) ->
     try API.accounts.fingerprint(user, params.fingerprint, 'login') if params.fingerprint
     API.accounts.addrole(user, params.service+'.user') if params.service and not user.roles?[params.service]?
     if request and API.settings.log.root and user.roles?.__global_roles__? and 'root' in user.roles?.__global_roles__
-      API.log msg: 'Root login', notify: subject: 'root user login from ' + request.headers['x-real-ip'], text: 'root user logged in\n\n' + token?.url ? params.url + '\n\n' + request.headers['x-real-ip'] + '\n\n' + request.headers['x-forwarded-for'] + '\n\n'
+      rip = request.headers['x-forwarded-for'] ? request.headers['cf-connecting-ip'] ? request.headers['x-real-ip']
+      API.log msg: 'Root login', notify: subject: 'root user login from ' + rip, text: 'root user logged in\n\n' + token?.url ? params.url + '\n\n' + rip + '\n\n'
 
     _rs = params.resume
     try 
@@ -427,7 +442,8 @@ API.accounts.auth = (grl, user, cascade=true) ->
   return false
 
 API.accounts.create = (email, fingerprint) ->
-  return false if (JSON.stringify(email).indexOf('<script') isnt -1) or (email.indexOf('@') is -1) # ignore if looks dodgy
+  return false if typeof email isnt 'string' or email.indexOf('@') is -1 or (JSON.stringify(email).indexOf('<script') isnt -1) or (email.indexOf('@') is -1) # ignore if looks dodgy
+  email = email.trim()
   password = Random.hexString 30
   apikey = Random.hexString 30
   # can have a username key, which must be handled to ensure uniqueness, but should it default to anything?
@@ -450,26 +466,34 @@ API.accounts.create = (email, fingerprint) ->
 API.accounts.retrieve = (val) ->
   if not val?
     return undefined
-  else if typeof val is 'object'
-    if val.apikey?
+  else if typeof val is 'object' and (val.apikey? or val.password? or val._id?)
+    if val.apikey
       # a convenience for passing in apikey searches - these must be separate and specified, unlike id / email searches, otherwise putting an id as apikey would return a user object
       hashed = API.accounts.hash(val.apikey)
-      srch = [{'api.keys.hash.exact': hashed},{'api.keys.hashedToken.exact': hashed}] # old accounts have hashedToken instead of hash
-    else if val.password?
-      srch = {'password.exact': API.accounts.hash(val.password)}
-    else
-      srch = ''
-      for k in val
-        srch += (srch.length ? ' AND ') + k + ':' + val[k]
-  else if typeof val is 'string' and val.indexOf(' ') isnt -1
-    srch = val
+      u = Users.find [{'api.keys.hash.exact': hashed},{'api.keys.hashedToken.exact': hashed}], false # old accounts have hashedToken instead of hash
+    if not u? and val.password
+      srch = 'password.exact:"' + API.accounts.hash(val.password) + '"'
+      if val.username or val.email
+        srch += ' AND username.exact:"' + val.username + '"' if val.username
+        srch += ' AND (email.exact:"' + val.email + '" OR emails.address.exact:"' + val.email + '")' if val.email
+        u = Users.find srch, false
+    if not u? and val._id and (val.token or val['api.keys.hash'] or val['api.keys.hashedToken'])
+      u = Users.get val._id
+      authd = false
+      tk = val.token ? val['api.keys.hash'] ? val['api.keys.hashedToken']
+      for ak in u.api?.keys ? []
+        if ak is tk
+          authd = true
+          break
+      u = undefined if not authd
   else
-    u = Users.get val # try ID get first, because will return immediately after insert whereas search will not
-    srch = if u? then ' get ID' else '_id:"' + val + '" OR username.exact:"' + val + '" OR emails.address.exact:"' + val + '"'
-  u ?= Users.find srch
-  if u
-    srch = 'apikey' if typeof val is 'object' and val.apikey?
-    API.log msg: 'Retrieved account by ' + JSON.stringify(srch), retrieved: u?._id
+    val = val.trim()
+    if val.indexOf('@') isnt -1
+      u = Users.find 'emails.address.exact:"' + val + '" OR email.exact:"' + val + '"', false
+    else
+      u = Users.get val
+  if u?
+    API.log msg: 'Retrieved account by ' + (if typeof val is 'object' then (if val.apikey then 'apikey' else if val.password then 'password' else 'token') else if val.indexOf('@') isnt -1 then 'email' else 'ID'), retrieved: u?._id
     return u
   else
     return undefined

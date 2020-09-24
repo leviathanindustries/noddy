@@ -29,5 +29,27 @@ API.use.github.issues = (opts) ->
           last = parseInt res.headers.link.split('next')[1].split('&page=')[1].split('>')[0]
   catch err
     return {status:'error',data:err}
-  return {status:'success',total:issues.length,data:issues}
+  return total:issues.length, data:issues
+
+
+
+API.use.github.issue = (opts={}) ->
+  opts.username ?= API.settings.use?.github?.users?.default?.username ? '' # must be a user with access to the repo
+  opts.password ?= API.settings.use?.github?.users?[opts.username].password ? API.settings.use?.github?.users?.default?.password ? ''
+  opts.org ?= opts.owner ? ''
+  opts.repo ?= ''
+  
+  if opts.username and opts.password and opts.org and opts.repo and opts.title
+    url = 'https://' + opts.username + ':' + opts.password + '@api.github.com/repos/' + opts.org + '/' + opts.repo + '/issues'
+    issue = 
+      title: opts.title
+      body: opts.body
+      assignee: opts.assignee ? opts.assign
+      milestone: opts.milestone
+      labels: opts.labels # can this be list, comma-separated string, etc?
+    res = HTTP.call 'POST', url, issue # what format if any is needed for POST to the API?
+    console.log res
+    return true # what is useful to return
+  else
+    return false
 

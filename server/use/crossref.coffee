@@ -13,12 +13,12 @@ API.use ?= {}
 API.use.crossref = {works:{},journals:{}, publishers: {}, funders: {}}
 
 API.add 'use/crossref/works/doi/:doipre/:doipost',
-  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format
+  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format, this.queryParams.refresh
 # there are DOIs that can have slashes within their second part and are valid. Possibly could have more than one slash
 # and there does not seem to be a way to pass wildcards to the urlparams to match multiple / routes
 # so this will do for now...
 API.add 'use/crossref/works/doi/:doipre/:doipost/:doimore',
-  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format
+  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format, this.queryParams.refresh
 
 API.add 'use/crossref/works',
   get: () -> 
@@ -27,7 +27,7 @@ API.add 'use/crossref/works',
     else if this.queryParams.citation
       return API.use.crossref.works.title this.queryParams.citation, this.queryParams.format
     else if this.queryParams.doi
-      return API.use.crossref.works.doi this.queryParams.doi, this.queryParams.format
+      return API.use.crossref.works.doi this.queryParams.doi, this.queryParams.format, this.queryParams.refresh
     else
       return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query ? this.queryParams), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format, this.queryParams.funder, this.queryParams.publisher, (this.queryParams.issn ? this.queryParams.journal)
 API.add 'use/crossref/works/search',
@@ -236,10 +236,10 @@ API.use.crossref.funders.search = (qrystr, from, size, filter) ->
   return if res.statusCode is 200 then { total: res.data.message['total-results'], data: res.data.message.items, facets: res.data.message.facets} else { status: 'error', data: res}
 
 
-API.use.crossref.works.doi = (doi,format) ->
+API.use.crossref.works.doi = (doi,format,refresh) ->
   url = 'https://api.crossref.org/works/' + doi
   API.log 'Using crossref for ' + url
-  if cached = API.http.cache doi, 'crossref_works_doi'
+  if refresh isnt true and cached = API.http.cache doi, 'crossref_works_doi'
     return if format then API.use.crossref.works.format(cached) else cached
   else
     try

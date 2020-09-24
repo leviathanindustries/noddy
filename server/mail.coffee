@@ -1,6 +1,22 @@
 
+# add an ability to receive mail directly using mailin
+# https://github.com/Flolagale/mailin
+# mailin can optionally use spamassassin if present:
+# sudo aptitude install spamassassin spamc
+# https://www.alibabacloud.com/blog/how-to-setup-spamassassin-with-postfix-on-ubuntu-16-04_594878
+# and allow port 25 for smtp
+# and install authbind and configure to allow bind to port 25
+# and start the app with authbind --deep meteor....
+# sudo touch /etc/authbind/byport/25
+# sudo chown USER /etc/authbind/byport/25
+# sudo chmod 755 /etc/authbind/byport/25
+
+# also to track an IMAP inbox such as a gmail, use mail-listener2 or mail-notifier
+# https://github.com/chirag04/mail-listener2
+# https://github.com/jcreigno/nodejs-mail-notifier
 
 import marked from 'marked'
+import mailin from 'mailin'
 
 API.mail = {}
 
@@ -277,3 +293,18 @@ API.mail.test = (verbose) ->
   console.log('Ending mail test') if API.settings.dev
 
   return result
+
+
+
+
+# run mailin on the main machine as it is the only one that the MX records will point port 25 to
+_mailin = () ->
+  if API.settings.mail?.mailin is true and API.settings.mail?.disabled isnt true and ((typeof API.settings.mail?.mailin is 'string' and API.status.ip() is API.settings.mail.mailin) or (API.settings.cluster?.ip? and API.status.ip() not in API.settings.cluster.ip))
+    # wrapping this with try does not stop it causing the app to fail - so make sure it only runs on machines where it will succeed
+    API.log 'Attempting to start Mailin on ' + API.status.ip()
+    mailin.start port: 25, disableWebhook: true
+    API.log 'Mailin has been started on ' + API.status.ip()
+    mailin.on 'message', (connection, data, content) ->
+      # Use parsed message data directly or use raw message content
+      console.log data
+Meteor.setTimeout _mailin, 20000

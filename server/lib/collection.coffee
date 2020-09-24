@@ -236,7 +236,7 @@ API.collection.prototype.search = (q, opts, versioned, dev=API.settings.dev) ->
     versioned = true
     opts = undefined
   dbq = false
-  if q?.queryParams?.dbq?
+  if typeof q is 'object' and q.queryParams?.dbq?
     dbq = true
     delete q.queryParams.dbq
   q = API.collection._translate q, opts
@@ -579,6 +579,7 @@ API.collection._translate = (q, opts) ->
   opts = {random:true} if opts is 'random'
   opts = {size:opts} if typeof opts is 'number'
   opts = {newest: true} if opts is true
+  opts = {newest: false} if opts is false
   qry = opts?.query ? {}
   qry.query ?= {}
   _structure = (sq) ->
@@ -777,7 +778,7 @@ API.collection._translate = (q, opts) ->
   if qry.query?.filtered?.query?.bool?
     for bm of qry.query.filtered.query.bool
       for b of qry.query.filtered.query.bool[bm]
-        if qry.query.filtered.query.bool[bm][b].query_string?.query? and qry.query.filtered.query.bool[bm][b].query_string.query.indexOf('/') isnt -1
+        if typeof qry.query.filtered.query.bool[bm][b].query_string?.query is 'string' and qry.query.filtered.query.bool[bm][b].query_string.query.indexOf('/') isnt -1
           qry.query.filtered.query.bool[bm][b].query_string.query = qry.query.filtered.query.bool[bm][b].query_string.query.replace(/\//g,'\\/')
   if qry.query?.filtered?.filter?.bool?
     for fm of qry.query.filtered.filter.bool
