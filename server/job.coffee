@@ -480,8 +480,8 @@ API.job.cap = (max,cap,group,fn,args) ->
 
   #job_cap.remove({group:group, createdAt:'<' + beginning}) if not API.settings.dev
   res = job_cap.find 'group.exact:' + group + ' AND createdAt:>' + beginning, {newest:false,size:1}
-  earliest = if res.hits?.hits? and res.hits.hits.length then res.hits.hits[0]._source.createdAt else false
-  capping = res.hits.total
+  earliest = if res?.hits?.hits? and res.hits.hits.length then res.hits.hits[0]._source.createdAt else false
+  capping = res?.hits?.total ? 0
   capped = capping >= max
   job_cap.insert({group: group, beginning: beginning, earliest: earliest, capping: capping, max: max, cap: cap}) if not capped
   if fn?

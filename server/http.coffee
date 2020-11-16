@@ -441,7 +441,7 @@ API.http.phantom = Meteor.wrapAsync(_phantom)'''
 API.http.puppeteer = (url, refresh=86400000, proxy=false, headers={}, idle=false, local=false) ->
   return '' if not url? or typeof url isnt 'string'
   url = 'http://' + url if url.indexOf('http') is -1
-  if url.indexOf('.pdf') isnt -1  or url.indexOf('.doc') isnt -1
+  if url.indexOf('.pdf') isnt -1 or url.indexOf('/pdf') isnt -1 or url.indexOf('.doc') isnt -1
     # go straight to PDFs - TODO what other page types are worth going straight to? or anything that does not say it will be html?
     # do a content type query on the url first?
     try

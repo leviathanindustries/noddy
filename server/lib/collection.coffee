@@ -11,6 +11,9 @@ import { Random } from 'meteor/random'
 
 API.collection = (opts, dev=API.settings.dev) ->
   opts = { type: opts } if typeof opts is 'string'
+  if opts.devislive is true
+    this._devislive = true
+    dev = true
   opts.index ?= API.settings.es.index
   this._index = opts.index
   this._type = opts.type
@@ -30,20 +33,27 @@ API.collection = (opts, dev=API.settings.dev) ->
       this._backup = true
 
 API.collection.prototype.map = (mapping, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   this._mapping = mapping
   return API.es.map this._index, this._type, mapping, true, dev # would overwrite any existing mapping
-API.collection.prototype.mapping = (original, dev=API.settings.dev) -> return if original then this._mapping else API.es.mapping this._index, this._type, dev
+API.collection.prototype.mapping = (original, dev=API.settings.dev) -> 
+  dev = true if this._devislive is true
+  return if original then this._mapping else API.es.mapping this._index, this._type, dev
 
-API.collection.prototype.refresh = (dev=API.settings.dev) -> API.es.refresh this._index, dev
+API.collection.prototype.refresh = (dev=API.settings.dev) -> 
+  dev = true if this._devislive is true
+  API.es.refresh this._index, dev
 
 API.collection.prototype.delete = (confirm, history, dev=API.settings.dev) ->
   # TODO who should be allowed to do this?
+  dev = true if this._devislive is true
   this.remove('*') if confirm is '*'
   API.es.call('DELETE', this._route, undefined, undefined, undefined, undefined, undefined, undefined, dev) if confirm is true
   API.es.call('DELETE', this._route + '_history', undefined, undefined, undefined, undefined, undefined, undefined, dev) if confirm is true and history is true and this._history
   return true
 
 API.collection.prototype.history = (action, doc, uid, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   # NOTE even if a collection has history turned on, the uid of the user who made the
   # change will not be known unless the code calling the insert, delete etc functions includes it
   # TODO is it worth having a collection setting that makes this required? But then what about cases where it may not actually be needed?
@@ -82,6 +92,7 @@ API.collection.prototype.history = (action, doc, uid, dev=API.settings.dev) ->
           API.log msg:'History logging failing', action:action, doc:doc, uid:uid
 
 API.collection.prototype.fetch_history = (q, opts={}, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   qy = API.collection._translate q, opts
   qy.from ?= 0
   qy.size ?= 3000
@@ -112,6 +123,7 @@ API.collection.prototype.exists = (rid, dev=API.settings.dev) ->
   return false
 
 API.collection.prototype.get = (rid, versioned, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   # TODO is there any case for recording who has accessed certain documents?
   # NOTE this only works case-sensitively so record IDs have to be in the correct case
   if typeof rid is 'number' or (typeof rid is 'string' and rid.indexOf(' ') is -1 and rid.indexOf(':') is -1 and rid.indexOf('/') is -1 and rid.indexOf('*') is -1)
@@ -119,7 +131,8 @@ API.collection.prototype.get = (rid, versioned, dev=API.settings.dev) ->
     return (if versioned then check else check._source) if check?.found isnt false and check?.status isnt 'error' and check?.statusCode isnt 404 and check?._source?
   return undefined
 
-API.collection.prototype.transactional = (obj) ->
+API.collection.prototype.transactional = (obj, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   # TODO implement an option to only save collections in a transactional fashion
   # that is, any insert or update (need to handle bulk/import as well) must only 
   # succeed once it can be guaranteed to be saved by the index. This can be confirmed 
@@ -130,6 +143,7 @@ API.collection.prototype.transactional = (obj) ->
   return obj
   
 API.collection.prototype.insert = (q, obj, uid, refresh, deduplicate, prep, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   if typeof q is 'string' and typeof obj is 'object'
     obj._id = q
   else if typeof q is 'object' and not obj?
@@ -162,6 +176,7 @@ API.collection.prototype.insert = (q, obj, uid, refresh, deduplicate, prep, dev=
     return API.es.call('POST', this._route + '/' + obj._id, obj, refresh, undefined, undefined, undefined, undefined, dev)?._id
 
 API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   # versioned here can be a version number, in which case the update will only work if it can update onto that version, otherwise returns 409
   # if no version number provided, versioning of the update will still be used for internal clash avoidance
   # and will not necessarily be versioned to the version the user last saw - just to the last version this update method retrieved immediately before the action.
@@ -200,6 +215,7 @@ API.collection.prototype.update = (q, obj, uid, refresh, versioned, partial, dev
     return this.each q, undefined, ((res) -> this.update res._id, obj, uid, refresh, versioned, partial, dev), undefined, uid, undefined, dev
 
 API.collection.prototype.remove = (q, uid, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   if (typeof q is 'string' or typeof q is 'number') and this.get q
     this.history('remove', q, uid, dev) if this._history
     API.es.call 'DELETE', this._route + '/' + q, undefined, undefined, undefined, undefined, undefined, undefined, dev
@@ -219,6 +235,7 @@ API.collection.prototype.remove = (q, uid, dev=API.settings.dev) ->
     return this.each q, undefined, ((res) -> this.remove res._id, uid, dev), undefined, uid, undefined, dev
 
 API.collection.prototype.search = (q, opts, versioned, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   # NOTE is there any case for recording who has done searches? - a write for every search could be a heavy load...
   # or should it be possible to apply certain restrictions on what the search returns?
   # Perhaps - but then this coud/should be applied by the service providing access to the collection
@@ -258,6 +275,7 @@ API.collection.prototype.search = (q, opts, versioned, dev=API.settings.dev) ->
   return res
 
 API.collection.prototype.find = (q, opts, versioned, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   try versioned = opts.versioned
   if opts is 'versioned'
     versioned = true
@@ -276,11 +294,13 @@ API.collection.prototype.find = (q, opts, versioned, dev=API.settings.dev) ->
       return undefined
 
 API.collection.prototype.import = (recs, uid, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   # this should only be used for importing records exactly as is
   # otherwise pass a list to insert to create mutliple items with proper timestamps, or to avoid duplicates
   return this.bulk recs, 'index', uid, undefined, dev
 
 API.collection.prototype.bulk = (recs, action, uid, bulk, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   # ES uses index/update/delete whereas I've used insert/update/remove in collections, so accept either of them
   # ES accepts create too, which will only create if not already existing whereas index overwrites - but difference not needed yet
   return false if not action? or not recs? or recs.length < 1 or typeof recs isnt 'object' or ['insert','index','update','remove','delete'].indexOf(action) is -1
@@ -311,6 +331,7 @@ API.collection.prototype.bulk = (recs, action, uid, bulk, dev=API.settings.dev) 
     return false
 
 API.collection.prototype.each = (q, opts, fn, action, uid, scroll='20m', dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   # each executes the function for each record. If the function makes changes to a record and saves those changes, 
   # this can cause many writes to the collection. So, instead, that sort of function could return something
   # and if the action has also been specified then all the returned values will be used to do a bulk write to the collection index.
@@ -360,6 +381,7 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll='20m', dev=API
   return if action then {total: total, updated:updates.length, processed:processed, bulk: bulked} else processed
 
 API.collection.prototype.fetch = (q, opts={}, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   qy = API.collection._translate q, opts
   qy.from ?= 0
   qy.size ?= 3000
@@ -380,6 +402,7 @@ API.collection.prototype.fetch = (q, opts={}, dev=API.settings.dev) ->
   return results
 
 API.collection.prototype.count = (key, q, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   if not q?
     kq = typeof key is 'object'
     if not kq and typeof key is 'string'
@@ -392,15 +415,19 @@ API.collection.prototype.count = (key, q, dev=API.settings.dev) ->
   return API.es.count this._index, this._type, key, API.collection._translate(q), dev
 
 API.collection.prototype.min = (key, q, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   return API.es.min this._index, this._type, key, API.collection._translate(q), dev
 
 API.collection.prototype.max = (key, q, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   return API.es.max this._index, this._type, key, API.collection._translate(q), dev
 
 API.collection.prototype.range = (key, q, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   return API.es.range this._index, this._type, key, API.collection._translate(q), dev
 
 API.collection.prototype.terms = (key, q, size=100, counts=false, order, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   key = key.replace('.exact','')+'.exact' if true # TODO should check the mapping to see if .exact is relevant for key, and have a way for user to decide
   # order: (default) count is highest count first, reverse_count is lowest first. term is ordered alphabetical by term, reverse_term is reverse alpha
   if typeof q is 'string' and q.indexOf(':') is -1 and q.indexOf('"') is -1 and q.indexOf(' ') is -1 and q.indexOf(' OR ') is -1 and q.indexOf(' AND ') is -1
@@ -412,9 +439,11 @@ API.collection.prototype.terms = (key, q, size=100, counts=false, order, dev=API
   return API.es.terms this._index, this._type, key, qr, size, counts, order, dev
 
 API.collection.prototype.keys = (dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   return API.es.keys this._index, this._type, dev
 
 API.collection.prototype.links = (nodes, dev=API.settings.dev) ->
+  dev = true if this._devislive is true
   # TODO given a list of nodes (key names in the objects) build a list of source-target links for use in d3 graph visualisations
   # note this can be done client side anyway, so the idea here is to be able to build larger link lists without having to send so much data
   # to enable client to render more complex graphs more easily. This may need additional options, like showing the record as a node or not, 
@@ -422,11 +451,13 @@ API.collection.prototype.links = (nodes, dev=API.settings.dev) ->
   return API.es.links this._index, this._type, nodes, dev
 
 API.collection.prototype.job = (q, fn, complete) ->
+  dev = true if this._devislive is true
   # TODO for a given query set, create a job that does some fn to all of them
   # when the job has finished all the processes, it should run the complete fn, if it is set
   return false
 
 API.collection.prototype.mount = (opts={}) ->
+  dev = true if this._devislive is true
   # TODO add terms endpoint to mount as well, so that keys can be output as autocomplete lists
   # will need opts to control which keys are allowed, and auth controls for them. May also want this but nothing else to be mounted
   opts.route ?= this._index + '/' + this._type

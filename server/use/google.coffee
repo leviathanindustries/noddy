@@ -251,13 +251,14 @@ API.use.google.places.search = (params) ->
 API.use.google.sheets.feed = (sheetid,opts={}) ->
 	opts = {stale:opts} if typeof opts is 'number'
 	opts.stale ?= 3600000
+	opts.sheet ?= 'default' # or else a number, starting from 1, indicating which sheet in the overall sheet to access
 	return [] if not sheetid?
 	# expects a google sheet ID or a URL to a google sheets feed in json format
 	# NOTE the sheet must be published for this to work, should have the data in sheet 1, and should have columns of data with key names in row 1
 	sheetid = sheetid.split('/spreadsheets/d/')[1].split('/')[0] if sheetid.indexOf('http') is 0 and sheetid.indexOf('/spreadsheets/d/') isnt -1 and sheetid.indexOf('/feeds/list/') is -1
-	url = if sheetid.indexOf('http') isnt 0 then 'https://spreadsheets.google.com/feeds/list/' + sheetid + '/default/public/values?alt=json' else sheetid
+	url = if sheetid.indexOf('http') isnt 0 then 'https://spreadsheets.google.com/feeds/list/' + sheetid + '/' + opts.sheet + '/public/values?alt=json' else sheetid
 	sheetid = sheetid.replace('https://','').replace('http://','').replace('spreadsheets.google.com/feeds/list/','').split('/')[0]
-	localcopy = '.googlelocalcopy/' + sheetid + '.json'
+	localcopy = '.googlelocalcopy/' + sheetid + (if opts.sheet isnt 'default' then '_' + opts.sheet else '') + '.json'
 	values = []
 	if fs.existsSync(localcopy) and ((new Date()) - fs.statSync(localcopy).mtime) < opts.stale
 		values = JSON.parse fs.readFileSync(localcopy)

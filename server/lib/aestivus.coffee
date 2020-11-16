@@ -173,7 +173,7 @@ class share.Route
                     rq[q] = true
                   else if rq[q] is 'false'
                     rq[q] = false
-                  else if typeof rq[q] is 'string' and rq[q].replace(/[0-9]/g,'').length is 0 and not rq[q].startsWith('0')
+                  else if typeof rq[q] is 'string' and rq[q].replace(/[0-9]/g,'').length is 0 and (rq[q] is '0' or not rq[q].startsWith('0'))
                     try
                       pn = parseInt rq[q]
                       rq[q] = pn if not isNaN pn
@@ -203,8 +203,8 @@ class share.Route
           # Generate and return the http response, handling the different endpoint response types
           if typeof responseData is 'number' and ((responseData >= 400 and responseData < 460) or (responseData >= 500 and responseData < 520))
             self._respond res, responseData, responseData
-          else if responseData.body? and (responseData.statusCode or responseData.headers)
-            self._respond res, responseData.body, responseData.statusCode, responseData.headers
+          else if responseData.body? and (responseData.statusCode or typeof responseData.status is 'number' or responseData.headers)
+            self._respond res, responseData.body, (responseData.statusCode ? responseData.status), responseData.headers
           else if not res.headersSent
             self._respond res, responseData
       _.each rejectedMethods, (method) ->
