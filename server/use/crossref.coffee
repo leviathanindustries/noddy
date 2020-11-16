@@ -509,7 +509,8 @@ _xref_import = () ->
       if not crossref_journal.find 'createdAt:>' + dn + ' OR updatedAt:>' + dn
         API.use.crossref.journals.import()
       ), 43200000
-Meteor.setTimeout _xref_import, 19000
+# disabled until import of dups is fixed
+#Meteor.setTimeout _xref_import, 19000
 
 
 

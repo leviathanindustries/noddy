@@ -197,10 +197,11 @@ API.convert.table2json = (content,opts={}) ->
   ths = content.match(/<th.*?<\/th/gi)
   headers = []
   results = []
-  for h in ths
-    str = API.http.decode h.replace(/<th.*?>/i,'').replace(/<\/th.*?/i,'').replace(/<.*?>/gi,'').replace(/\s\s+/g,' ').trim()
-    str = 'UNKNOWN' if str.replace(/ /g,'').length is 0
-    headers.push str
+  if ths?
+    for h in ths
+      str = API.http.decode h.replace(/<th.*?>/i,'').replace(/<\/th.*?/i,'').replace(/<.*?>/gi,'').replace(/\s\s+/g,' ').trim()
+      str = 'UNKNOWN' if str.replace(/ /g,'').length is 0
+      headers.push str
   for r in content.split('<tr')
     if r.toLowerCase().indexOf('<th') is -1
       result = {}
