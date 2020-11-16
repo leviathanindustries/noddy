@@ -97,7 +97,7 @@ API.use.microsoft.bing.search = (q, cache=false, refresh, key=API.settings.use.m
       res = HTTP.call 'GET', url, {timeout: 10000, headers: {'Ocp-Apim-Subscription-Key': key}}
       if res.statusCode is 200 and res.data.webPages?.value
         ret = {total: res.data.webPages.totalEstimatedMatches, data: res.data.webPages.value}
-        API.http.cache(pmcid, 'bing_search', ret) if cache and ret.total
+        API.http.cache(q, 'bing_search', ret) if cache and ret.total
         return ret
       else
         return { status: 'error', data: res.data}

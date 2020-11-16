@@ -6,11 +6,15 @@
 
 # crossref now prefers some identifying headers
 header = {
-  'User-Agent': (API.settings.name ? 'noddy') + ' v' + (API.settings.version ? '0.0.1') + (if API.settings.dev then 'd' else '') + ' (https://cottagelabs.com; mailto:' + API.settings.log?.to ? 'mark@cottagelabs.com' + ')'
+  'User-Agent': (API.settings.name ? 'noddy') + ' v' + (API.settings.version ? '0.0.1') + (if API.settings.dev then 'd' else '') + ' (https://cottagelabs.com; mailto:' + (API.settings.log?.to ? 'mark@cottagelabs.com') + ')'
 }
 
 API.use ?= {}
 API.use.crossref = {works:{},journals:{}, publishers: {}, funders: {}}
+
+@crossref_journal = new API.collection {index:"crossref",type:"journal"}
+
+
 
 API.add 'use/crossref/works/doi/:doipre/:doipost',
   get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format, this.queryParams.refresh
@@ -50,10 +54,15 @@ API.add 'use/crossref/works/indexed/:startdate/:enddate',
 API.add 'use/crossref/types',
   get: () -> return API.use.crossref.types()
 
-API.add 'use/crossref/journals',
-  get: () -> return API.use.crossref.journals.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter
+API.add 'use/crossref/journals', () -> crossref_journal.search this
 API.add 'use/crossref/journals/search',
   get: () -> return API.use.crossref.journals.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter
+
+API.add 'use/crossref/journals/import',
+  get: () -> 
+    Meteor.setTimeout (() => API.use.crossref.journals.import()), 1
+    return true
+API.add 'use/crossref/journals/imported', () -> return crossref_journal.search this
 
 API.add 'use/crossref/journals/:issn',
   get: () -> return API.use.crossref.journals.issn this.urlParams.issn
@@ -63,6 +72,9 @@ API.add 'use/crossref/journals/:issn/works',
 
 API.add 'use/crossref/journals/:issn/works/dois',
   get: () -> return API.use.crossref.journals.dois this.urlParams.issn, this.queryParams.from, this.queryParams.size, this.queryParams.count
+
+API.add 'use/crossref/journals/:issn/works/dois/example',
+  get: () -> return API.use.crossref.journals.dois.example this.urlParams.issn
 
 API.add 'use/crossref/publishers',
   get: () -> return API.use.crossref.publishers.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter
@@ -145,26 +157,29 @@ API.use.crossref.resolve = (doi) ->
 
 
 API.use.crossref.journals.issn = (issn) ->
-  url = 'https://api.crossref.org/journals/' + issn
-  API.log 'Using crossref for ' + url
-  cached = API.http.cache issn, 'crossref_journals_issn'
-  if cached
-    return cached
+  if cj = crossref_journal.find 'ISSN.exact:"' + issn + '"'
+    return cj
   else
-    try
-      res = HTTP.call 'GET', url, {headers: header}
-      if res.statusCode is 200
-        API.http.cache issn, 'crossref_journals_issn', res.data.message
-        return res.data.message
-      else
+    url = 'https://api.crossref.org/journals/' + issn
+    API.log 'Using crossref for ' + url
+    cached = API.http.cache issn, 'crossref_journals_issn'
+    if cached
+      return cached
+    else
+      try
+        res = HTTP.call 'GET', url, {headers: header}
+        if res.statusCode is 200
+          API.http.cache issn, 'crossref_journals_issn', res.data.message
+          return res.data.message
+        else
+          return undefined
+      catch
         return undefined
-    catch
-      return undefined
 
-API.use.crossref.journals.works = (issn,from,size=100) ->
+API.use.crossref.journals.works = (issn, from, size=100, sort='published', order='desc') ->
   # cannot cache this because list of works for a journal changes over time
   # could add time constrained caching, but not possible right now
-  url = 'https://api.crossref.org/journals/' + issn + '/works?sort=published&order=desc&rows=' + size + (if from then '&from=' + from else '')
+  url = 'https://api.crossref.org/journals/' + issn + '/works?rows=' + size + (if from then '&from=' + from else '') + (if typeof sort is 'string' then '&sort=' + sort else '') + (if typeof order is 'string' then '&order=' + order else '')
   API.log 'Using crossref for ' + url
   try
     res = HTTP.call 'GET', url, {headers: header}
@@ -175,11 +190,11 @@ API.use.crossref.journals.works = (issn,from,size=100) ->
   catch
     return undefined
 
-API.use.crossref.journals.dois = (issn,from,size=1000,count) ->
+API.use.crossref.journals.dois = (issn, from, size=1000, count) ->
   try
     size = count if count? and count < size
     dois = []
-    works = API.use.crossref.journals.works issn, from, size # 1000 is max acceptable size
+    works = API.use.crossref.journals.works issn, from, size, (if size is 1 then false else undefined), (if size is 1 then false else undefined) # 1000 is max acceptable size
     if works?.items?
       dois.push(w.DOI) for w in works.items
       total = works['total-results']
@@ -197,6 +212,10 @@ API.use.crossref.journals.dois = (issn,from,size=1000,count) ->
   catch
     return undefined
 
+API.use.crossref.journals.dois.example = (issn) ->
+  res = API.use.crossref.journals.dois issn, undefined, 1, 1
+  return if res? and res.length then res[0] else undefined
+
 API.use.crossref.journals.search = (qrystr,from,size,filter) ->
   url = 'https://api.crossref.org/journals?'
   if qrystr and qrystr isnt 'all'
@@ -209,6 +228,45 @@ API.use.crossref.journals.search = (qrystr,from,size,filter) ->
   API.log 'Using crossref for ' + url
   res = HTTP.call 'GET', url, {headers: header}
   return if res.statusCode is 200 then { total: res.data.message['total-results'], data: res.data.message.items, facets: res.data.message.facets} else { status: 'error', data: res}
+
+API.use.crossref.journals.import = () ->
+  size = 1000
+  total = 0
+  counter = 0
+  journals = 0
+  updated = 0
+  inserted = 0
+
+  ud = false
+  ffn = false
+  
+  while total is 0 or counter < total
+    crls = API.use.crossref.journals.search undefined, counter, size
+    total = crls.total if total is 0
+    for crl in crls?.data ? []
+      journals += 1
+      if crl.ISSN? and crl.ISSN.length and fn = crossref_journal.find 'ISSN.exact:"' + crl.ISSN.join('" OR ISSN.exact:"') + '"'
+        ffn = fn
+        cfn = _.clone fn
+        delete cfn[k] for k in ['_id','createdAt','created_date','updatedAt','updated_date']
+        if not _.isEqual cfn, crl
+          ud = true
+          updated += 1
+          crossref_journal.update fn._id, crl
+      else
+        ud = true
+        inserted += 1
+        crossref_journal.insert crl
+    counter += size
+
+  if ud is false and ffn?._id?
+    crossref_journal.update ffn._id, {syncedAt: Date.now()} # keep track of the last import
+
+  jc = crossref_journal.count()
+  API.log 'Retrieved ' + journals + ' and imported ' + jc + ' crossref journals, ' + updated + ' updated, ' + inserted + ' inserted'
+  return jc
+
+
 
 API.use.crossref.publishers.search = (qrystr, from, size, filter) ->
   url = 'https://api.crossref.org/members?'
@@ -442,12 +500,27 @@ API.use.crossref.works.format = (rec, metadata={}) ->
 
 
 
+# run import every day on the main machine
+_xref_import = () ->
+  if API.settings.cluster?.ip? and API.status.ip() not in API.settings.cluster.ip
+    API.log 'Setting up a crossref import to run every day on ' + API.status.ip()
+    Meteor.setInterval (() ->
+      dn = Date.now()-86400000
+      if not crossref_journal.find 'createdAt:>' + dn + ' OR updatedAt:>' + dn
+        API.use.crossref.journals.import()
+      ), 43200000
+Meteor.setTimeout _xref_import, 19000
+
+
+
 API.use.crossref.status = () ->
   try
     res = HTTP.call 'GET', 'https://api.crossref.org/works/10.1186/1758-2946-3-47', {headers: header, timeout: API.settings.use?.crossref?.timeout ? API.settings.use?._timeout ? 4000}
     return if res.statusCode is 200 and res.data.status is 'ok' then true else res.data
   catch err
     return err.toString()
+
+
 
 API.use.crossref.test = (verbose) ->
   console.log('Starting crossref test') if API.settings.dev

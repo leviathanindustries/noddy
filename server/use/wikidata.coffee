@@ -16,7 +16,7 @@ import crypto from 'crypto'
 # https://www.wikidata.org/w/api.php?action=wbsearchentities&search=doctoral%20advisor&language=en&type=property&format=json
 # gets property ID for string, just need to reverse. (Already have a dump accessible below, but for keeping up to date...)
 
-@wikidata_record = new API.collection {index:"wikidata",type:"record"}
+@wikidata_record = new API.collection {index:'wikidata', type:'record', devislive: true}
 
 API.use ?= {}
 API.use.wikidata = {}

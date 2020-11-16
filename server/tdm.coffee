@@ -30,7 +30,7 @@ API.add 'tdm/fulltext',
 API.add 'tdm/levenshtein',
 	get: () ->
 		if this.queryParams.a and this.queryParams.b
-			return API.tdm.levenshtein this.queryParams.a, this.queryParams.b
+			return API.tdm.levenshtein this.queryParams.a, this.queryParams.b, this.queryParams.lowercase
 		else
 			return {data:'provide two query params called a and b which should be strings, get back the levenshtein distance'}
 
@@ -124,8 +124,12 @@ API.add 'tdm/extract',
 		params.convert ?= this.queryParams.convert
 		params.start ?= this.queryParams.start
 		params.end ?= this.queryParams.end
+		params.spaces ?= this.queryParams.spaces
 		return API.tdm.extract params
 
+API.add 'tdm/emails',
+	get: () ->
+		return API.tdm.emails this.queryParams
 
 
 API.tdm._bad_chars = [
@@ -236,7 +240,10 @@ API.tdm.occurrence = (content, sub, overlap) ->
 		else break
 	return n
 
-API.tdm.levenshtein = (a,b) ->
+API.tdm.levenshtein = (a, b, lowercase=true) ->
+	if lowercase
+		a = a.toLowerCase()
+		b = b.toLowerCase()
 	minimator = (x, y, z) ->
 		return x if x <= y and x <= z
 		return y if y <= x and y <= z
@@ -270,7 +277,7 @@ API.tdm.levenshtein = (a,b) ->
 		i++
 
 	dist = r[ r.length - 1 ][ r[ r.length - 1 ].length - 1 ]
-	return distance:dist,detail:r
+	return distance:dist, length: {a:m, b:n}, detail:r
 
 # https://en.wikipedia.org/wiki/Hamming_distance#Algorithm_example
 # this is faster than levenshtein but not always so useful
@@ -554,7 +561,11 @@ API.tdm.keywords = (content,opts={},defaults=true) ->
 
 API.tdm.extract = (opts) ->
 	# opts expects url,content,matchers (a list, or singular "match" string),start,end,convert,format,lowercase,ascii
-	opts.content = API.http.puppeteer(opts.url, true) if opts.url and not opts.content
+	if opts.url and not opts.content
+		if opts.url.indexOf('.pdf') isnt -1 or opts.url.indexOf('/pdf') isnt -1
+			opts.convert ?= 'pdf'
+		else
+			opts.content = API.http.puppeteer opts.url, true
 	try
 		text = if opts.convert then API.convert.run(opts.url ? opts.content, opts.convert, 'txt') else opts.content
 	catch
@@ -567,8 +578,9 @@ API.tdm.extract = (opts) ->
 	text = text.split(opts.end)[0] if opts.end?
 	text = text.toLowerCase() if opts.lowercase
 	text = text.replace(/[^a-z0-9]/g,'') if opts.ascii
+	text = text.replace(/ /g,'') if opts.spaces is false
 
-	res = {matched:0,matches:[],matchers:opts.matchers}
+	res = {length:text.length, matched:0, matches:[], matchers:opts.matchers, text: text}
 
 	if text and typeof text isnt 'number'
 		for match in opts.matchers
@@ -589,6 +601,20 @@ API.tdm.extract = (opts) ->
 
 	return res
 
+API.tdm.emails = (opts={}) ->
+	#opts.match = '/^(([^<>()[\]\\.,;:\s@\"]+(\.[^<>()[\]\\.,;:\s@\"]+)*)|(\".+\"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/'
+	opts.matchers = ['/([^ \'">{}/]*?@[^ \'"{}<>]*?[.][a-z.]{2,}?)/gi','/(?: |>|"|\')([^ \'">{}/]*?@[^ \'"{}<>]*?[.][a-z.]{2,}?)(?: |<|"|\')/gi']
+	emails = []
+	checked = []
+	ex = API.tdm.extract opts
+	for pm in ex.matches
+		for pmr in pm.result
+			if pmr not in checked
+				vl = API.mail.validate pmr, API.settings.service?.openaccessbutton?.mail?.pubkey
+				emails.push(pmr) if vl.is_valid
+			checked.push pmr
+	return emails
+	
 API.tdm.entities = (q, options={}) ->
 	ret = {ners: [], person: [], organisation: [], location: [], other: []}
 	try

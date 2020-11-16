@@ -1,11 +1,22 @@
 
+import fs from 'fs'
+
 API.use ?= {}
 API.use.ror = {}
 
-API.add 'use/ror', 
+@ror_record = new API.collection {index:"ror",type:"record"}
+
+
+
+API.add 'use/ror', () -> return ror_record.search this
+API.add 'use/ror/search', 
   csv: true
   get: () -> return if this.request.route.indexOf('.csv') isnt -1 and this.queryParams.all isnt true then API.use.ror.search(this.queryParams).data else API.use.ror.search this.queryParams
 API.add 'use/ror/:rid', get: () -> return API.use.ror.get this.urlParams.rid
+API.add 'use/ror/import', 
+  get: () -> 
+    Meteor.setTimeout (() => API.use.ror.import this.queryParams), 1
+    return true
 
 
 
@@ -35,9 +46,12 @@ API.use.ror.search = (params={}, from=0, size=10) ->
   
 API.use.ror.get = (rid) ->
   # note the id field in searches above returns the id as a URL in ror.org with the ID at the end
-  url = 'https://api.ror.org/organizations/' + rid
-  API.log 'Getting ROR for ' + url
-  return HTTP.call('GET', url).data
+  if lc = ror_record.get rid
+    return lc
+  else
+    url = 'https://api.ror.org/organizations/' + rid
+    API.log 'Getting ROR for ' + url
+    return HTTP.call('GET', url).data
 
 API.use.ror.batch = (params={}) ->
   params.page ?= 1
@@ -49,3 +63,20 @@ API.use.ror.batch = (params={}) ->
     params.page += 1
     results = results.concat res.data
   return results
+  
+API.use.ror.import = () ->
+  # needs a way to get a fresh file dump from ror.org which actually stores on figshare
+  fl = '/home/cloo/ror/ror.json'
+  recs = JSON.parse fs.readFileSync fl
+  batch = []
+  counter = 0
+  for rec in recs
+    rec._id = rec.id.split('/').pop()
+    batch.push rec
+    counter += 1
+    if batch.length is 1000
+      ror_record.insert batch
+      batch = []
+  if batch.length
+    ror_record.insert batch
+  return counter

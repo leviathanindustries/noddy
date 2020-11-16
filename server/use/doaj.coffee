@@ -12,21 +12,21 @@ API.add 'use/doaj/:which/es',
   post: () -> return API.use.doaj.es this.urlParams.which, this.queryParams, this.bodyParams, this.queryParams.format
 
 API.add 'use/doaj/articles/search/:qry',
-  get: () -> return API.use.doaj.articles.search this.urlParams.qry, this.queryParams, this.queryParams.format
+  get: () -> return API.use.doaj.articles.search this.urlParams.qry, this.queryParams, this.queryParams.format, this.queryParams.refresh
 
 API.add 'use/doaj/articles/title/:qry',
-  get: () -> return API.use.doaj.articles.title this.urlParams.qry
+  get: () -> return API.use.doaj.articles.title this.urlParams.qry, this.queryParams.format, this.queryParams.refresh
 
 API.add 'use/doaj/articles/doi/:doipre/:doipost',
-  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format
+  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format, this.queryParams.refresh
 API.add 'use/doaj/articles/doi/:doipre/:doipost/:doiextra',
-  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doiextra, this.queryParams.format
+  get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doiextra, this.queryParams.format, this.queryParams.refresh
 
 API.add 'use/doaj/journals/search/:qry',
-  get: () -> return API.use.doaj.journals.search this.urlParams.qry, this.queryParams
+  get: () -> return API.use.doaj.journals.search this.urlParams.qry, this.queryParams, this.queryParams.refresh
 
 API.add 'use/doaj/journals/issn/:issn',
-  get: () -> return API.use.doaj.journals.issn this.urlParams.issn
+  get: () -> return API.use.doaj.journals.issn this.urlParams.issn, this.queryParams.refresh
 
 
 
@@ -68,17 +68,17 @@ API.use.doaj.es = (which='journal,article', params, body, format=true) ->
   catch err
     return {status: 'error', error: err, query: body, url: url}
 
-API.use.doaj.journals.issn = (issn) ->
+API.use.doaj.journals.issn = (issn, refresh) ->
   issn = issn.split(',') if typeof issn is 'string'
   issn[i] = 'issn:'+issn[i] for i of issn
-  r = API.use.doaj.journals.search issn.join(' OR ')
+  r = API.use.doaj.journals.search issn.join(' OR '), undefined, refresh
   return if r.results?.length then r.results[0] else undefined
 
 # title search possible with title:MY JOURNAL TITLE
 # DOAJ API rate limit is 6r/s
 # a 200ms limit would stay above that, and also the noddy limiter sets a min of 500ms anyway, and actually only runs one task per second if just one machine running
 # adjusted to 400ms
-API.use.doaj.journals.search = (qry,params,refresh) ->
+API.use.doaj.journals.search = (qry, params, refresh) ->
   if refresh isnt true and cached = API.http.cache qry, 'doaj_journals', undefined, refresh
     return cached
   else
@@ -94,22 +94,21 @@ API.use.doaj.journals.search = (qry,params,refresh) ->
     res = API.job.limit 400, 'HTTP.call', ['GET',url], "DOAJ"
     #res = HTTP.call 'GET', url
     #res.data.data = res.data.results if res?.data?.results?
-    return 
     if res.statusCode is 200
       API.http.cache qry, 'doaj_journals', res.data
       return res.data
     else
       return {status: 'error', data: res.data}
 
-API.use.doaj.articles.doi = (doi, format) ->
+API.use.doaj.articles.doi = (doi, format, refresh) ->
   return API.use.doaj.articles.get 'doi:' + doi, format
 
-API.use.doaj.articles.title = (title,format) ->
+API.use.doaj.articles.title = (title, format, refresh) ->
   try title = title.toLowerCase().replace(/(<([^>]+)>)/g,'').replace(/[^a-z0-9 ]+/g, " ").replace(/\s\s+/g, ' ')
-  return API.use.doaj.articles.get 'title:"' + title + '"', format
+  return API.use.doaj.articles.get 'title:"' + title + '"', format, refresh
 
-API.use.doaj.articles.get = (qry,format=true) ->
-  res = API.use.doaj.articles.search qry, undefined, false
+API.use.doaj.articles.get = (qry, format=true, refresh) ->
+  res = API.use.doaj.articles.search qry, undefined, false, refresh
   rec = if res?.data?.length then res.data[0] else undefined
   if rec?
     op = API.use.doaj.articles.redirect rec
@@ -117,7 +116,7 @@ API.use.doaj.articles.get = (qry,format=true) ->
     rec.redirect = op.redirect
   return if format and typeof rec is 'object' then API.use.doaj.articles.format(rec) else rec
 
-API.use.doaj.articles.search = (qry,params={},format=true,refresh) ->
+API.use.doaj.articles.search = (qry, params={}, format=true, refresh) ->
   if refresh isnt true and cached = API.http.cache qry, 'doaj_articles', undefined, refresh
     return cached
   else

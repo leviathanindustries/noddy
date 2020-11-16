@@ -1,6 +1,7 @@
 
 # https://www.nlm.nih.gov/mesh/meshhome.html
 
+'''
 import fs from 'fs'
 
 API.use ?= {}
@@ -40,3 +41,4 @@ API.use.mesh.load = () ->
     text: JSON.stringify res
 
   return res
+'''

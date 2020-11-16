@@ -8,7 +8,7 @@
 # could create an object of holder collection items, so they are ready for use - would need to check if not in there on some query that they were 
 # not previously created in a different server / uptime, and so would check the index and make them if not already available
 
-
+'''
 holder_config = new API.collection index: API.settings.es.index + "_holder", type: "config"
 _holders = {} # create new holder collections in here
 
@@ -260,3 +260,4 @@ API.holder.configure = (type='configure') ->
   });
   </script>
 </html>'
+'''

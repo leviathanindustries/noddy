@@ -358,7 +358,7 @@ API.status.load = (values=true, group=false, q='*', functions=false, notify=fals
         from: 'alert@cottagelabs.com'
         to: 'alert@cottagelabs.com'
         subject: (if API.settings.dev then 'Dev' else 'Live') + ' load levels outside normal ranges for ' + warns.join(',')
-        text: txt + '\n\n' + JSON.stringify groups, '', 2
+        text: txt + '\n\n' #+ JSON.stringify groups, '', 2
   return groups
 
 # run load check on the main machine every 15 mins if not recently done

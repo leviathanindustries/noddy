@@ -4,11 +4,11 @@ API.use ?= {}
 API.use.oadoi = {}
 
 API.add 'use/oadoi/:doipre/:doipost',
-  get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format
+  get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format, this.queryParams.refresh
 API.add 'use/oadoi/:doipre/:doipost/:doimore',
-  get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format
+  get: () -> return API.use.oadoi.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format, this.queryParams.refresh
 
-API.use.oadoi.doi = (doi,format=true) ->
+API.use.oadoi.doi = (doi, format=true, refresh) ->
   url = 'https://api.oadoi.org/v2/' + doi + '?email=mark@cottagelabs.com'
   API.log 'Using oadoi for ' + url
   #res = API.http.cache doi, 'oadoi_doi' #don't use oadoi cache for now
