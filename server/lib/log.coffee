@@ -213,7 +213,7 @@ API.log = (opts, fn, lvl='debug') ->
 
       if loglevels.indexOf(loglevel) <= loglevels.indexOf 'debug'
         console.log opts.msg.toUpperCase() if opts.msg
-        console.log JSON.stringify(opts), '\n'
+        console.log (if API.settings.dev then 'DEV\n' else '') + JSON.stringify(opts), '\n'
 
   catch err
     console.log 'API LOG ERROR\n', opts, '\n', fn, '\n', lvl, '\n', err

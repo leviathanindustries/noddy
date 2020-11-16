@@ -370,4 +370,4 @@ _loadcheck = () ->
         API.log 'Running status load check at max 15 minute interval'
         API.status.load undefined, undefined, undefined, undefined, true
       ), 900000
-Meteor.setTimeout _loadcheck, 21000
+#Meteor.setTimeout _loadcheck, 21000
