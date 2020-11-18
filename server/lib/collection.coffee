@@ -377,7 +377,7 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll='20m', dev=API
       res.hits.hits = []
   if action? and updates.length
     bulked = this.bulk updates, action, uid, undefined, dev
-  this.refresh(dev)
+    this.refresh(dev)
   return if action then {total: total, updated:updates.length, processed:processed, bulk: bulked} else processed
 
 API.collection.prototype.fetch = (q, opts={}, dev=API.settings.dev) ->
