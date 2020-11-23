@@ -6,7 +6,8 @@
 
 # crossref now prefers some identifying headers
 header = {
-  'User-Agent': (API.settings.name ? 'noddy') + ' v' + (API.settings.version ? '0.0.1') + (if API.settings.dev then 'd' else '') + ' (https://cottagelabs.com; mailto:' + (API.settings.log?.to ? 'mark@cottagelabs.com') + ')'
+  #'User-Agent': (API.settings.name ? 'noddy') + ' v' + (API.settings.version ? '0.0.1') + (if API.settings.dev then 'd' else '') + ' (https://cottagelabs.com; mailto:' + (API.settings.log?.to ? 'mark@cottagelabs.com') + ')'
+  'User-Agent': 'OAB; mailto: joe@openaccessbutton.org'
 }
 
 API.use ?= {}
@@ -33,9 +34,9 @@ API.add 'use/crossref/works',
     else if this.queryParams.doi
       return API.use.crossref.works.doi this.queryParams.doi, this.queryParams.format, this.queryParams.refresh
     else
-      return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query ? this.queryParams), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format, this.queryParams.funder, this.queryParams.publisher, (this.queryParams.issn ? this.queryParams.journal)
+      return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query ? this.queryParams), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format #, this.queryParams.funder, this.queryParams.publisher, (this.queryParams.issn ? this.queryParams.journal)
 API.add 'use/crossref/works/search',
-  get: () -> return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query ? this.queryParams), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format, this.queryParams.funder, this.queryParams.publisher, (this.queryParams.issn ? this.queryParams.journal)
+  get: () -> return API.use.crossref.works.search (this.queryParams.q ? this.queryParams.query ? this.queryParams), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.sort, this.queryParams.order, this.queryParams.format #, this.queryParams.funder, this.queryParams.publisher, (this.queryParams.issn ? this.queryParams.journal)
 
 API.add 'use/crossref/works/published',
   get: () -> return API.use.crossref.works.published (this.queryParams.q ? this.queryParams.query), undefined, undefined, (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
@@ -59,9 +60,11 @@ API.add 'use/crossref/journals/search',
   get: () -> return API.use.crossref.journals.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter
 
 API.add 'use/crossref/journals/import',
-  get: () -> 
-    Meteor.setTimeout (() => API.use.crossref.journals.import()), 1
-    return true
+  get: 
+    roleRequired: if API.settings.dev then undefined else 'crossref.admin'
+    action:() -> 
+      Meteor.setTimeout (() => API.use.crossref.journals.import()), 1
+      return true
 API.add 'use/crossref/journals/imported', () -> return crossref_journal.search this
 
 API.add 'use/crossref/journals/:issn',
@@ -74,7 +77,7 @@ API.add 'use/crossref/journals/:issn/works/dois',
   get: () -> return API.use.crossref.journals.dois this.urlParams.issn, this.queryParams.from, this.queryParams.size, this.queryParams.count
 
 API.add 'use/crossref/journals/:issn/works/dois/example',
-  get: () -> return API.use.crossref.journals.dois.example this.urlParams.issn
+  get: () -> return API.use.crossref.journals.dois.example this.urlParams.issn, this.queryParams.refresh
 
 API.add 'use/crossref/publishers',
   get: () -> return API.use.crossref.publishers.search (this.queryParams.q ? this.queryParams.query), (this.queryParams.from ? this.queryParams.offset), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter
@@ -212,9 +215,19 @@ API.use.crossref.journals.dois = (issn, from, size=1000, count) ->
   catch
     return undefined
 
-API.use.crossref.journals.dois.example = (issn) ->
-  res = API.use.crossref.journals.dois issn, undefined, 1, 1
-  return if res? and res.length then res[0] else undefined
+API.use.crossref.journals.dois.example = (issns, refresh) ->
+  for issn in (if typeof issns is 'string' then [issns] else issns)
+    if refresh isnt true and cached = API.http.cache issn, 'crossref_journals_doi_example'
+      return cached
+    res = API.use.crossref.journals.dois issn, undefined, 1, 1
+    if res? and res.length
+      API.http.cache issn, 'crossref_journals_doi_example', res[0]
+      return res[0]
+    else if fncr = API.use.crossref.works.search undefined, undefined, 1, 'type:journal-article,issn:' + issn
+      if fncr?.data? and fncr.data.length and fncr.data[0].DOI?
+        API.http.cache issn, 'crossref_journals_doi_example', fncr.data[0].DOI
+        return fncr.data[0].DOI
+  return undefined
 
 API.use.crossref.journals.search = (qrystr,from,size,filter) ->
   url = 'https://api.crossref.org/journals?'
@@ -230,41 +243,37 @@ API.use.crossref.journals.search = (qrystr,from,size,filter) ->
   return if res.statusCode is 200 then { total: res.data.message['total-results'], data: res.data.message.items, facets: res.data.message.facets} else { status: 'error', data: res}
 
 API.use.crossref.journals.import = () ->
+  #started = Date.now()
+  crossref_journal.remove '*'
   size = 1000
   total = 0
   counter = 0
   journals = 0
-  updated = 0
-  inserted = 0
-
-  ud = false
-  ffn = false
+  batch = []
   
   while total is 0 or counter < total
+    if batch.length >= 10000
+      crossref_journal.insert batch
+      batch = []
+
     crls = API.use.crossref.journals.search undefined, counter, size
     total = crls.total if total is 0
     for crl in crls?.data ? []
       journals += 1
-      if crl.ISSN? and crl.ISSN.length and fn = crossref_journal.find 'ISSN.exact:"' + crl.ISSN.join('" OR ISSN.exact:"') + '"'
-        ffn = fn
-        cfn = _.clone fn
-        delete cfn[k] for k in ['_id','createdAt','created_date','updatedAt','updated_date']
-        if not _.isEqual cfn, crl
-          ud = true
-          updated += 1
-          crossref_journal.update fn._id, crl
-      else
-        ud = true
-        inserted += 1
-        crossref_journal.insert crl
+      #ridiculously slow responses from crossref...
+      '''if not crl.doi? and crl.ISSN? and crl.ISSN.length
+        crl.ISSN = [crl.ISSN] if typeof crl.ISSN is 'string'
+        for alti in crl.ISSN
+          if doiex = API.use.crossref.journals.dois.example alti
+            crl.doi = doiex
+            break'''
+      batch.push crl
     counter += size
 
-  if ud is false and ffn?._id?
-    crossref_journal.update ffn._id, {syncedAt: Date.now()} # keep track of the last import
-
-  jc = crossref_journal.count()
-  API.log 'Retrieved ' + journals + ' and imported ' + jc + ' crossref journals, ' + updated + ' updated, ' + inserted + ' inserted'
-  return jc
+  crossref_journal.insert(batch) if batch.length
+  #crossref_journal.remove 'createdAt:<' + started
+  API.log 'Retrieved and imported ' + journals + ' crossref journals'
+  return journals
 
 
 
@@ -500,16 +509,10 @@ API.use.crossref.works.format = (rec, metadata={}) ->
 
 
 
-# run import every day on the main machine
 _xref_import = () ->
   if API.settings.cluster?.ip? and API.status.ip() not in API.settings.cluster.ip
-    API.log 'Setting up a crossref import to run every day on ' + API.status.ip()
-    Meteor.setInterval (() ->
-      dn = Date.now()-86400000
-      if not crossref_journal.find 'createdAt:>' + dn + ' OR updatedAt:>' + dn
-        API.use.crossref.journals.import()
-      ), 43200000
-# disabled until import of dups is fixed
+    API.log 'Setting up a crossref import to run every week on ' + API.status.ip()
+    Meteor.setInterval API.use.crossref.journals.import, 604800000
 #Meteor.setTimeout _xref_import, 19000
 
 

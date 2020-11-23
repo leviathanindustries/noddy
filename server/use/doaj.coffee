@@ -4,6 +4,11 @@
 # https://doaj.org/api/v1/docs
 # DOAJ API only allows results up to 1000, regardless of page size or rate limit. Annoying...
 
+import fs from 'fs'
+import tar from 'tar'
+
+@doaj_journal = new API.collection {index:"doaj",type:"journal"}
+
 API.use ?= {}
 API.use.doaj = {journals: {}, articles: {}}
 
@@ -27,6 +32,14 @@ API.add 'use/doaj/journals/search/:qry',
 
 API.add 'use/doaj/journals/issn/:issn',
   get: () -> return API.use.doaj.journals.issn this.urlParams.issn, this.queryParams.refresh
+
+API.add 'use/doaj/journals/import',
+  get: 
+    roleRequired: if API.settings.dev then undefined else 'doaj.admin'
+    action: () -> 
+      Meteor.setTimeout (() => API.use.doaj.journals.import this.queryParams.refresh), 1
+      return true
+API.add 'use/doaj/journals/imported', () -> return doaj_journal.search this
 
 
 
@@ -99,6 +112,39 @@ API.use.doaj.journals.search = (qry, params, refresh) ->
       return res.data
     else
       return {status: 'error', data: res.data}
+
+API.use.doaj.journals.import = (refresh) ->
+  try
+    prev = false
+    current = false
+    fs.writeFileSync '/tmp/doaj' + (if API.settings.dev then '_dev' else ''), HTTP.call('GET', 'https://doaj.org/public-data-dump/journal', {npmRequestOptions:{encoding:null}}).content
+    tar.extract file: '/tmp/doaj' + (if API.settings.dev then '_dev' else ''), cwd: '/tmp', sync: true # extracted doaj dump folders end 2020-10-01
+    for f in fs.readdirSync '/tmp' # readdir alphasorts, so if more than one in tmp then last one will be newest
+      if f.indexOf('doaj_journal_data') isnt -1
+        if prev
+          try fs.unlinkSync '/tmp/' + prev + '/journal_batch_1.json'
+          try fs.rmdirSync '/tmp/' + prev
+        prev = current
+        current = f
+    if current and (prev or refresh)
+      doaj_journal.remove '*'
+      doaj_journal.insert JSON.parse fs.readFileSync '/tmp/' + current + '/journal_batch_1.json'
+      API.log 'Imported DOAJ journals'
+      return true
+    else
+      API.log 'DOAJ journal import ran but found nothing new to import'
+      return false
+  catch
+    API.log 'Error trying to import DOAJ journals'
+    return false
+
+_doaj_journals_import = () ->
+  if API.settings.cluster?.ip? and API.status.ip() not in API.settings.cluster.ip
+    API.log 'Setting up a DOAJ journal import to run two days if their dump file updated on ' + API.status.ip()
+    Meteor.setInterval API.use.doaj.journals.import, 172800000
+Meteor.setTimeout _doaj_journals_import, 22000
+
+
 
 API.use.doaj.articles.doi = (doi, format, refresh) ->
   return API.use.doaj.articles.get 'doi:' + doi, format
