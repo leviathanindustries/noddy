@@ -34,7 +34,7 @@ API.add 'use/wikidata/property', get: () -> return API.use.wikidata.property.fin
 API.add 'use/wikidata/property/:prop', get: () -> return API.use.wikidata.property this.urlParams.prop, this.queryParams.simple
 API.add 'use/wikidata/property/:prop/terms', get: () -> return API.use.wikidata.property.terms this.urlParams.prop, this.queryParams.size, this.queryParams.counts, this.queryParams.alphabetical
 
-API.add 'use/wikidata/import', post: () -> return API.use.wikidata.import this.request.body
+#API.add 'use/wikidata/import', post: () -> return API.use.wikidata.import this.request.body
 
 
 # routes to remotes

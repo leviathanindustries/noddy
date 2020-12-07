@@ -91,9 +91,12 @@ API.es._waiting = false
 API.es._retries = {
   baseTimeout: 100,
   maxTimeout: 5000,
-  times: 10,
+  times: 8,
   shouldRetry: (err,res,cb) ->
-    #console.log(err?.response?.statusCode) if API.settings.dev
+    #if API.settings.dev
+    #  try console.log err
+    #  try console.log res
+    #  try console.log err?.response?.statusCode
     rt = false
     try
       serr = err.toString()
@@ -492,9 +495,10 @@ API.es.bulk = (index, type, data, action='index', bulk=50000, dev=API.settings.d
     API.log 'Doing bulk ' + action + ' of ' + rows.length + ' rows for ' + index + ' ' + type
   else if API.settings.log?.level in ['all','debug']
     console.log 'Doing bulk ' + action + ' of ' + rows.length + ' rows for ' + index + ' ' + type
+  loaded = 0
   counter = 0
   pkg = ''
-  responses = []
+  #responses = []
   for r of rows
     counter += 1
     row = rows[r]
@@ -509,12 +513,18 @@ API.es.bulk = (index, type, data, action='index', bulk=50000, dev=API.settings.d
       delete row._id if row._id?
       pkg += JSON.stringify({doc: row}) + '\n' # is it worth expecting other kinds of update in bulk import?
     # don't need a second row for deletes
-    if counter is bulk or parseInt(r) is (rows.length - 1)
-      hp = RetryHttp.call 'POST', url + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'},retry:API.es._retries}
-      responses.push hp
+    if counter is bulk or parseInt(r) is (rows.length - 1) or pkg.length > 70000000
+      if API.settings.dev
+        console.log 'ES bulk loading package of length ' + pkg.length + (if counter isnt bulk and pkg.length > 70000000 then ' triggered by length' else '')
+      try
+        hp = HTTP.call 'POST', url + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'}} #,retry:API.es._retries}
+        #responses.push hp
+        loaded += counter
+      catch err
+        console.log err
       pkg = ''
       counter = 0
-  return {records:rows.length, responses:responses}
+  return {records:loaded} #, responses:responses}
 
 API.es.status = () ->
   s = API.es.call 'GET', '/_status'

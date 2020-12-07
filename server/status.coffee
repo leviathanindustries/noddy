@@ -59,11 +59,21 @@ API.status = (email=false, accounts=false, service=false, use=false, job=false, 
   ret =
     status: 'green' # can also be yellow if there are non-critical problems, or red if problems
     up:
-      live: false
-      local: false
+      main: false
+      #local: false
       cluster: false
-      dev: false
     machines: []
+
+  if API.settings.dev
+    ret.up.dev = false
+    ret.up.live = false
+  else
+    ret.up.live = false
+
+  if API.settings.cluster?.ip and API.status.ip() in API.settings.cluster.ip
+    ret.status = 'yellow'
+  else
+    ret.up.main = true
 
   if accounts
     ret.accounts = total: Users.count()
@@ -71,24 +81,25 @@ API.status = (email=false, accounts=false, service=false, use=false, job=false, 
     ret.status = 'red' if ret.accounts.total is 0
 
   try ret.up.live = true if HTTP.call 'HEAD', 'https://api.cottagelabs.com', {timeout:2000}
-  try ret.up.local = true if lm = HTTP.call 'GET', 'https://local.api.cottagelabs.com/status/stats', {timeout:2000}
-  try ret.up.dev = true if dm = HTTP.call 'GET', 'https://dev.api.cottagelabs.com/status/stats', {timeout:2000}
+  if API.settings.dev # live does not wait on checking dev, but dev does check live, because why not
+    try ret.up.dev = true if dm = HTTP.call 'GET', 'https://dev.api.cottagelabs.com/status/stats', {timeout:2000}
+  #try ret.up.local = true if lm = HTTP.call 'GET', 'https://local.api.cottagelabs.com/status/stats', {timeout:2000}
   reported = false
-  if lm?.data?
-    lm.data.machine = 'local'
-    if lm.data.ip is API.status.ip()
-      reported = true
-      lm.data.served = true
-    ret.machines.push lm.data
+  #if lm?.data?
+  #  lm.data.machine = 'local'
+  #  if lm.data.ip is API.status.ip()
+  #    reported = true
+  #    lm.data.served = true
+  #  ret.machines.push lm.data
   if dm?.data?
     dm.data.machine = 'dev'
     if dm.data.ip is API.status.ip()
       reported = true
       dm.data.served = true
     ret.machines.push dm.data
-  try
-    HTTP.call 'HEAD','https://cluster.api.cottagelabs.com', {timeout:2000}
-    ret.up.cluster = true
+  #try
+  #  HTTP.call 'HEAD','https://cluster.api.cottagelabs.com', {timeout:2000}
+  #  ret.up.cluster = true
   try
     if API.settings.cluster?.ip
       API.settings.cluster.ip = [API.settings.cluster.ip] if typeof API.settings.cluster.ip is 'string'
@@ -137,14 +148,16 @@ API.status = (email=false, accounts=false, service=false, use=false, job=false, 
     ret.status = 'yellow' if ret.status isnt 'red' and ret.index is false
     ret.status = ret.index.cluster.status if ret.index isnt false and ret.status isnt 'red' and ret.index.cluster?.status not in (API.settings.es?.status ? ['green'])
 
+  if not detailed
+    delete ret.machines
+    if ret.index?.cluster?
+      ret.index = {cluster_name: ret.index.cluster.cluster_name, cluster_status: ret.index.cluster.status}
+      ret.index.cluster_acceptable_status = if ret.index.cluster_status in (API.settings.es?.status ? ['green']) then 'green' else 'red'
+
   # TODO if ret.status isnt green, should a notification email get sent?
   if ret.status isnt 'green'
     API.log {msg: 'Status check is not green', status: ret, function: 'API.status'}
-  else if not detailed
-    delete ret.machines
-    if ret.index?.cluster?
-      ret.index = {cluster: {cluster_name: ret.index.cluster.cluster_name, status: ret.index.cluster.status}} 
-      ret.index.acceptable = API.settings.es.status if API.settings.es?.status?
+
   return ret
 
 _sync_running = false

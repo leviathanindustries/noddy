@@ -360,12 +360,17 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll='20m', dev=API
   total = res.hits.total
   processed = 0
   updates = []
-  while res?.hits?.hits? and res.hits.hits.length
+  breaker = false
+  while res?.hits?.hits? and res.hits.hits.length and not breaker
     for h in res.hits.hits
       fn = fn.bind this
       fr = fn h._source ? h.fields ? {_id: h._id}
       processed += 1
       updates.push(fr) if fr? and (typeof fr is 'object' or typeof fr is 'string')
+      if fr is 'break'
+        breaker = true
+        console.log('break triggered in collection each') if API.settings.dev
+        break
     if res._scroll_id?
       rss = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, scroll, undefined, dev
       if not rss?
@@ -685,7 +690,7 @@ API.collection._translate = (q, opts) ->
       if q.must_not?
         qry.query.filtered.filter.bool.must_not = q.must_not
       for y of q # an object where every key is assumed to be an AND term search if string, or a named search object to go in to ES
-        if (y is 'fields') or (y is 'sort' and typeof q[y] is 'string' and q[y].indexOf(':') isnt -1) or (y in ['from','size'] and (typeof q[y]is 'number' or not isNaN parseInt q[y]))
+        if (y in ['fields','terms']) or (y is 'sort' and typeof q[y] is 'string' and q[y].indexOf(':') isnt -1) or (y in ['from','size'] and (typeof q[y]is 'number' or not isNaN parseInt q[y]))
           opts ?= {}
           opts[y] = q[y]
         else if y not in ['must','must_not','should']
