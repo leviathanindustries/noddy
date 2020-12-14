@@ -169,7 +169,9 @@ class share.Route
             try
               for q of rq
                 try
-                  if rq[q] is 'true'
+                  if rq[q] is 'undefined'
+                    rq[q] = undefined
+                  else if rq[q] is 'true'
                     rq[q] = true
                   else if rq[q] is 'false'
                     rq[q] = false
