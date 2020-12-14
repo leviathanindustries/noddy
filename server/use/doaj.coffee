@@ -8,6 +8,7 @@ import fs from 'fs'
 import tar from 'tar'
 
 @doaj_journal = new API.collection {index:"doaj",type:"journal"}
+@doaj_in_progress = new API.collection {index:"doaj",type:"inprogress"}
 
 API.use ?= {}
 API.use.doaj = {journals: {}, articles: {}}
@@ -27,19 +28,16 @@ API.add 'use/doaj/articles/doi/:doipre/:doipost',
 API.add 'use/doaj/articles/doi/:doipre/:doipost/:doiextra',
   get: () -> return API.use.doaj.articles.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doiextra, this.queryParams.format, this.queryParams.refresh
 
-API.add 'use/doaj/journals/search/:qry',
-  get: () -> return API.use.doaj.journals.search this.urlParams.qry, this.queryParams, this.queryParams.refresh
-
-API.add 'use/doaj/journals/issn/:issn',
-  get: () -> return API.use.doaj.journals.issn this.urlParams.issn, this.queryParams.refresh
-
+API.add 'use/doaj/journals', () -> return doaj_journal.search this
+API.add 'use/doaj/journals/inprogress', () -> return doaj_in_progress.search this
+API.add 'use/doaj/journals/:issn',
+  get: () -> return API.use.doaj.journals.issn this.urlParams.issn
 API.add 'use/doaj/journals/import',
   get: 
     roleRequired: if API.settings.dev then undefined else 'doaj.admin'
     action: () -> 
       Meteor.setTimeout (() => API.use.doaj.journals.import this.queryParams.refresh), 1
       return true
-API.add 'use/doaj/journals/imported', () -> return doaj_journal.search this
 
 
 
@@ -81,39 +79,19 @@ API.use.doaj.es = (which='journal,article', params, body, format=true) ->
   catch err
     return {status: 'error', error: err, query: body, url: url}
 
-API.use.doaj.journals.issn = (issn, refresh) ->
+API.use.doaj.journals.issn = (issn) ->
   issn = issn.split(',') if typeof issn is 'string'
-  issn[i] = 'issn:'+issn[i] for i of issn
-  r = API.use.doaj.journals.search issn.join(' OR '), undefined, refresh
-  return if r.results?.length then r.results[0] else undefined
+  r = API.use.doaj.journals.search 'issn.exact:"' + issn.join(' OR issn.exact:"') + '"', undefined
+  return if r.hits?.total then r.hits.hits[0]._source else undefined
 
-# title search possible with title:MY JOURNAL TITLE
-# DOAJ API rate limit is 6r/s
-# a 200ms limit would stay above that, and also the noddy limiter sets a min of 500ms anyway, and actually only runs one task per second if just one machine running
-# adjusted to 400ms
-API.use.doaj.journals.search = (qry, params, refresh) ->
-  if refresh isnt true and cached = API.http.cache qry, 'doaj_journals', undefined, refresh
-    return cached
-  else
-    url = 'https://doaj.org/api/v1/search/journals/' + qry + '?'
-    if params?.size?
-      params.pageSize = params.size
-      delete params.size
-    if params?.from?
-      params.page = Math.ceil params.from/(params.pageSize ? 10)
-      delete params.from
-    url += op + '=' + params[op] + '&' for op of params
-    API.log 'Using doaj for ' + url
-    res = API.job.limit 400, 'HTTP.call', ['GET',url], "DOAJ"
-    #res = HTTP.call 'GET', url
-    #res.data.data = res.data.results if res?.data?.results?
-    if res.statusCode is 200
-      API.http.cache qry, 'doaj_journals', res.data
-      return res.data
-    else
-      return {status: 'error', data: res.data}
+API.use.doaj.journals.search = (qry) ->
+  return doaj_journal.search qry
 
 API.use.doaj.journals.import = (refresh) ->
+  # doaj only updates their journal dump once a week so calling academic journal load
+  # won't actually do anything if the dump file name has not changed since last run 
+  # or if a refresh is called
+  ret = false
   try
     prev = false
     current = false
@@ -130,13 +108,23 @@ API.use.doaj.journals.import = (refresh) ->
       doaj_journal.remove '*'
       doaj_journal.insert JSON.parse fs.readFileSync '/tmp/' + current + '/journal_batch_1.json'
       API.log 'Imported DOAJ journals'
-      return true
+      ret = true
     else
       API.log 'DOAJ journal import ran but found nothing new to import'
-      return false
+      ret = false
   catch
     API.log 'Error trying to import DOAJ journals'
-    return false
+    ret = false
+  if ret is true
+    # only get new doaj inprogress data if the journals load processed some doaj 
+    # journals (otherwise we're between the week-long period when doaj doesn't update)
+    # and if doaj did update, load them into the catalogue too
+    try
+      r = HTTP.call 'GET', 'https://doaj.org/jct/inprogress?api_key=' + API.settings.service.doaj.apikey
+      rc = JSON.parse r.content
+      doaj_in_progress.remove '*'
+      doaj_in_progress.insert rc
+  return ret
 
 _doaj_journals_import = () ->
   if API.settings.cluster?.ip? and API.status.ip() not in API.settings.cluster.ip
