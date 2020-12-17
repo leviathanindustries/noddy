@@ -24,20 +24,20 @@ API.use.crossref = {works:{},journals:{}, publishers: {}, funders: {}}
 
 API.add 'use/crossref/works',
   get: () -> 
-    if this.queryParams.title
-      return API.use.crossref.works.title this.queryParams.title, this.queryParams.format
-    else if this.queryParams.doi
-      return API.use.crossref.works.doi this.queryParams.doi, this.queryParams.format, this.queryParams.refresh
+    if this.queryParams.title and ct = API.use.crossref.works.title this.queryParams.title, this.queryParams.format
+      return ct
+    else if this.queryParams.doi and dt = API.use.crossref.works.doi this.queryParams.doi, this.queryParams.format
+      return dt
     else
       return crossref_works.search this.queryParams
 
 API.add 'use/crossref/works/:doipre/:doipost',
-  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format, this.queryParams.refresh
+  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost, this.queryParams.format
 # there are DOIs that can have slashes within their second part and are valid. Possibly could have more than one slash
 # and there does not seem to be a way to pass wildcards to the urlparams to match multiple / routes
 # so this will do for now...
 API.add 'use/crossref/works/:doipre/:doipost/:doimore',
-  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format, this.queryParams.refresh
+  get: () -> return API.use.crossref.works.doi this.urlParams.doipre + '/' + this.urlParams.doipost + '/' + this.urlParams.doimore, this.queryParams.format
 
 API.add 'use/crossref/works/extra', () -> return crossref_extra.search this.queryParams
 
@@ -50,10 +50,12 @@ API.add 'use/crossref/works/searchby/:searchby/:startdate',
 API.add 'use/crossref/works/searchby/:searchby/:startdate/:enddate',
   get: () -> return API.use.crossref.works.searchby this.urlParams.searchby, (this.queryParams.q ? this.queryParams.query), this.urlParams.startdate, this.urlParams.enddate, (this.queryParams.from ? this.queryParams.offset ? this.queryParams.cursor), (this.queryParams.size ? this.queryParams.rows), this.queryParams.filter, this.queryParams.order, this.queryParams.format
 
-#API.add 'use/crossref/works/index', 
-#  get: () -> 
-#    Meteor.setTimeout (() => API.use.crossref.works.index()), 1
-#    return true
+API.add 'use/crossref/works/index', 
+  get: () -> 
+    Meteor.setTimeout (() => API.use.crossref.works.index(this.queryParams.lts, this.queryParams.by)), 1
+    return true
+API.add 'use/crossref/works/lastindex', get: () -> return API.use.crossref.works.lastindex()
+API.add 'use/crossref/works/lastindex/count', get: () -> return API.use.crossref.works.lastindex true
 #API.add 'use/crossref/works/import', post: () -> return API.use.crossref.works.import this.request.body
 
 API.add 'use/crossref/types',
@@ -100,7 +102,7 @@ API.use.crossref.types = () ->
     else
       return undefined
 
-API.use.crossref.reverse = (citations,score=85,format=false) ->
+API.use.crossref.reverse = (citations, score=85, format=false) ->
   citations = [citations] if typeof citations is 'string'
   url = 'https://api.crossref.org/reverse'
   API.log 'Using crossref for ' + url + ' with citation ' + JSON.stringify citations
@@ -181,7 +183,7 @@ API.use.crossref.journals.dois = (issn, from=0) ->
       return 'break'
   return dois
 
-API.use.crossref.journals.search = (qrystr,from,size,filter) ->
+API.use.crossref.journals.search = (qrystr, from, size, filter) ->
   url = 'https://api.crossref.org/journals?'
   if qrystr and qrystr isnt 'all'
     qry = qrystr.replace(/\w+?\:/g,'').replace(/ AND /g,'+').replace(/ OR /g,' ').replace(/ NOT /g,'-').replace(/ /g,'+')
@@ -195,8 +197,7 @@ API.use.crossref.journals.search = (qrystr,from,size,filter) ->
   return if res.statusCode is 200 then { total: res.data.message['total-results'], data: res.data.message.items, facets: res.data.message.facets} else { status: 'error', data: res}
 
 API.use.crossref.journals.import = () ->
-  #started = Date.now()
-  crossref_journal.remove '*'
+  started = Date.now()
   size = 1000
   total = 0
   counter = 0
@@ -216,7 +217,7 @@ API.use.crossref.journals.import = () ->
     counter += size
 
   crossref_journal.insert(batch) if batch.length
-  #crossref_journal.remove 'createdAt:<' + started
+  crossref_journal.remove 'createdAt:<' + started
   API.log 'Retrieved and imported ' + journals + ' crossref journals'
   return journals
 
@@ -255,11 +256,33 @@ API.use.crossref.works.issn = (issn, q={}) ->
   issn = [issn] if typeof issn is 'string'
   return crossref_works.search q, restrict: [{query_string: {query: 'ISSN.exact:"' + issn.join('" OR issn.exact:"') + '"'}}]
 
-API.use.crossref.works.doi = (doi,format) ->
-  ret = crossref_works.get doi.replace /\//g, '_'
+API.use.crossref.works.doi = (doi, format) ->
+  ret = crossref_works.get doi.toLowerCase().replace /\//g, '_'
+  if not ret?
+    url = 'https://api.crossref.org/works/' + doi
+    API.log 'Using crossref for ' + url
+    try res = HTTP.call 'GET', url, {headers: header}
+    if res?.statusCode is 200 and res.data?.message?.DOI?
+      rec = res.data.message
+      if rec.relation? or rec.reference? or rec.abstract?
+        rt = _id: rec.DOI.replace(/\//g, '_'), relation: rec.relation, reference: rec.reference, abstract: rec.abstract
+        if ext = crossref_extra.get rt._id
+          upd = {}
+          upd.relation = rec.relation if rec.relation? and not ext.relation?
+          upd.reference = rec.reference if rec.reference? and not ext.reference?
+          upd.abstract = rec.abstract if rec.abstract? and not ext.abstract?
+          if typeof upd.abstract is 'string'
+            upd.abstract = API.convert.html2txt upd.abstract
+          if JSON.stringify(upd) isnt '{}'
+            crossref_extra.update rt._id, upd
+        else
+          crossref_extra.insert rt
+      ret = API.use.crossref.works.clean rec
+      API.log 'Saved crossref work ' + ret.DOI
+      crossref_works.insert ret
   return if not ret? then undefined else if format then API.use.crossref.works.format(ret) else ret
 
-API.use.crossref.works.title = (title, format=true) ->
+API.use.crossref.works.title = (title, format) ->
   metadata = if typeof title is 'object' then title else {}
   title = metadata.title if typeof title is 'object'
   return undefined if typeof title isnt 'string'
@@ -301,7 +324,7 @@ API.use.crossref.works.title = (title, format=true) ->
 
 # from could also be a cursor value, use * to start a cursor then return the next-cursor given in the response object
 # largest size is 1000 and deepest from is 10000, so anything more than that needs cursor
-API.use.crossref.works.search = (qrystr,from,size,filter,sort,order='desc',format,funder,publisher,journal) ->
+API.use.crossref.works.search = (qrystr, from, size, filter, sort, order='desc', format, funder, publisher, journal) ->
   # max size is 1000
   url = 'https://api.crossref.org'
   url += '/funders/' + funder if funder # crossref funder ID
@@ -354,7 +377,7 @@ API.use.crossref.works.search = (qrystr,from,size,filter,sort,order='desc',forma
   else
     return { status: 'error', data: res}
 
-API.use.crossref.works.searchby = (searchby='published',qrystr,startdate,enddate,from,size,filter,order,format) ->
+API.use.crossref.works.searchby = (searchby='published', qrystr, startdate, enddate, from, size, filter, order, format) ->
   # can be published, indexed, deposited, created
   # using ?filter=from-pub-date:2004-04-04,until-pub-date:2004-04-04 (the dates are inclusive)
   part = if searchby is 'published' then 'pub' else if searchby is 'created' then 'created' else searchby.replace('ed','')
@@ -368,6 +391,7 @@ API.use.crossref.works.searchby = (searchby='published',qrystr,startdate,enddate
   return API.use.crossref.works.search qrystr, from, size, filter, searchby, order, format
 
 API.use.crossref.works.index = (lts, searchby='created') ->
+  console.log searchby
   if not lts and last = API.http.cache 'last', 'crossref_works_imported'
     # just in case it is an old reading from before I had to switch to using cursor, I was storing the last from number too
     lts = if typeof last is 'string' then parseInt(last.split('_')[0]) else last
@@ -378,10 +402,11 @@ API.use.crossref.works.index = (lts, searchby='created') ->
   startday = moment(lts).startOf('day').valueOf()
   dn = Date.now()
   loaded = 0
+  updated = 0
   days = 0
   broken = false
   try
-    target = API.use.crossref.works[searchby](undefined, startday, undefined, undefined, 10).total
+    target = API.use.crossref.works.searchby(searchby, undefined, startday, undefined, undefined, 10).total
     console.log target
   catch
     target = 0
@@ -396,7 +421,7 @@ API.use.crossref.works.index = (lts, searchby='created') ->
       console.log fromthisday
       console.log cursor
       try
-        thisdays = API.use.crossref.works[searchby] undefined, startday, startday, cursor, 1000, undefined, 'asc' # using same day for crossref API gets that whole day
+        thisdays = API.use.crossref.works.searchby searchby, undefined, startday, startday, cursor, 1000, undefined, 'asc' # using same day for crossref API gets that whole day
         console.log thisdays.data.length
         batch = []
         xtb = []
@@ -416,7 +441,9 @@ API.use.crossref.works.index = (lts, searchby='created') ->
                 crossref_extra.update rt._id, upd
             else
               xtb.push rt
-          batch.push API.use.crossref.works.clean rec
+          cr = API.use.crossref.works.clean rec
+          updated += 1 if crossref_works.get cr._id
+          batch.push cr
         if batch.length
           l = crossref_works.insert batch
           if l?.records is batch.length
@@ -443,11 +470,25 @@ API.use.crossref.works.index = (lts, searchby='created') ->
 
   API.mail.send
     service: 'openaccessbutton'
-    from: 'requests@openaccessbutton.org'
-    to: 'alert@cottagelabs.com'
+    from: 'natalia.norori@openaccessbutton.org'
+    to: if broken then 'alert@cottagelabs.com' else 'mark@cottagelabs.com'
     subject: 'Crossref index check ' + (if broken then 'broken' else 'complete')
-    text: 'Processed ' + days + ' days up to ' + startday + ' and loaded ' + loaded + ' records. Target was ' + target
+    text: 'Processed ' + days + ' days up to ' + startday + ' and loaded ' + loaded + ' records of which ' + updated + ' were updates. Target was ' + target
   return loaded
+
+API.use.crossref.works.lastindex = (count) ->
+  try
+    last = API.http.cache 'last', 'crossref_works_imported'
+    lts = if typeof last is 'string' then parseInt(last.split('_')[0]) else last
+  catch
+    lts = 1585971669199 # the timestamp of the last article from the data dump (around 4th April 2020)
+  if count
+    res = date: moment(lts).startOf('day').format('YYYY-MM-DD')
+    res.timestamp = moment(lts).startOf('day').valueOf()
+    res[p] = API.use.crossref.works.searchby(p, undefined, res.timestamp).total for p in ['published', 'indexed', 'deposited', 'created']
+    return res
+  else
+    return moment(lts).startOf('day').format('YYYY-MM-DD')
 
 API.use.crossref.works.clean = (rec) ->
   rec._id = rec.DOI.replace /\//g, '_'
@@ -574,9 +615,11 @@ API.use.crossref.works.import = (recs) ->
     return undefined
 
 _xref_import = () ->
-  if API.settings.cluster?.ip? and API.status.ip() not in API.settings.cluster.ip
-    API.log 'Setting up a crossref import to run every week on ' + API.status.ip()
+  if API.settings.cluster?.ip? and API.status.ip() not in API.settings.cluster.ip and API.settings.dev
+    API.log 'Setting up a crossref journal import to run every week on ' + API.status.ip()
     Meteor.setInterval API.use.crossref.journals.import, 604800000
+    API.log 'Setting up a crossref works import to run every day on ' + API.status.ip()
+    Meteor.setInterval (() -> API.use.crossref.works.index(undefined, 'indexed')), 86400000
 #Meteor.setTimeout _xref_import, 19000
 
 
