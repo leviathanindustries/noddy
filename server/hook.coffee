@@ -1,11 +1,26 @@
 
 # write any hooks here as endpoints that other services can push events to
 
-API.hook = {}
+API.add 'hook', post: () -> return API.hook this.bodyParams
 
 API.add 'hook/github', post: () -> return API.hook.github this.bodyParams
 
 
+API.hook = (opts) ->
+  '''try
+    ln = opts.repository.full_name.toLowerCase()
+    br = opts.ref.split('/').pop().toLowerCase()
+    base = '/home/cloo/' + (if br is 'develop' then 'dev' else 'live') + '/'
+    if ln in ['cottagelabs/jct', 'cottagelabs/jct_api'] and br in ['develop'] # 'master'
+      dir = base + 'jct/' + ln.split('/').pop()
+      cmd = 'git pull origin ' + br + ' && node build.js'
+  '''
+  API.mail.send
+    from: 'sysadmin@cottagelabs.com'
+    to: 'mark@cottagelabs.com'
+    subject: 'Githook'
+    text: JSON.stringify opts, '', 2
+  return true
 
 # for any github webhook action, catch it and trigger something here, which can be configured in settings
 # when these hook URLs are hit, they woudl also need to be called on the specific machine 
