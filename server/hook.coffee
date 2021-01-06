@@ -7,6 +7,14 @@ API.add 'hook/github', post: () -> return API.hook.github this.bodyParams
 
 
 API.hook = (opts) ->
+  '''try
+    ln = opts.repository.full_name.toLowerCase()
+    br = opts.ref.split('/').pop().toLowerCase()
+    base = '/home/cloo/' + (if br is 'develop' then 'dev' else 'live') + '/'
+    if ln in ['cottagelabs/jct', 'cottagelabs/jct_api'] and br in ['develop'] # 'master'
+      dir = base + 'jct/' + ln.split('/').pop()
+      cmd = 'git pull origin ' + br + ' && node build.js'
+  '''
   API.mail.send
     from: 'sysadmin@cottagelabs.com'
     to: 'mark@cottagelabs.com'

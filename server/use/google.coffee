@@ -248,8 +248,9 @@ API.use.google.places.search = (params) ->
 
 
 
-API.use.google.sheets.feed = (sheetid,opts={}) ->
+API.use.google.sheets.feed = (sheetid, opts={}) ->
 	opts = {stale:opts} if typeof opts is 'number'
+	opts.stale = opts.refresh if opts.refresh?
 	opts.stale ?= 3600000
 	opts.sheet ?= 'default' # or else a number, starting from 1, indicating which sheet in the overall sheet to access
 	return [] if not sheetid?

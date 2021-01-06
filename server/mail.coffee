@@ -131,13 +131,13 @@ API.mail.send = (opts,mail_url) ->
     process.env.MAIL_URL = mail_url ? API.settings.mail.url
     Email.send(opts)
     delete opts.attachments
-    API.log({msg:'Sending mail via mailgun SMTP',mail:opts})
+    API.log({msg:'Sending mail via mailgun SMTP', mail: {service: opts.service, from: opts.from, to: opts.to}})
     process.env.MAIL_URL = API.settings.mail.url if mail_url?
     return {}
   else
     url = 'https://api.mailgun.net/v3/' + ms.domain + '/messages'
     opts.to = opts.to.join(',') if typeof opts.to is 'object'
-    API.log({msg:'Sending mail via mailgun API',mail:opts,url:url})
+    API.log({msg:'Sending mail via mailgun API', mail:{service: opts.service, from: opts.from, to: opts.to}, url:url})
     try
       posted = HTTP.call 'POST', url, {params:opts,auth:'api:'+ms.apikey}
       API.log {posted:posted}
@@ -180,8 +180,8 @@ API.mail.progress = (content,token) ->
             obj.notify.notify = 'dropped'
       else if content.domain.indexOf('openaccessbutton') isnt -1 # TODO this should not directly refer to a service - config should be passed in
         API.mail.send {
-          from: "requests@openaccessbutton.org",
-          to: ["natalianorori@gmail.com"],
+          from: "natalia.norori@openaccessbutton.org",
+          to: ["natalia.norori@openaccessbutton.org"],
           subject: "mailgun dropped email",
           text: JSON.stringify(content,undefined,2)
         }, API.settings.openaccessbutton.mail_url

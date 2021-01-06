@@ -193,8 +193,8 @@ API.use.crossref.journals.search = (qrystr, from, size, filter) ->
   url += '&filter=' + filter if filter?
   url = url.replace('?&','?') # tidy any params coming immediately after the start of search query param signifier, as it makes crossref error out
   API.log 'Using crossref for ' + url
-  res = HTTP.call 'GET', url, {headers: header}
-  return if res.statusCode is 200 then { total: res.data.message['total-results'], data: res.data.message.items, facets: res.data.message.facets} else { status: 'error', data: res}
+  try res = HTTP.call 'GET', url, {headers: header}
+  return if res?.statusCode is 200 then { total: res.data.message['total-results'], data: res.data.message.items, facets: res.data.message.facets} else { status: 'error', data: res}
 
 API.use.crossref.journals.import = () ->
   started = Date.now()
@@ -209,12 +209,22 @@ API.use.crossref.journals.import = () ->
       crossref_journal.insert batch
       batch = []
 
-    crls = API.use.crossref.journals.search undefined, counter, size
-    total = crls.total if total is 0
-    for crl in crls?.data ? []
-      journals += 1
-      batch.push crl
-    counter += size
+    try
+      crls = API.use.crossref.journals.search undefined, counter, size
+      total = crls.total if total is 0
+      for crl in crls?.data ? []
+        journals += 1
+        batch.push crl
+      counter += size
+    catch err
+      console.log 'crossref journals import process error'
+      try
+        console.log err.toString()
+      catch
+        try console.log err
+      future = new Future()
+      Meteor.setTimeout (() -> future.return()), 2000 # wait 2s on crossref downtime
+      future.wait()
 
   crossref_journal.insert(batch) if batch.length
   crossref_journal.remove 'createdAt:<' + started
@@ -390,8 +400,7 @@ API.use.crossref.works.searchby = (searchby='published', qrystr, startdate, endd
     filter += ',until-' + part + '-date:' + enddate
   return API.use.crossref.works.search qrystr, from, size, filter, searchby, order, format
 
-API.use.crossref.works.index = (lts, searchby='created') ->
-  console.log searchby
+API.use.crossref.works.index = (lts, searchby='indexed') ->
   if not lts and last = API.http.cache 'last', 'crossref_works_imported'
     # just in case it is an old reading from before I had to switch to using cursor, I was storing the last from number too
     lts = if typeof last is 'string' then parseInt(last.split('_')[0]) else last
@@ -417,8 +426,7 @@ API.use.crossref.works.index = (lts, searchby='created') ->
     totalthisday = false
     fromthisday = 0
     while not broken and (totalthisday is false or fromthisday < totalthisday)
-      console.log loaded
-      console.log fromthisday
+      console.log loaded, fromthisday, target, searchby
       console.log cursor
       try
         thisdays = API.use.crossref.works.searchby searchby, undefined, startday, startday, cursor, 1000, undefined, 'asc' # using same day for crossref API gets that whole day
@@ -620,7 +628,7 @@ _xref_import = () ->
     Meteor.setInterval API.use.crossref.journals.import, 604800000
     API.log 'Setting up a crossref works import to run every day on ' + API.status.ip()
     Meteor.setInterval (() -> API.use.crossref.works.index(undefined, 'indexed')), 86400000
-#Meteor.setTimeout _xref_import, 19000
+Meteor.setTimeout _xref_import, 19000
 
 
 

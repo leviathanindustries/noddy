@@ -162,6 +162,28 @@ API.tdm.clean = (text) ->
 		catch
 			return text
 
+API.tdm.stringify = (obj, include=[], ignore=[]) ->
+  if typeof obj is 'string'
+    s = obj
+  else if typeof obj is 'number'
+    s = obj.toString()
+  else if typeof obj is 'object'
+    if Array.isArray obj
+      s = JSON.stringify obj
+    else
+      s = '{'
+      for a in _.keys(obj).sort()
+        if (not include.length or a in include) and a not in ignore
+          s += ',' if s isnt '{'
+          s += '"' + a + '":"' + JSON.stringify(obj[a]) + '"'
+      s += '}'
+  else
+    try
+      s = JSON.stringify obj
+    catch
+      s = ''
+  return s
+
 API.tdm.diff = (a, b, opts={}) ->
 	# can be Chars for comparison char by char. Or Words to compare words ignoring whitespace. Or WordsWithSpace to care about whitespace
 	# Or Lines to compare lines. Or Sentences for sentences. Or Patch will do structuredPatch (there are other action options but just use these)
