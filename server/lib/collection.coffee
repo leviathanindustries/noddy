@@ -110,7 +110,7 @@ API.collection.prototype.fetch_history = (q, opts={}, dev=API.settings.dev) ->
       hr[hr.action] = JSON.parse(hr.string) if hr.string? and hr.action?
       results.push hr
     res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, undefined, undefined, dev
-  this.refresh(dev)
+  #this.refresh(dev)
   return results
 
 # TODO add rewind and replay functions that can work through history records and apply / remove them in order to / from a given record, and allow to specify the date range to play
@@ -385,7 +385,7 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll='20m', dev=API
       res.hits.hits = []
   if action? and updates.length
     bulked = this.bulk updates, action, uid, undefined, dev
-    this.refresh(dev)
+    #this.refresh(dev)
   return if action then {total: total, updated:updates.length, processed:processed, bulk: bulked} else processed
 
 API.collection.prototype.fetch = (q, opts={}, dev=API.settings.dev) ->
@@ -406,7 +406,7 @@ API.collection.prototype.fetch = (q, opts={}, dev=API.settings.dev) ->
     for h in res.hits.hits
       results.push h._source ? h.fields ? {_id: h._id}
     res = API.es.call 'GET', '/_search/scroll', undefined, undefined, undefined, res._scroll_id, undefined, undefined, dev
-  this.refresh(dev)
+  #this.refresh(dev)
   return results
 
 API.collection.prototype.count = (key, q, dev=API.settings.dev) ->
