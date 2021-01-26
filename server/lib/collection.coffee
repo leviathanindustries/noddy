@@ -338,6 +338,9 @@ API.collection.prototype.each = (q, opts, fn, action, uid, scroll='20m', dev=API
   # suitable returns would be entire records for insert, record update objects for update, or record IDs for remove
   # this does not allow different actions for different records that are operated on - so has to be bulks of the same action
   started = Date.now()
+  if fn is undefined and opts is undefined and typeof q is 'function'
+    fn = q
+    q = '*'
   if fn is undefined and typeof opts is 'function'
     fn = opts
     opts = undefined
@@ -610,13 +613,13 @@ API.collection.prototype.mount = (opts={}) ->
     Default query looks like:
     {query: {filtered: {query: {match_all: {}}, filter: {bool: {must: []}}}}, size: 10}
 ###
-API.collection._translate = (q, opts) ->
+API.collection._translate = (q, opts={}) ->
   console.log('Translating query',q,opts) if API.settings.log?.level is 'all'
   opts = {random:true} if opts is 'random'
   opts = {size:opts} if typeof opts is 'number'
   opts = {newest: true} if opts is true
   opts = {newest: false} if opts is false
-  qry = opts?.query ? {}
+  qry = opts.query ? {}
   qry.query ?= {}
   _structure = (sq) ->
     if not sq.query? or not sq.query.filtered?
@@ -639,6 +642,9 @@ API.collection._translate = (q, opts) ->
         for b of q.bodyParams
           qp[b] = q.bodyParams[b]
       q = qp
+    if q.exists?
+      opts.exists ?= q.exists
+      delete q.exists
     delete q.apikey if q.apikey?
     delete q._ if q._?
     delete q.callback if q.callback?
@@ -667,7 +673,6 @@ API.collection._translate = (q, opts) ->
     else if q.source?
       qry = JSON.parse(q.source) if typeof q.source is 'string'
       qry = q.source if typeof q.source is 'object'
-      opts ?= {}
       for o of q
         opts[o] ?= q[o] if o not in ['source']
     else if q.q?
@@ -679,7 +684,6 @@ API.collection._translate = (q, opts) ->
         qry.query.filtered.query.bool.must.push prefix: pfx
       else
         qry.query.filtered.query.bool.must.push query_string: query: q.q
-      opts ?= {}
       for o of q
         opts[o] ?= q[o] if o not in ['q']
     else
@@ -691,7 +695,6 @@ API.collection._translate = (q, opts) ->
         qry.query.filtered.filter.bool.must_not = q.must_not
       for y of q # an object where every key is assumed to be an AND term search if string, or a named search object to go in to ES
         if (y in ['fields','terms']) or (y is 'sort' and typeof q[y] is 'string' and q[y].indexOf(':') isnt -1) or (y in ['from','size'] and (typeof q[y]is 'number' or not isNaN parseInt q[y]))
-          opts ?= {}
           opts[y] = q[y]
         else if y not in ['must','must_not','should']
           if typeof q[y] is 'string'
@@ -791,6 +794,11 @@ API.collection._translate = (q, opts) ->
         qry.query.filtered.filter.bool.should ?= []
         qry.query.filtered.filter.bool.should.push(sr) for sr in opts.should
       delete opts.should
+    if opts.exists?
+      try
+        qry.query.filtered.filter.bool.must ?= []
+        qry.query.filtered.filter.bool.must.push {exists: {field: opts.exists}}
+      delete opts.exists
     if opts.all?
       qry.size = 1000000 # just a simple way to try to get "all" records - although passing size would be a better solution, and works anyway
       delete opts.all

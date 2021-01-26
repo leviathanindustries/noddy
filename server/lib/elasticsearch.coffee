@@ -517,7 +517,8 @@ API.es.bulk = (index, type, data, action='index', bulk=50000, dev=API.settings.d
       if API.settings.dev
         console.log 'ES bulk loading package of length ' + pkg.length + (if counter isnt bulk and pkg.length > 70000000 then ' triggered by length' else '')
       try
-        hp = HTTP.call 'POST', url + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'}} #,retry:API.es._retries}
+        #hp = 
+        HTTP.call 'POST', url + '/_bulk', {content:pkg, headers:{'Content-Type':'text/plain'}} #,retry:API.es._retries}
         #responses.push hp
         loaded += counter
       catch err

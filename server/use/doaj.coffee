@@ -6,6 +6,7 @@
 
 import fs from 'fs'
 import tar from 'tar'
+import Future from 'fibers/future'
 
 @doaj_journal = new API.collection {index:"doaj",type:"journal"}
 @doaj_in_progress = new API.collection {index:"doaj",type:"inprogress"}
@@ -87,28 +88,46 @@ API.use.doaj.journals.issn = (issn) ->
 API.use.doaj.journals.search = (qry) ->
   return doaj_journal.search qry
 
+API.use.doaj.journals.inprogress = (qry) ->
+  return doaj_in_progress.search qry
+
 API.use.doaj.journals.import = (refresh) ->
-  # doaj only updates their journal dump once a week so calling academic journal load
+  # doaj only updates their journal dump once a week so calling journal import
   # won't actually do anything if the dump file name has not changed since last run 
   # or if a refresh is called
+  fldr = '/tmp/doaj' + (if API.settings.dev then '_dev' else '') + '/'
+  if not fs.existsSync fldr
+    fs.mkdirSync fldr
   ret = false
   try
     prev = false
     current = false
-    fs.writeFileSync '/tmp/doaj' + (if API.settings.dev then '_dev' else ''), HTTP.call('GET', 'https://doaj.org/public-data-dump/journal', {npmRequestOptions:{encoding:null}}).content
-    tar.extract file: '/tmp/doaj' + (if API.settings.dev then '_dev' else ''), cwd: '/tmp', sync: true # extracted doaj dump folders end 2020-10-01
-    for f in fs.readdirSync '/tmp' # readdir alphasorts, so if more than one in tmp then last one will be newest
+    fs.writeFileSync fldr + 'doaj.tar', HTTP.call('GET', 'https://doaj.org/public-data-dump/journal', {npmRequestOptions:{encoding:null}}).content
+    tar.extract file: fldr + 'doaj.tar', cwd: fldr, sync: true # extracted doaj dump folders end 2020-10-01
+    for f in fs.readdirSync fldr # readdir alphasorts, so if more than one in tmp then last one will be newest
       if f.indexOf('doaj_journal_data') isnt -1
         if prev
-          try fs.unlinkSync '/tmp/' + prev + '/journal_batch_1.json'
-          try fs.rmdirSync '/tmp/' + prev
+          try fs.unlinkSync fldr + prev + '/journal_batch_1.json'
+          try fs.rmdirSync fldr + prev
         prev = current
         current = f
     if current and (prev or refresh)
       doaj_journal.remove '*'
-      doaj_journal.insert JSON.parse fs.readFileSync '/tmp/' + current + '/journal_batch_1.json'
+      counter = 0
+      dely = 800
+      while counter < 5 and not doaj_journal.mapping().dynamic_templates?
+        future = new Future()
+        setTimeout (() -> future.return()), dely
+        future.wait()
+        doaj_journal.map API.es._mapping
+        dely = dely * 2
+        counter += 1
+      console.log counter
+      doaj_journal.insert JSON.parse fs.readFileSync fldr + current + '/journal_batch_1.json'
       API.log 'Imported DOAJ journals'
       ret = true
+      if not doaj_journal.mapping().dynamic_templates?
+        API.log notify: true, msg: 'DOAJ journals import did not successfully map'
     else
       API.log 'DOAJ journal import ran but found nothing new to import'
       ret = false
@@ -128,8 +147,8 @@ API.use.doaj.journals.import = (refresh) ->
 
 _doaj_journals_import = () ->
   if API.settings.cluster?.ip? and API.status.ip() not in API.settings.cluster.ip
-    API.log 'Setting up a DOAJ journal import to run two days if their dump file updated on ' + API.status.ip()
-    Meteor.setInterval API.use.doaj.journals.import, 172800000
+    API.log 'Setting up a DOAJ journal import to run each day if their dump file updated on ' + API.status.ip()
+    Meteor.setInterval API.use.doaj.journals.import, 43200000
 Meteor.setTimeout _doaj_journals_import, 22000
 
 

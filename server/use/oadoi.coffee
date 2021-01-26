@@ -32,7 +32,7 @@ API.use.oadoi.format = (rec, metadata={}) ->
   try metadata.doi ?= rec.doi
   try metadata.title ?= rec.title
   try metadata.journal = rec.journal_name
-  try metadata.issn ?= rec.journal_issn_1
+  try metadata.issn ?= rec.journal_issns.split ','
   try metadata.publisher ?= rec.publisher
   try metadata.year ?= rec.year
   try metadata.licence ?= rec.best_oa_location.license if rec.best_oa_location?.license and rec.best_oa_location?.license isnt null

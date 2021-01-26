@@ -296,7 +296,7 @@ API.log.stack = (params={}, since, before, within) ->
       res = res.concat rml[rml.current]
   res = res.sort (a,b) -> return if a.createdAt > b.createdAt then -1 else 1
   params.from ?= 0
-  if params.q?
+  if typeof params.q is 'string'
     rq = []
     k = false
     v = params.q

@@ -559,7 +559,7 @@ API.use.crossref.works.format = (rec, metadata={}) ->
   try metadata.issue = rec.issue if rec.issue?
   try metadata.volume = rec.volume if rec.volume?
   try metadata.page = rec.page.toString() if rec.page?
-  try metadata.issn = rec.ISSN[0]
+  try metadata.issn = _.uniq rec.ISSN
   try metadata.keyword = rec.subject if rec.subject? # is a list of strings - goes in keywords because subject was already previously used as an object
   try metadata.publisher = rec.publisher if rec.publisher?
   for p in ['published-print','journal-issue.published-print','issued','published-online','created','deposited']
