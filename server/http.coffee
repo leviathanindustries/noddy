@@ -487,6 +487,8 @@ API.http.puppeteer = (url, refresh=86400000, proxy=false, headers={}, idle=false
       popts.waitUntil = if typeof idle is 'string' then idle else if idle then ['load','domcontentloaded','networkidle0','networkidle2'] else 'domcontentloaded'
       opened = await page.goto(url, popts)
       content = await page.evaluate(() => new XMLSerializer().serializeToString(document.doctype) + '\n' + document.documentElement.outerHTML)
+      # NOTE may want to change the above if trying to use puppeteer to access XML or other such things
+      #content = await page.evaluate(() => document.querySelector('*').outerHTML)
       await page.close()
       await browser.close()
       # no matter what i try this causes an error. Just going to have to let it do so. The content still gets returned before the error fires.

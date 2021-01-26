@@ -43,6 +43,17 @@ API.add 'use/wikidata/simplify', get: () -> return API.use.wikidata.simplify thi
 API.add 'use/wikidata/simplify/:qid', get: () -> return API.use.wikidata.simplify this.urlParams.qid
 
 
+API.use.wikidata.grid2ror = (grid, wd) ->
+  # about 97k wikidata records have a grid id and about 95k of those have a ROR
+  wd = wikidata_record.get(wd) if typeof wd is 'string'
+  wd ?= wikidata_record.find '(snaks.property.exact:"P6782" OR snaks.property.exact:"P1366") AND snaks.property.exact:"P2427" AND snaks.value.exact:"' + grid + '"'
+  if typeof wd is 'object' and wd.snaks?
+    for s in wd.snaks
+      if s.property is 'P6782'
+        return s.value
+      if s.property is 'P1366' and s.qid
+        return API.use.wikidata.grid2ror grid, s.qid
+  return undefined
 
 # direct methods to local copy
 API.use.wikidata.search = (params, dereference=false, update=true, snakalyse=false, opts) ->
