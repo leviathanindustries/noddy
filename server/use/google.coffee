@@ -298,6 +298,15 @@ API.use.google.sheets.api.get = (sheetid, opts={}) ->
 	catch err
 		return err
 
+# auth for sheets interactions that makes changes is complex, requiring oauth and an email account to be registered to the sheet, it seems
+# https://developers.google.com/sheets/api/guides/authorizing
+# https://developers.google.com/sheets/api/reference/rest/v4/spreadsheets.values/append
+# https://developers.google.com/identity/protocols/oauth2
+# https://developers.google.com/sheets/api/quickstart/nodejs#step_3_set_up_the_sample
+# https://cloud.google.com/apigee/docs/api-platform/security/oauth/access-tokens
+# https://docs.wso2.com/display/IntegrationCloud/Get+Credentials+for+Google+Spreadsheet
+# https://help.gooddata.com/doc/en/building-on-gooddata-platform/data-preparation-and-distribution/additional-data-load-reference/data-load-tutorials/load-data-from-google-spreadsheets-via-google-api
+# https://isd-soft.com/tech_blog/accessing-google-apis-using-service-account-node-js/
 API.use.google.sheets.api.values = (sheetid, opts={}) ->
 	opts.start ?= 'A1'
 	if not opts.end?

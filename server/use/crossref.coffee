@@ -628,7 +628,7 @@ _xref_import = () ->
     Meteor.setInterval API.use.crossref.journals.import, 604800000
     API.log 'Setting up a crossref works import to run every day on ' + API.status.ip()
     Meteor.setInterval (() -> API.use.crossref.works.index(undefined, 'indexed')), 86400000
-Meteor.setTimeout _xref_import, 19000
+#Meteor.setTimeout _xref_import, 19000
 
 
 

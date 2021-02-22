@@ -112,22 +112,13 @@ API.use.doaj.journals.import = (refresh) ->
         prev = current
         current = f
     if current and (prev or refresh)
-      doaj_journal.remove '*'
-      counter = 0
-      dely = 800
-      while counter < 5 and not doaj_journal.mapping().dynamic_templates?
-        future = new Future()
-        setTimeout (() -> future.return()), dely
-        future.wait()
-        doaj_journal.map API.es._mapping
-        dely = dely * 2
-        counter += 1
-      console.log counter
+      dn = doaj_journal.find('*', true).createdAt + 1
       doaj_journal.insert JSON.parse fs.readFileSync fldr + current + '/journal_batch_1.json'
+      doaj_journal.remove 'createdAt:<' + dn
       API.log 'Imported DOAJ journals'
       ret = true
       if not doaj_journal.mapping().dynamic_templates?
-        API.log notify: true, msg: 'DOAJ journals import did not successfully map'
+        API.log notify: true, msg: 'DOAJ journals import did not successfully map' + (if API.settings.dev then ' (dev)' else '')
     else
       API.log 'DOAJ journal import ran but found nothing new to import'
       ret = false
@@ -146,7 +137,7 @@ API.use.doaj.journals.import = (refresh) ->
   return ret
 
 _doaj_journals_import = () ->
-  if API.settings.cluster?.ip? and API.status.ip() not in API.settings.cluster.ip
+  if API.settings.cluster?.ip? and API.status.ip() not in API.settings.cluster.ip and not API.settings.dev
     API.log 'Setting up a DOAJ journal import to run each day if their dump file updated on ' + API.status.ip()
     Meteor.setInterval API.use.doaj.journals.import, 43200000
 Meteor.setTimeout _doaj_journals_import, 22000

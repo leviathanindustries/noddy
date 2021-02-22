@@ -126,7 +126,7 @@ API.collection.prototype.get = (rid, versioned, dev=API.settings.dev) ->
   dev = true if this._devislive is true
   # TODO is there any case for recording who has accessed certain documents?
   # NOTE this only works case-sensitively so record IDs have to be in the correct case
-  if typeof rid is 'number' or (typeof rid is 'string' and rid.indexOf(' ') is -1 and rid.indexOf(':') is -1 and rid.indexOf('/') is -1 and rid.indexOf('*') is -1)
+  if typeof rid is 'number' or (typeof rid is 'string' and rid.length and rid.indexOf(' ') is -1 and rid.indexOf(':') is -1 and rid.indexOf('/') is -1 and rid.indexOf('*') is -1)
     check = API.es.call 'GET', this._route + '/' + rid, undefined, undefined, undefined, undefined, undefined, undefined, dev
     return (if versioned then check else check._source) if check?.found isnt false and check?.status isnt 'error' and check?.statusCode isnt 404 and check?._source?
   return undefined
@@ -231,8 +231,7 @@ API.collection.prototype.remove = (q, uid, dev=API.settings.dev) ->
       this.history('remove', q, uid, dev) if this._history
     return true
   else
-    # TODO alter this to return the record ID and set action to 'remove' to get a bulk each instead of individual record removes
-    return this.each q, undefined, ((res) -> this.remove res._id, uid, dev), undefined, uid, undefined, dev
+    return this.each q, undefined, ((res) -> return res._id), 'remove', uid, undefined, dev
 
 API.collection.prototype.search = (q, opts, versioned, dev=API.settings.dev) ->
   dev = true if this._devislive is true
