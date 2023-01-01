@@ -29,7 +29,7 @@
     "natural": "^0.6.3",
     "oauth": "^0.9.15",
     "pdf2json": "^1.1.7",
-    "pdfjs-dist": "^2.3.200",
+    "pdfjs-dist": "^2.16.105",
     "puppeteer": "^1.6.1",
     "request": "^2.88.0",
     "rsync": "^0.6.1",
